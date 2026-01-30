@@ -16,8 +16,15 @@ class MyApp extends StatelessWidget {
       home: Scaffold(
         appBar: AppBar(title: const Text('flutter_rust_bridge quickstart')),
         body: Center(
-          child: Text(
-            'Action: Call Rust `greet("Tom")`\nResult: `${greet(name: "Tom")}`',
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Action: Call Rust `greet("Tom")`\nResult: `${greet(name: "Tom")}`',
+              ),
+              const SizedBox(height: 20),
+              Text('GStreamer Version: ${getGstreamerVersion()}'),
+            ],
           ),
         ),
       ),

@@ -8,6 +8,10 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 flutter_rust_bridge = "=2.11.1"
+gstreamer = "0.21"
+gstreamer-app = "0.21"
+gstreamer-video = "0.21"
+anyhow = "1.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

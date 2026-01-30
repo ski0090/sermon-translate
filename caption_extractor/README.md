@@ -1,3 +1,5 @@
 # caption_extractor
 
-A new Flutter project.
+OCR 자막 추출 프로그램
+
+- gstreamer 설치 필요
