@@ -11,6 +11,7 @@ flutter_rust_bridge = "=2.11.1"
 gstreamer = "0.21"
 gstreamer-app = "0.21"
 gstreamer-video = "0.21"
+gstreamer-pbutils = "0.21"
 anyhow = "1.0"
 
 [lints.rust]

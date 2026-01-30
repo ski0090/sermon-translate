@@ -6,11 +6,54 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
+
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
 
 String getGstreamerVersion() =>
     RustLib.instance.api.crateApiSimpleGetGstreamerVersion();
 
+Future<VideoInfo> getVideoInfo({required String path}) =>
+    RustLib.instance.api.crateApiSimpleGetVideoInfo(path: path);
+
 Future<void> playVideo({required String path}) =>
     RustLib.instance.api.crateApiSimplePlayVideo(path: path);
+
+class VideoInfo {
+  final int width;
+  final int height;
+  final BigInt durationMs;
+  final String format;
+  final double fps;
+
+  const VideoInfo({
+    required this.width,
+    required this.height,
+    required this.durationMs,
+    required this.format,
+    required this.fps,
+  });
+
+  static Future<VideoInfo> default_() =>
+      RustLib.instance.api.crateApiSimpleVideoInfoDefault();
+
+  @override
+  int get hashCode =>
+      width.hashCode ^
+      height.hashCode ^
+      durationMs.hashCode ^
+      format.hashCode ^
+      fps.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is VideoInfo &&
+          runtimeType == other.runtimeType &&
+          width == other.width &&
+          height == other.height &&
+          durationMs == other.durationMs &&
+          format == other.format &&
+          fps == other.fps;
+}
