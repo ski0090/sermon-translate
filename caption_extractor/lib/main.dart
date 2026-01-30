@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:caption_extractor/src/rust/api/simple.dart';
 import 'package:caption_extractor/src/rust/frb_generated.dart';
@@ -19,6 +20,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   String? selectedPath;
   VideoInfo? videoInfo;
+  Stream<ui.Image>? videoStream;
   bool isLoading = false;
 
   Future<void> _pickFile() async {
@@ -33,6 +35,7 @@ class _MyAppState extends State<MyApp> {
         selectedPath = path;
         isLoading = true;
         videoInfo = null;
+        videoStream = null;
       });
 
       try {
@@ -75,7 +78,7 @@ class _MyAppState extends State<MyApp> {
             children: [
               if (isLoading)
                 const CircularProgressIndicator()
-              else if (videoInfo != null)
+              else if (videoInfo != null) ...[
                 Card(
                   margin: const EdgeInsets.symmetric(horizontal: 20),
                   elevation: 4,
@@ -104,7 +107,7 @@ class _MyAppState extends State<MyApp> {
                             ),
                           ],
                         ),
-                        const Divider(height: 30),
+                        const Divider(height: 10),
                         _infoItem(
                           Icons.aspect_ratio,
                           '해상도',
@@ -124,8 +127,64 @@ class _MyAppState extends State<MyApp> {
                       ],
                     ),
                   ),
-                )
-              else
+                ),
+                const SizedBox(height: 20),
+                StreamBuilder<ui.Image>(
+                  stream: videoStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasData) {
+                      final image = snapshot.data!;
+                      return Container(
+                        constraints: const BoxConstraints(maxHeight: 300),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.blue, width: 2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: RawImage(image: image, fit: BoxFit.contain),
+                      );
+                    }
+                    if (videoStream != null) {
+                      return const Column(
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 10),
+                          Text('스트리밍 대기 중...'),
+                        ],
+                      );
+                    }
+                    return ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          videoStream = streamVideo(path: selectedPath!)
+                              .asyncMap((frame) async {
+                                final buffer =
+                                    await ui.ImmutableBuffer.fromUint8List(
+                                      frame.pixels,
+                                    );
+                                final descriptor = ui.ImageDescriptor.raw(
+                                  buffer,
+                                  width: frame.width,
+                                  height: frame.height,
+                                  pixelFormat: ui.PixelFormat.rgba8888,
+                                );
+                                final codec = await descriptor
+                                    .instantiateCodec();
+                                final frameInfo = await codec.getNextFrame();
+                                return frameInfo.image;
+                              });
+                        });
+                      },
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('앱 내에서 재생 시작'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                      ),
+                    );
+                  },
+                ),
+              ] else
                 Column(
                   children: [
                     const Icon(

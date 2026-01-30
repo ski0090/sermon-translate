@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
 
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
@@ -17,8 +17,38 @@ String getGstreamerVersion() =>
 Future<VideoInfo> getVideoInfo({required String path}) =>
     RustLib.instance.api.crateApiSimpleGetVideoInfo(path: path);
 
+Stream<VideoFrame> streamVideo({required String path}) =>
+    RustLib.instance.api.crateApiSimpleStreamVideo(path: path);
+
 Future<void> playVideo({required String path}) =>
     RustLib.instance.api.crateApiSimplePlayVideo(path: path);
+
+class VideoFrame {
+  final Uint8List pixels;
+  final int width;
+  final int height;
+
+  const VideoFrame({
+    required this.pixels,
+    required this.width,
+    required this.height,
+  });
+
+  static Future<VideoFrame> default_() =>
+      RustLib.instance.api.crateApiSimpleVideoFrameDefault();
+
+  @override
+  int get hashCode => pixels.hashCode ^ width.hashCode ^ height.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is VideoFrame &&
+          runtimeType == other.runtimeType &&
+          pixels == other.pixels &&
+          width == other.width &&
+          height == other.height;
+}
 
 class VideoInfo {
   final int width;

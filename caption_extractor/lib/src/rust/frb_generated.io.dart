@@ -22,6 +22,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException dco_decode_AnyhowException(dynamic raw);
 
   @protected
+  RustStreamSink<VideoFrame> dco_decode_StreamSink_video_frame_Sse(dynamic raw);
+
+  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
@@ -43,10 +46,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void dco_decode_unit(dynamic raw);
 
   @protected
+  VideoFrame dco_decode_video_frame(dynamic raw);
+
+  @protected
   VideoInfo dco_decode_video_info(dynamic raw);
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<VideoFrame> sse_decode_StreamSink_video_frame_Sse(
+    SseDeserializer deserializer,
+  );
 
   @protected
   String sse_decode_String(SseDeserializer deserializer);
@@ -70,6 +81,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
+  VideoFrame sse_decode_video_frame(SseDeserializer deserializer);
+
+  @protected
   VideoInfo sse_decode_video_info(SseDeserializer deserializer);
 
   @protected
@@ -78,6 +92,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_video_frame_Sse(
+    RustStreamSink<VideoFrame> self,
     SseSerializer serializer,
   );
 
@@ -104,6 +124,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_video_frame(VideoFrame self, SseSerializer serializer);
 
   @protected
   void sse_encode_video_info(VideoInfo self, SseSerializer serializer);

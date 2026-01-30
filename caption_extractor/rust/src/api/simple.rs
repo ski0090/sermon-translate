@@ -1,5 +1,13 @@
+use crate::frb_generated::StreamSink;
 use gstreamer::prelude::*;
 use gstreamer_pbutils::prelude::*;
+
+#[derive(Debug, Clone, Default)]
+pub struct VideoFrame {
+    pub pixels: Vec<u8>,
+    pub width: i32,
+    pub height: i32,
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct VideoInfo {
@@ -47,6 +55,76 @@ pub fn get_video_info(path: String) -> anyhow::Result<VideoInfo> {
     }
 
     Ok(video_info)
+}
+
+pub fn stream_video(path: String, sink: StreamSink<VideoFrame>) -> anyhow::Result<()> {
+    let uri = if path.starts_with("http") {
+        path
+    } else {
+        format!("file:///{}", path.replace("\\", "/"))
+    };
+
+    let pipeline_str = format!(
+        "uridecodebin uri=\"{}\" ! videoconvert ! videoscale ! video/x-raw,format=RGBA ! appsink name=sink sync=true",
+        uri
+    );
+
+    let pipeline = gstreamer::parse_launch(&pipeline_str)?
+        .dynamic_cast::<gstreamer::Pipeline>()
+        .map_err(|el| anyhow::anyhow!("Failed to cast to Pipeline. Type: {}", el.type_().name()))?;
+
+    let appsink = pipeline
+        .by_name("sink")
+        .ok_or_else(|| anyhow::anyhow!("Sink not found"))?
+        .dynamic_cast::<gstreamer_app::AppSink>()
+        .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
+
+    appsink.set_callbacks(
+        gstreamer_app::AppSinkCallbacks::builder()
+            .new_sample(move |appsink| {
+                let sample = appsink
+                    .pull_sample()
+                    .map_err(|_| gstreamer::FlowError::Error)?;
+                let buffer = sample.buffer().ok_or(gstreamer::FlowError::Error)?;
+                let caps = sample.caps().ok_or(gstreamer::FlowError::Error)?;
+                let info = gstreamer_video::VideoInfo::from_caps(caps)
+                    .map_err(|_| gstreamer::FlowError::Error)?;
+
+                let map = buffer
+                    .map_readable()
+                    .map_err(|_| gstreamer::FlowError::Error)?;
+
+                if sink
+                    .add(VideoFrame {
+                        pixels: map.to_vec(),
+                        width: info.width() as i32,
+                        height: info.height() as i32,
+                    })
+                    .is_err()
+                {
+                    return Err(gstreamer::FlowError::Eos);
+                }
+
+                Ok(gstreamer::FlowSuccess::Ok)
+            })
+            .build(),
+    );
+
+    pipeline.set_state(gstreamer::State::Playing)?;
+
+    std::thread::spawn(move || {
+        let bus = pipeline.bus().unwrap();
+        for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
+            use gstreamer::MessageView;
+            match msg.view() {
+                MessageView::Eos(..) | MessageView::Error(..) => break,
+                _ => (),
+            }
+        }
+        let _ = pipeline.set_state(gstreamer::State::Null);
+    });
+
+    Ok(())
 }
 
 pub fn play_video(path: String) -> anyhow::Result<()> {
