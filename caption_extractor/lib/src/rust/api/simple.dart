@@ -11,3 +11,6 @@ String greet({required String name}) =>
 
 String getGstreamerVersion() =>
     RustLib.instance.api.crateApiSimpleGetGstreamerVersion();
+
+Future<void> playVideo({required String path}) =>
+    RustLib.instance.api.crateApiSimplePlayVideo(path: path);

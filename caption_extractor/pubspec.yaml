@@ -1,6 +1,6 @@
 name: caption_extractor
 description: "A new Flutter project."
-publish_to: 'none'
+publish_to: "none"
 version: 0.1.0
 
 environment:
@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_rust_bridge: 2.11.1
+  file_picker: ^8.0.0
   rust_lib_caption_extractor:
     path: rust_builder
 
