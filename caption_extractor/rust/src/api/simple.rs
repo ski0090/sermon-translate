@@ -127,6 +127,57 @@ pub fn stream_video(path: String, sink: StreamSink<VideoFrame>) -> anyhow::Resul
     Ok(())
 }
 
+pub fn get_first_frame(path: String) -> anyhow::Result<VideoFrame> {
+    let uri = if path.starts_with("http") {
+        path
+    } else {
+        format!("file:///{}", path.replace("\\", "/"))
+    };
+
+    let pipeline_str = format!(
+        "uridecodebin uri=\"{}\" ! videoconvert ! videoscale ! video/x-raw,format=RGBA ! appsink name=sink sync=true max-buffers=1 drop=true",
+        uri
+    );
+
+    let pipeline = gstreamer::parse_launch(&pipeline_str)?
+        .dynamic_cast::<gstreamer::Pipeline>()
+        .map_err(|el| anyhow::anyhow!("Failed to cast to Pipeline. Type: {}", el.type_().name()))?;
+
+    let appsink = pipeline
+        .by_name("sink")
+        .ok_or_else(|| anyhow::anyhow!("Sink not found"))?
+        .dynamic_cast::<gstreamer_app::AppSink>()
+        .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
+
+    pipeline.set_state(gstreamer::State::Playing)?;
+
+    let sample = appsink
+        .pull_sample()
+        .map_err(|_| anyhow::anyhow!("Failed to pull sample"))?;
+    let buffer = sample
+        .buffer()
+        .ok_or_else(|| anyhow::anyhow!("No buffer in sample"))?;
+    let caps = sample
+        .caps()
+        .ok_or_else(|| anyhow::anyhow!("No caps in sample"))?;
+    let info = gstreamer_video::VideoInfo::from_caps(caps)
+        .map_err(|_| anyhow::anyhow!("Failed to parse caps"))?;
+
+    let map = buffer
+        .map_readable()
+        .map_err(|_| anyhow::anyhow!("Failed to map buffer"))?;
+
+    let frame = VideoFrame {
+        pixels: map.to_vec(),
+        width: info.width() as i32,
+        height: info.height() as i32,
+    };
+
+    let _ = pipeline.set_state(gstreamer::State::Null);
+
+    Ok(frame)
+}
+
 pub fn play_video(path: String) -> anyhow::Result<()> {
     let playbin = gstreamer::ElementFactory::make("playbin")
         .build()

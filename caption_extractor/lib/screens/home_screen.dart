@@ -70,9 +70,9 @@ class _HomeScreenState extends State<HomeScreen> {
               if (isLoading)
                 const CircularProgressIndicator()
               else if (videoInfo != null) ...[
-                VideoInfoCard(fileName: fileName ?? '', videoInfo: videoInfo!),
-                const SizedBox(height: 30),
                 VideoPlayerView(path: selectedPath!),
+                const SizedBox(height: 20),
+                VideoInfoCard(fileName: fileName ?? '', videoInfo: videoInfo!),
               ] else
                 Column(
                   children: [

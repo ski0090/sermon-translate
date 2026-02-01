@@ -20,6 +20,9 @@ Future<VideoInfo> getVideoInfo({required String path}) =>
 Stream<VideoFrame> streamVideo({required String path}) =>
     RustLib.instance.api.crateApiSimpleStreamVideo(path: path);
 
+Future<VideoFrame> getFirstFrame({required String path}) =>
+    RustLib.instance.api.crateApiSimpleGetFirstFrame(path: path);
+
 Future<void> playVideo({required String path}) =>
     RustLib.instance.api.crateApiSimplePlayVideo(path: path);
 
