@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`
 
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
@@ -17,14 +17,45 @@ String getGstreamerVersion() =>
 Future<VideoInfo> getVideoInfo({required String path}) =>
     RustLib.instance.api.crateApiSimpleGetVideoInfo(path: path);
 
-Stream<VideoFrame> streamVideo({required String path}) =>
-    RustLib.instance.api.crateApiSimpleStreamVideo(path: path);
+Stream<VideoFrame> streamVideo({required String path, Roi? roi}) =>
+    RustLib.instance.api.crateApiSimpleStreamVideo(path: path, roi: roi);
 
-Future<VideoFrame> getFirstFrame({required String path}) =>
-    RustLib.instance.api.crateApiSimpleGetFirstFrame(path: path);
+Future<VideoFrame> getFirstFrame({required String path, Roi? roi}) =>
+    RustLib.instance.api.crateApiSimpleGetFirstFrame(path: path, roi: roi);
 
 Future<void> playVideo({required String path}) =>
     RustLib.instance.api.crateApiSimplePlayVideo(path: path);
+
+class Roi {
+  final int x;
+  final int y;
+  final int width;
+  final int height;
+
+  const Roi({
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+  });
+
+  static Future<Roi> default_() =>
+      RustLib.instance.api.crateApiSimpleRoiDefault();
+
+  @override
+  int get hashCode =>
+      x.hashCode ^ y.hashCode ^ width.hashCode ^ height.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Roi &&
+          runtimeType == other.runtimeType &&
+          x == other.x &&
+          y == other.y &&
+          width == other.width &&
+          height == other.height;
+}
 
 class VideoFrame {
   final Uint8List pixels;

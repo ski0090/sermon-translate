@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -722965041;
+  int get rustContentHash => -1623707462;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -77,7 +77,10 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  Future<VideoFrame> crateApiSimpleGetFirstFrame({required String path});
+  Future<VideoFrame> crateApiSimpleGetFirstFrame({
+    required String path,
+    Roi? roi,
+  });
 
   String crateApiSimpleGetGstreamerVersion();
 
@@ -89,7 +92,12 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiSimplePlayVideo({required String path});
 
-  Stream<VideoFrame> crateApiSimpleStreamVideo({required String path});
+  Future<Roi> crateApiSimpleRoiDefault();
+
+  Stream<VideoFrame> crateApiSimpleStreamVideo({
+    required String path,
+    Roi? roi,
+  });
 
   Future<VideoFrame> crateApiSimpleVideoFrameDefault();
 
@@ -105,12 +113,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  Future<VideoFrame> crateApiSimpleGetFirstFrame({required String path}) {
+  Future<VideoFrame> crateApiSimpleGetFirstFrame({
+    required String path,
+    Roi? roi,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(path, serializer);
+          sse_encode_opt_box_autoadd_roi(roi, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -123,14 +135,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiSimpleGetFirstFrameConstMeta,
-        argValues: [path],
+        argValues: [path, roi],
         apiImpl: this,
       ),
     );
   }
 
   TaskConstMeta get kCrateApiSimpleGetFirstFrameConstMeta =>
-      const TaskConstMeta(debugName: "get_first_frame", argNames: ["path"]);
+      const TaskConstMeta(
+        debugName: "get_first_frame",
+        argNames: ["path", "roi"],
+      );
 
   @override
   String crateApiSimpleGetGstreamerVersion() {
@@ -261,7 +276,37 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "play_video", argNames: ["path"]);
 
   @override
-  Stream<VideoFrame> crateApiSimpleStreamVideo({required String path}) {
+  Future<Roi> crateApiSimpleRoiDefault() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_roi,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSimpleRoiDefaultConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleRoiDefaultConstMeta =>
+      const TaskConstMeta(debugName: "roi_default", argNames: []);
+
+  @override
+  Stream<VideoFrame> crateApiSimpleStreamVideo({
+    required String path,
+    Roi? roi,
+  }) {
     final sink = RustStreamSink<VideoFrame>();
     unawaited(
       handler.executeNormal(
@@ -269,11 +314,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           callFfi: (port_) {
             final serializer = SseSerializer(generalizedFrbRustBinding);
             sse_encode_String(path, serializer);
+            sse_encode_opt_box_autoadd_roi(roi, serializer);
             sse_encode_StreamSink_video_frame_Sse(sink, serializer);
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 7,
+              funcId: 8,
               port: port_,
             );
           },
@@ -282,7 +328,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             decodeErrorData: sse_decode_AnyhowException,
           ),
           constMeta: kCrateApiSimpleStreamVideoConstMeta,
-          argValues: [path, sink],
+          argValues: [path, roi, sink],
           apiImpl: this,
         ),
       ),
@@ -292,7 +338,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiSimpleStreamVideoConstMeta => const TaskConstMeta(
     debugName: "stream_video",
-    argNames: ["path", "sink"],
+    argNames: ["path", "roi", "sink"],
   );
 
   @override
@@ -304,7 +350,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 9,
             port: port_,
           );
         },
@@ -331,7 +377,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 10,
             port: port_,
           );
         },
@@ -370,6 +416,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Roi dco_decode_box_autoadd_roi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_roi(raw);
+  }
+
+  @protected
   double dco_decode_f_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as double;
@@ -385,6 +437,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
+  }
+
+  @protected
+  Roi? dco_decode_opt_box_autoadd_roi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_roi(raw);
+  }
+
+  @protected
+  Roi dco_decode_roi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return Roi(
+      x: dco_decode_i_32(arr[0]),
+      y: dco_decode_i_32(arr[1]),
+      width: dco_decode_i_32(arr[2]),
+      height: dco_decode_i_32(arr[3]),
+    );
   }
 
   @protected
@@ -456,6 +528,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Roi sse_decode_box_autoadd_roi(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_roi(deserializer));
+  }
+
+  @protected
   double sse_decode_f_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getFloat64();
@@ -472,6 +550,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  Roi? sse_decode_opt_box_autoadd_roi(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_roi(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Roi sse_decode_roi(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_x = sse_decode_i_32(deserializer);
+    var var_y = sse_decode_i_32(deserializer);
+    var var_width = sse_decode_i_32(deserializer);
+    var var_height = sse_decode_i_32(deserializer);
+    return Roi(x: var_x, y: var_y, width: var_width, height: var_height);
   }
 
   @protected
@@ -556,6 +655,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_roi(Roi self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_roi(self, serializer);
+  }
+
+  @protected
   void sse_encode_f_64(double self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putFloat64(self);
@@ -575,6 +680,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_roi(Roi? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_roi(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_roi(Roi self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.x, serializer);
+    sse_encode_i_32(self.y, serializer);
+    sse_encode_i_32(self.width, serializer);
+    sse_encode_i_32(self.height, serializer);
   }
 
   @protected

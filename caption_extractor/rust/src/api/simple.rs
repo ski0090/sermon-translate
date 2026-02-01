@@ -10,6 +10,14 @@ pub struct VideoFrame {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct Roi {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct VideoInfo {
     pub width: i32,
     pub height: i32,
@@ -57,7 +65,11 @@ pub fn get_video_info(path: String) -> anyhow::Result<VideoInfo> {
     Ok(video_info)
 }
 
-pub fn stream_video(path: String, sink: StreamSink<VideoFrame>) -> anyhow::Result<()> {
+pub fn stream_video(
+    path: String,
+    roi: Option<Roi>,
+    sink: StreamSink<VideoFrame>,
+) -> anyhow::Result<()> {
     let uri = if path.starts_with("http") {
         path
     } else {
@@ -94,11 +106,35 @@ pub fn stream_video(path: String, sink: StreamSink<VideoFrame>) -> anyhow::Resul
                     .map_readable()
                     .map_err(|_| gstreamer::FlowError::Error)?;
 
+                let mut pixels = map.to_vec();
+                let mut width = info.width() as i32;
+                let mut height = info.height() as i32;
+
+                if let Some(ref roi) = roi {
+                    // ROI 적용 (수동 크롭)
+                    let roi_x = roi.x.clamp(0, width);
+                    let roi_y = roi.y.clamp(0, height);
+                    let roi_w = roi.width.clamp(0, width - roi_x);
+                    let roi_h = roi.height.clamp(0, height - roi_y);
+
+                    if roi_w > 0 && roi_h > 0 {
+                        let mut cropped = Vec::with_capacity((roi_w * roi_h * 4) as usize);
+                        for y in 0..roi_h {
+                            let start = (((roi_y + y) * width + roi_x) * 4) as usize;
+                            let end = start + (roi_w * 4) as usize;
+                            cropped.extend_from_slice(&pixels[start..end]);
+                        }
+                        pixels = cropped;
+                        width = roi_w;
+                        height = roi_h;
+                    }
+                }
+
                 if sink
                     .add(VideoFrame {
-                        pixels: map.to_vec(),
-                        width: info.width() as i32,
-                        height: info.height() as i32,
+                        pixels,
+                        width,
+                        height,
                     })
                     .is_err()
                 {
@@ -127,7 +163,7 @@ pub fn stream_video(path: String, sink: StreamSink<VideoFrame>) -> anyhow::Resul
     Ok(())
 }
 
-pub fn get_first_frame(path: String) -> anyhow::Result<VideoFrame> {
+pub fn get_first_frame(path: String, roi: Option<Roi>) -> anyhow::Result<VideoFrame> {
     let uri = if path.starts_with("http") {
         path
     } else {
@@ -162,15 +198,37 @@ pub fn get_first_frame(path: String) -> anyhow::Result<VideoFrame> {
         .ok_or_else(|| anyhow::anyhow!("No caps in sample"))?;
     let info = gstreamer_video::VideoInfo::from_caps(caps)
         .map_err(|_| anyhow::anyhow!("Failed to parse caps"))?;
-
     let map = buffer
         .map_readable()
         .map_err(|_| anyhow::anyhow!("Failed to map buffer"))?;
 
+    let mut pixels = map.to_vec();
+    let mut width = info.width() as i32;
+    let mut height = info.height() as i32;
+
+    if let Some(roi) = roi {
+        let roi_x = roi.x.clamp(0, width);
+        let roi_y = roi.y.clamp(0, height);
+        let roi_w = roi.width.clamp(0, width - roi_x);
+        let roi_h = roi.height.clamp(0, height - roi_y);
+
+        if roi_w > 0 && roi_h > 0 {
+            let mut cropped = Vec::with_capacity((roi_w * roi_h * 4) as usize);
+            for y in 0..roi_h {
+                let start = (((roi_y + y) * width + roi_x) * 4) as usize;
+                let end = start + (roi_w * 4) as usize;
+                cropped.extend_from_slice(&pixels[start..end]);
+            }
+            pixels = cropped;
+            width = roi_w;
+            height = roi_h;
+        }
+    }
+
     let frame = VideoFrame {
-        pixels: map.to_vec(),
-        width: info.width() as i32,
-        height: info.height() as i32,
+        pixels,
+        width,
+        height,
     };
 
     let _ = pipeline.set_state(gstreamer::State::Null);
