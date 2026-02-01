@@ -47,9 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final fileName = selectedPath != null
-        ? selectedPath!.split(RegExp(r'[/\\]')).last
-        : null;
+    final fileName = selectedPath?.split(RegExp(r'[/\\]')).last;
 
     return Scaffold(
       appBar: AppBar(
