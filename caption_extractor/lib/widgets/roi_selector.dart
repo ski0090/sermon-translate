@@ -64,7 +64,7 @@ class _RoiSelectorState extends State<RoiSelector> {
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.red, width: 2),
-                        color: Colors.red.withOpacity(0.1),
+                        color: Colors.red.withAlpha(100),
                       ),
                     ),
                   ),
@@ -74,7 +74,7 @@ class _RoiSelectorState extends State<RoiSelector> {
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.yellow, width: 2),
-                        color: Colors.yellow.withOpacity(0.2),
+                        color: Colors.yellow.withAlpha(100),
                       ),
                     ),
                   ),

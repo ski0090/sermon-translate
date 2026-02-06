@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:caption_extractor/src/rust/api/simple.dart';
 import 'roi_selector.dart';
+import 'roi_player.dart';
 
 class VideoPlayerView extends StatefulWidget {
   final String path;
@@ -132,80 +133,65 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _buildVideoArea(),
-        if (_roiStream != null) ...[
-          const SizedBox(height: 16),
-          const Text(
-            '크롭된 화면 (ROI)',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          _buildRoiPreview(),
-        ],
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _isRoiMode = !_isRoiMode;
-                  if (!_isRoiMode) {
-                    _applyRoi();
-                  }
-                });
-              },
-              icon: Icon(_isRoiMode ? Icons.check : Icons.crop),
-              label: Text(_isRoiMode ? '선택 완료' : '영역 선택'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _isRoiMode ? Colors.green : null,
-                foregroundColor: _isRoiMode ? Colors.white : null,
-              ),
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 왼쪽: 영역 선택 및 초기화 버튼 (비율 1)
+          Expanded(
+            flex: 1,
+            child: Column(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _isRoiMode = !_isRoiMode;
+                      if (!_isRoiMode) {
+                        _applyRoi();
+                      }
+                    });
+                  },
+                  icon: Icon(_isRoiMode ? Icons.check : Icons.crop),
+                  label: const Text('영역 선택', overflow: TextOverflow.ellipsis),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isRoiMode ? Colors.green : null,
+                    foregroundColor: _isRoiMode ? Colors.white : null,
+                    minimumSize: const Size(double.infinity, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                  ),
+                ),
+                if (_selectedRect != null) ...[
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _selectedRect = null;
+                        _videoStream = null;
+                        _roiStream = null;
+                      });
+                      _loadThumbnail();
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('초기화', overflow: TextOverflow.ellipsis),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                    ),
+                  ),
+                ],
+              ],
             ),
-            if (_selectedRect != null) ...[
-              const SizedBox(width: 8),
-              TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _selectedRect = null;
-                    _videoStream = null;
-                    _roiStream = null;
-                  });
-                  _loadThumbnail();
-                },
-                icon: const Icon(Icons.refresh),
-                label: const Text('초기화'),
-              ),
-            ],
-          ],
-        ),
-      ],
-    );
-  }
+          ),
+          const SizedBox(width: 16),
 
-  Widget _buildRoiPreview() {
-    return Container(
-      height: 150,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.black12,
-        border: Border.all(color: Colors.red.withOpacity(0.5), width: 2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: StreamBuilder<ui.Image>(
-        stream: _roiStream,
-        builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            return RawImage(image: snapshot.data!, fit: BoxFit.contain);
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('오류: ${snapshot.error}'));
-          }
-          return const Center(child: Text('ROI 데이터 대기 중...'));
-        },
+          // 중앙: 비디오 영역 (비율 5)
+          Expanded(flex: 5, child: _buildVideoArea()),
+          const SizedBox(width: 16),
+
+          // 오른쪽: ROI 프리뷰 (비율 2)
+          Expanded(flex: 2, child: RoiPlayer(roiStream: _roiStream)),
+        ],
       ),
     );
   }
@@ -214,103 +200,95 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     // 항상 원본 영상의 종횡비 유지
     final double aspectRatio = widget.videoInfo.width / widget.videoInfo.height;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 400),
-        child: AspectRatio(
-          aspectRatio: aspectRatio,
-          child: _buildVideoContainer(
-            Stack(
-              fit: StackFit.expand,
-              children: [
-                if (_videoStream != null)
-                  StreamBuilder<ui.Image>(
-                    stream: _videoStream,
-                    builder: (context, snapshot) {
-                      if (snapshot.hasData) {
-                        return RawImage(
-                          image: snapshot.data!,
-                          fit: BoxFit.fill,
-                        );
-                      }
-                      if (snapshot.hasError) {
-                        return _buildErrorWidget(snapshot.error.toString());
-                      }
-                      return _buildLoadingWidget('스트리밍 대기 중...');
-                    },
-                  )
-                else if (_thumbnail != null)
-                  GestureDetector(
-                    onTap: () {
-                      if (!_isRoiMode) {
-                        _startStreaming(
-                          roi: _convertRectToRoi(
-                            _selectedRect,
-                            _lastWidgetSize,
-                          ),
-                        );
-                      }
-                    },
-                    child: Stack(
-                      alignment: Alignment.center,
-                      fit: StackFit.expand,
-                      children: [
-                        RawImage(image: _thumbnail!, fit: BoxFit.fill),
-                        if (!_isRoiMode)
-                          Center(
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: const BoxDecoration(
-                                color: Colors.black45,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.play_arrow,
-                                size: 48,
-                                color: Colors.white,
-                              ),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 500),
+      child: AspectRatio(
+        aspectRatio: aspectRatio,
+        child: _buildVideoContainer(
+          Stack(
+            fit: StackFit.expand,
+            children: [
+              if (_videoStream != null)
+                StreamBuilder<ui.Image>(
+                  stream: _videoStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasData) {
+                      return RawImage(image: snapshot.data!, fit: BoxFit.fill);
+                    }
+                    if (snapshot.hasError) {
+                      return _buildErrorWidget(snapshot.error.toString());
+                    }
+                    return _buildLoadingWidget('스트리밍 대기 중...');
+                  },
+                )
+              else if (_thumbnail != null)
+                GestureDetector(
+                  onTap: () {
+                    if (!_isRoiMode) {
+                      _startStreaming(
+                        roi: _convertRectToRoi(_selectedRect, _lastWidgetSize),
+                      );
+                    }
+                  },
+                  child: Stack(
+                    alignment: Alignment.center,
+                    fit: StackFit.expand,
+                    children: [
+                      RawImage(image: _thumbnail!, fit: BoxFit.fill),
+                      if (!_isRoiMode)
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: const BoxDecoration(
+                              color: Colors.black45,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow,
+                              size: 48,
+                              color: Colors.white,
                             ),
                           ),
-                      ],
-                    ),
-                  )
-                else if (_isLoadingThumbnail)
-                  _buildLoadingWidget('썸네일 로드 중...')
-                else
-                  _buildErrorWidget('비디오를 로드할 수 없습니다.'),
+                        ),
+                    ],
+                  ),
+                )
+              else if (_isLoadingThumbnail)
+                _buildLoadingWidget('썸네일 로드 중...')
+              else
+                _buildErrorWidget('비디오를 로드할 수 없습니다.'),
 
-                // ROI 선택 모드이거나 선택된 영역이 있을 때 오버레이 표시
-                if (_isRoiMode)
-                  Positioned.fill(
-                    child: RoiSelector(
-                      videoSize: Size(
-                        widget.videoInfo.width.toDouble(),
-                        widget.videoInfo.height.toDouble(),
-                      ),
-                      initialRoi: _selectedRect,
-                      onRoiChanged: (rect) {
-                        setState(() {
-                          _selectedRect = rect;
-                        });
-                      },
+              // ROI 선택 모드이거나 선택된 영역이 있을 때 오버레이 표시
+              if (_isRoiMode)
+                Positioned.fill(
+                  child: RoiSelector(
+                    videoSize: Size(
+                      widget.videoInfo.width.toDouble(),
+                      widget.videoInfo.height.toDouble(),
                     ),
-                  )
-                else if (_selectedRect != null)
-                  Positioned.fromRect(
-                    rect: _selectedRect!,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.red, width: 2),
-                        color: Colors.red.withOpacity(0.1),
-                      ),
+                    initialRoi: _selectedRect,
+                    onRoiChanged: (rect) {
+                      setState(() {
+                        _selectedRect = rect;
+                      });
+                    },
+                  ),
+                )
+              else if (_selectedRect != null)
+                Positioned.fromRect(
+                  rect: _selectedRect!,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.red, width: 2),
+                      color: Colors.red.withAlpha(100),
                     ),
                   ),
-              ],
-            ),
-            onSizeLayout: (size) {
-              _lastWidgetSize = size;
-            },
+                ),
+            ],
           ),
+          onSizeLayout: (size) {
+            _lastWidgetSize = size;
+          },
         ),
       ),
     );
@@ -331,11 +309,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
         return Container(
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.blue.withOpacity(0.5), width: 2),
+            border: Border.all(color: Colors.blue.withAlpha(100), width: 2),
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withAlpha(100),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
