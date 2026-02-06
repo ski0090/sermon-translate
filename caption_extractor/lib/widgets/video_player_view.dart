@@ -19,6 +19,7 @@ class VideoPlayerView extends StatefulWidget {
 
 class _VideoPlayerViewState extends State<VideoPlayerView> {
   Stream<ui.Image>? _videoStream;
+  Stream<ui.Image>? _roiStream;
   ui.Image? _thumbnail;
   bool _isLoadingThumbnail = false;
   Rect? _selectedRect;
@@ -36,6 +37,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     if (oldWidget.path != widget.path) {
       setState(() {
         _videoStream = null;
+        _roiStream = null;
         _thumbnail = null;
         _selectedRect = null;
         _isRoiMode = false;
@@ -51,19 +53,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
     try {
       final frame = await getFirstFrame(path: widget.path, roi: roi);
-      final buffer = await ui.ImmutableBuffer.fromUint8List(frame.pixels);
-      final descriptor = ui.ImageDescriptor.raw(
-        buffer,
-        width: frame.width,
-        height: frame.height,
-        pixelFormat: ui.PixelFormat.rgba8888,
-      );
-      final codec = await descriptor.instantiateCodec();
-      final frameInfo = await codec.getNextFrame();
+      final image = await _convertFrameToImage(frame);
 
       if (mounted) {
         setState(() {
-          _thumbnail = frameInfo.image;
+          _thumbnail = image;
           _isLoadingThumbnail = false;
         });
       }
@@ -77,39 +71,44 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     }
   }
 
+  Future<ui.Image> _convertFrameToImage(VideoFrame frame) async {
+    final buffer = await ui.ImmutableBuffer.fromUint8List(frame.pixels);
+    final descriptor = ui.ImageDescriptor.raw(
+      buffer,
+      width: frame.width,
+      height: frame.height,
+      pixelFormat: ui.PixelFormat.rgba8888,
+    );
+    final codec = await descriptor.instantiateCodec();
+    final frameInfo = await codec.getNextFrame();
+    return frameInfo.image;
+  }
+
   void _startStreaming({Roi? roi}) {
+    final baseStream = streamVideo(
+      path: widget.path,
+      roi: roi,
+    ).asBroadcastStream();
+
     setState(() {
-      _videoStream = streamVideo(path: widget.path, roi: roi).asyncMap((
-        frame,
-      ) async {
-        try {
-          final buffer = await ui.ImmutableBuffer.fromUint8List(frame.pixels);
-          final descriptor = ui.ImageDescriptor.raw(
-            buffer,
-            width: frame.width,
-            height: frame.height,
-            pixelFormat: ui.PixelFormat.rgba8888,
-          );
-          final codec = await descriptor.instantiateCodec();
-          final frameInfo = await codec.getNextFrame();
-          return frameInfo.image;
-        } catch (e) {
-          debugPrint('Frame conversion error: $e');
-          rethrow;
-        }
-      });
+      _videoStream = baseStream
+          .where((frame) => !frame.isCropped)
+          .asyncMap(_convertFrameToImage);
+      _roiStream = baseStream
+          .where((frame) => frame.isCropped)
+          .asyncMap(_convertFrameToImage);
     });
   }
 
   void _applyRoi() {
     if (_videoStream != null) {
-      // 스트리밍 중이면 중지 후 새 ROI로 재시작
+      // 스트리밍 중이면 중지
       setState(() {
         _videoStream = null;
       });
     }
-    // 썸네일 갱신
-    _loadThumbnail(roi: _convertRectToRoi(_selectedRect, _lastWidgetSize));
+    // 프리뷰(썸네일)는 항상 전체 영상을 보여주기 위해 roi를 전달하지 않음
+    _loadThumbnail();
   }
 
   Size _lastWidgetSize = Size.zero;
@@ -136,7 +135,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     return Column(
       children: [
         _buildVideoArea(),
-        const SizedBox(height: 8),
+        if (_roiStream != null) ...[
+          const SizedBox(height: 16),
+          const Text(
+            '크롭된 화면 (ROI)',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          _buildRoiPreview(),
+        ],
+        const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -163,6 +171,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                   setState(() {
                     _selectedRect = null;
                     _videoStream = null;
+                    _roiStream = null;
                   });
                   _loadThumbnail();
                 },
@@ -176,14 +185,34 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     );
   }
 
-  Widget _buildVideoArea() {
-    // 현재 표시되는 영상의 종횡비 계산
-    double aspectRatio = widget.videoInfo.width / widget.videoInfo.height;
+  Widget _buildRoiPreview() {
+    return Container(
+      height: 150,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.black12,
+        border: Border.all(color: Colors.red.withOpacity(0.5), width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: StreamBuilder<ui.Image>(
+        stream: _roiStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasData) {
+            return RawImage(image: snapshot.data!, fit: BoxFit.contain);
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('오류: ${snapshot.error}'));
+          }
+          return const Center(child: Text('ROI 데이터 대기 중...'));
+        },
+      ),
+    );
+  }
 
-    // 만약 ROI가 적용된 상태(크롭된 영상 스트리밍/썸네일)라면 해당 비율 사용
-    if (_selectedRect != null && !_isRoiMode) {
-      aspectRatio = _selectedRect!.width / _selectedRect!.height;
-    }
+  Widget _buildVideoArea() {
+    // 항상 원본 영상의 종횡비 유지
+    final double aspectRatio = widget.videoInfo.width / widget.videoInfo.height;
 
     return Center(
       child: ConstrainedBox(
@@ -249,6 +278,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                   _buildLoadingWidget('썸네일 로드 중...')
                 else
                   _buildErrorWidget('비디오를 로드할 수 없습니다.'),
+
+                // ROI 선택 모드이거나 선택된 영역이 있을 때 오버레이 표시
                 if (_isRoiMode)
                   Positioned.fill(
                     child: RoiSelector(
@@ -262,6 +293,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                           _selectedRect = rect;
                         });
                       },
+                    ),
+                  )
+                else if (_selectedRect != null)
+                  Positioned.fromRect(
+                    rect: _selectedRect!,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.red, width: 2),
+                        color: Colors.red.withOpacity(0.1),
+                      ),
                     ),
                   ),
               ],

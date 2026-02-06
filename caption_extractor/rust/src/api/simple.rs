@@ -7,6 +7,7 @@ pub struct VideoFrame {
     pub pixels: Vec<u8>,
     pub width: i32,
     pub height: i32,
+    pub is_cropped: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -77,7 +78,9 @@ pub fn stream_video(
     };
 
     let pipeline_str = format!(
-        "uridecodebin uri=\"{}\" ! videoconvert ! videoscale ! video/x-raw,format=RGBA ! appsink name=sink sync=true",
+        "uridecodebin uri=\"{}\" ! videoconvert ! tee name=t \
+         t. ! queue ! videoscale ! video/x-raw,format=RGBA ! appsink name=orig_sink sync=true \
+         t. ! queue ! videoscale ! video/x-raw,format=RGBA ! appsink name=roi_sink sync=true",
         uri
     );
 
@@ -85,66 +88,104 @@ pub fn stream_video(
         .dynamic_cast::<gstreamer::Pipeline>()
         .map_err(|el| anyhow::anyhow!("Failed to cast to Pipeline. Type: {}", el.type_().name()))?;
 
-    let appsink = pipeline
-        .by_name("sink")
-        .ok_or_else(|| anyhow::anyhow!("Sink not found"))?
+    let orig_sink = pipeline
+        .by_name("orig_sink")
+        .ok_or_else(|| anyhow::anyhow!("Original sink not found"))?
         .dynamic_cast::<gstreamer_app::AppSink>()
         .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
 
-    appsink.set_callbacks(
-        gstreamer_app::AppSinkCallbacks::builder()
-            .new_sample(move |appsink| {
-                let sample = appsink
-                    .pull_sample()
-                    .map_err(|_| gstreamer::FlowError::Error)?;
-                let buffer = sample.buffer().ok_or(gstreamer::FlowError::Error)?;
-                let caps = sample.caps().ok_or(gstreamer::FlowError::Error)?;
-                let info = gstreamer_video::VideoInfo::from_caps(caps)
-                    .map_err(|_| gstreamer::FlowError::Error)?;
+    let roi_sink = pipeline
+        .by_name("roi_sink")
+        .ok_or_else(|| anyhow::anyhow!("ROI sink not found"))?
+        .dynamic_cast::<gstreamer_app::AppSink>()
+        .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
 
-                let map = buffer
-                    .map_readable()
-                    .map_err(|_| gstreamer::FlowError::Error)?;
+    let roi_arc = std::sync::Arc::new(roi);
+    let sink_arc = std::sync::Arc::new(sink);
 
-                let mut pixels = map.to_vec();
-                let mut width = info.width() as i32;
-                let mut height = info.height() as i32;
+    // 원본 스트림 콜백
+    {
+        let sink_clone = sink_arc.clone();
+        orig_sink.set_callbacks(
+            gstreamer_app::AppSinkCallbacks::builder()
+                .new_sample(move |appsink| {
+                    let sample = appsink
+                        .pull_sample()
+                        .map_err(|_| gstreamer::FlowError::Error)?;
+                    let buffer = sample.buffer().ok_or(gstreamer::FlowError::Error)?;
+                    let caps = sample.caps().ok_or(gstreamer::FlowError::Error)?;
+                    let info = gstreamer_video::VideoInfo::from_caps(caps)
+                        .map_err(|_| gstreamer::FlowError::Error)?;
+                    let map = buffer
+                        .map_readable()
+                        .map_err(|_| gstreamer::FlowError::Error)?;
 
-                if let Some(ref roi) = roi {
-                    // ROI 적용 (수동 크롭)
-                    let roi_x = roi.x.clamp(0, width);
-                    let roi_y = roi.y.clamp(0, height);
-                    let roi_w = roi.width.clamp(0, width - roi_x);
-                    let roi_h = roi.height.clamp(0, height - roi_y);
+                    let _ = sink_clone.add(VideoFrame {
+                        pixels: map.to_vec(),
+                        width: info.width() as i32,
+                        height: info.height() as i32,
+                        is_cropped: false,
+                    });
 
-                    if roi_w > 0 && roi_h > 0 {
-                        let mut cropped = Vec::with_capacity((roi_w * roi_h * 4) as usize);
-                        for y in 0..roi_h {
-                            let start = (((roi_y + y) * width + roi_x) * 4) as usize;
-                            let end = start + (roi_w * 4) as usize;
-                            cropped.extend_from_slice(&pixels[start..end]);
+                    Ok(gstreamer::FlowSuccess::Ok)
+                })
+                .build(),
+        );
+    }
+
+    // ROI 스트림 콜백
+    {
+        let sink_clone = sink_arc.clone();
+        let roi_clone = roi_arc.clone();
+        roi_sink.set_callbacks(
+            gstreamer_app::AppSinkCallbacks::builder()
+                .new_sample(move |appsink| {
+                    let sample = appsink
+                        .pull_sample()
+                        .map_err(|_| gstreamer::FlowError::Error)?;
+                    let buffer = sample.buffer().ok_or(gstreamer::FlowError::Error)?;
+                    let caps = sample.caps().ok_or(gstreamer::FlowError::Error)?;
+                    let info = gstreamer_video::VideoInfo::from_caps(caps)
+                        .map_err(|_| gstreamer::FlowError::Error)?;
+                    let map = buffer
+                        .map_readable()
+                        .map_err(|_| gstreamer::FlowError::Error)?;
+
+                    let mut pixels = map.to_vec();
+                    let mut width = info.width() as i32;
+                    let mut height = info.height() as i32;
+
+                    if let Some(ref roi) = *roi_clone {
+                        let roi_x = roi.x.clamp(0, width);
+                        let roi_y = roi.y.clamp(0, height);
+                        let roi_w = roi.width.clamp(0, width - roi_x);
+                        let roi_h = roi.height.clamp(0, height - roi_y);
+
+                        if roi_w > 0 && roi_h > 0 {
+                            let mut cropped = Vec::with_capacity((roi_w * roi_h * 4) as usize);
+                            for y in 0..roi_h {
+                                let start = (((roi_y + y) * width + roi_x) * 4) as usize;
+                                let end = start + (roi_w * 4) as usize;
+                                cropped.extend_from_slice(&pixels[start..end]);
+                            }
+                            pixels = cropped;
+                            width = roi_w;
+                            height = roi_h;
                         }
-                        pixels = cropped;
-                        width = roi_w;
-                        height = roi_h;
                     }
-                }
 
-                if sink
-                    .add(VideoFrame {
+                    let _ = sink_clone.add(VideoFrame {
                         pixels,
                         width,
                         height,
-                    })
-                    .is_err()
-                {
-                    return Err(gstreamer::FlowError::Eos);
-                }
+                        is_cropped: true,
+                    });
 
-                Ok(gstreamer::FlowSuccess::Ok)
-            })
-            .build(),
-    );
+                    Ok(gstreamer::FlowSuccess::Ok)
+                })
+                .build(),
+        );
+    }
 
     pipeline.set_state(gstreamer::State::Playing)?;
 
@@ -206,7 +247,7 @@ pub fn get_first_frame(path: String, roi: Option<Roi>) -> anyhow::Result<VideoFr
     let mut width = info.width() as i32;
     let mut height = info.height() as i32;
 
-    if let Some(roi) = roi {
+    if let Some(ref roi) = roi {
         let roi_x = roi.x.clamp(0, width);
         let roi_y = roi.y.clamp(0, height);
         let roi_w = roi.width.clamp(0, width - roi_x);
@@ -229,6 +270,7 @@ pub fn get_first_frame(path: String, roi: Option<Roi>) -> anyhow::Result<VideoFr
         pixels,
         width,
         height,
+        is_cropped: roi.is_some(),
     };
 
     let _ = pipeline.set_state(gstreamer::State::Null);

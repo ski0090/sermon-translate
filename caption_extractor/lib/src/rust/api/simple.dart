@@ -61,18 +61,21 @@ class VideoFrame {
   final Uint8List pixels;
   final int width;
   final int height;
+  final bool isCropped;
 
   const VideoFrame({
     required this.pixels,
     required this.width,
     required this.height,
+    required this.isCropped,
   });
 
   static Future<VideoFrame> default_() =>
       RustLib.instance.api.crateApiSimpleVideoFrameDefault();
 
   @override
-  int get hashCode => pixels.hashCode ^ width.hashCode ^ height.hashCode;
+  int get hashCode =>
+      pixels.hashCode ^ width.hashCode ^ height.hashCode ^ isCropped.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -81,7 +84,8 @@ class VideoFrame {
           runtimeType == other.runtimeType &&
           pixels == other.pixels &&
           width == other.width &&
-          height == other.height;
+          height == other.height &&
+          isCropped == other.isCropped;
 }
 
 class VideoInfo {

@@ -416,6 +416,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  bool dco_decode_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
   Roi dco_decode_box_autoadd_roi(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_roi(raw);
@@ -481,12 +487,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   VideoFrame dco_decode_video_frame(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
     return VideoFrame(
       pixels: dco_decode_list_prim_u_8_strict(arr[0]),
       width: dco_decode_i_32(arr[1]),
       height: dco_decode_i_32(arr[2]),
+      isCropped: dco_decode_bool(arr[3]),
     );
   }
 
@@ -525,6 +532,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_prim_u_8_strict(deserializer);
     return utf8.decoder.convert(inner);
+  }
+
+  @protected
+  bool sse_decode_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint8() != 0;
   }
 
   @protected
@@ -596,7 +609,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_pixels = sse_decode_list_prim_u_8_strict(deserializer);
     var var_width = sse_decode_i_32(deserializer);
     var var_height = sse_decode_i_32(deserializer);
-    return VideoFrame(pixels: var_pixels, width: var_width, height: var_height);
+    var var_isCropped = sse_decode_bool(deserializer);
+    return VideoFrame(
+      pixels: var_pixels,
+      width: var_width,
+      height: var_height,
+      isCropped: var_isCropped,
+    );
   }
 
   @protected
@@ -614,12 +633,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       format: var_format,
       fps: var_fps,
     );
-  }
-
-  @protected
-  bool sse_decode_bool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getUint8() != 0;
   }
 
   @protected
@@ -652,6 +665,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint8(self ? 1 : 0);
   }
 
   @protected
@@ -724,6 +743,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_list_prim_u_8_strict(self.pixels, serializer);
     sse_encode_i_32(self.width, serializer);
     sse_encode_i_32(self.height, serializer);
+    sse_encode_bool(self.isCropped, serializer);
   }
 
   @protected
@@ -734,11 +754,5 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.durationMs, serializer);
     sse_encode_String(self.format, serializer);
     sse_encode_f_64(self.fps, serializer);
-  }
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putUint8(self ? 1 : 0);
   }
 }

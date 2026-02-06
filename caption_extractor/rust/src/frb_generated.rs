@@ -410,6 +410,13 @@ impl SseDecode for String {
     }
 }
 
+impl SseDecode for bool {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_u8().unwrap() != 0
+    }
+}
+
 impl SseDecode for f64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -488,10 +495,12 @@ impl SseDecode for crate::api::simple::VideoFrame {
         let mut var_pixels = <Vec<u8>>::sse_decode(deserializer);
         let mut var_width = <i32>::sse_decode(deserializer);
         let mut var_height = <i32>::sse_decode(deserializer);
+        let mut var_isCropped = <bool>::sse_decode(deserializer);
         return crate::api::simple::VideoFrame {
             pixels: var_pixels,
             width: var_width,
             height: var_height,
+            is_cropped: var_isCropped,
         };
     }
 }
@@ -511,13 +520,6 @@ impl SseDecode for crate::api::simple::VideoInfo {
             format: var_format,
             fps: var_fps,
         };
-    }
-}
-
-impl SseDecode for bool {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        deserializer.cursor.read_u8().unwrap() != 0
     }
 }
 
@@ -583,6 +585,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::simple::VideoFrame {
             self.pixels.into_into_dart().into_dart(),
             self.width.into_into_dart().into_dart(),
             self.height.into_into_dart().into_dart(),
+            self.is_cropped.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -640,6 +643,13 @@ impl SseEncode for String {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <Vec<u8>>::sse_encode(self.into_bytes(), serializer);
+    }
+}
+
+impl SseEncode for bool {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_u8(self as _).unwrap();
     }
 }
 
@@ -712,6 +722,7 @@ impl SseEncode for crate::api::simple::VideoFrame {
         <Vec<u8>>::sse_encode(self.pixels, serializer);
         <i32>::sse_encode(self.width, serializer);
         <i32>::sse_encode(self.height, serializer);
+        <bool>::sse_encode(self.is_cropped, serializer);
     }
 }
 
@@ -723,13 +734,6 @@ impl SseEncode for crate::api::simple::VideoInfo {
         <u64>::sse_encode(self.duration_ms, serializer);
         <String>::sse_encode(self.format, serializer);
         <f64>::sse_encode(self.fps, serializer);
-    }
-}
-
-impl SseEncode for bool {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        serializer.cursor.write_u8(self as _).unwrap();
     }
 }
 
