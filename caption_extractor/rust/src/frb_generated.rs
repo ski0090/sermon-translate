@@ -300,6 +300,7 @@ fn wire__crate__api__simple__stream_video_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_path = <String>::sse_decode(&mut deserializer);
             let api_roi = <Option<crate::api::simple::Roi>>::sse_decode(&mut deserializer);
+            let api_start_time_ms = <Option<u64>>::sse_decode(&mut deserializer);
             let api_sink = <StreamSink<
                 crate::api::simple::VideoFrame,
                 flutter_rust_bridge::for_generated::SseCodec,
@@ -308,8 +309,12 @@ fn wire__crate__api__simple__stream_video_impl(
             move |context| {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok =
-                            crate::api::simple::stream_video(api_path, api_roi, api_sink)?;
+                        let output_ok = crate::api::simple::stream_video(
+                            api_path,
+                            api_roi,
+                            api_start_time_ms,
+                            api_sink,
+                        )?;
                         Ok(output_ok)
                     })(),
                 )
@@ -454,6 +459,17 @@ impl SseDecode for Option<crate::api::simple::Roi> {
     }
 }
 
+impl SseDecode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<u64>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for crate::api::simple::Roi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -496,11 +512,13 @@ impl SseDecode for crate::api::simple::VideoFrame {
         let mut var_width = <i32>::sse_decode(deserializer);
         let mut var_height = <i32>::sse_decode(deserializer);
         let mut var_isCropped = <bool>::sse_decode(deserializer);
+        let mut var_timestampMs = <u64>::sse_decode(deserializer);
         return crate::api::simple::VideoFrame {
             pixels: var_pixels,
             width: var_width,
             height: var_height,
             is_cropped: var_isCropped,
+            timestamp_ms: var_timestampMs,
         };
     }
 }
@@ -586,6 +604,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::simple::VideoFrame {
             self.width.into_into_dart().into_dart(),
             self.height.into_into_dart().into_dart(),
             self.is_cropped.into_into_dart().into_dart(),
+            self.timestamp_ms.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -687,6 +706,16 @@ impl SseEncode for Option<crate::api::simple::Roi> {
     }
 }
 
+impl SseEncode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <u64>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for crate::api::simple::Roi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -723,6 +752,7 @@ impl SseEncode for crate::api::simple::VideoFrame {
         <i32>::sse_encode(self.width, serializer);
         <i32>::sse_encode(self.height, serializer);
         <bool>::sse_encode(self.is_cropped, serializer);
+        <u64>::sse_encode(self.timestamp_ms, serializer);
     }
 }
 

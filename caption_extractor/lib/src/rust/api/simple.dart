@@ -17,8 +17,15 @@ String getGstreamerVersion() =>
 Future<VideoInfo> getVideoInfo({required String path}) =>
     RustLib.instance.api.crateApiSimpleGetVideoInfo(path: path);
 
-Stream<VideoFrame> streamVideo({required String path, Roi? roi}) =>
-    RustLib.instance.api.crateApiSimpleStreamVideo(path: path, roi: roi);
+Stream<VideoFrame> streamVideo({
+  required String path,
+  Roi? roi,
+  BigInt? startTimeMs,
+}) => RustLib.instance.api.crateApiSimpleStreamVideo(
+  path: path,
+  roi: roi,
+  startTimeMs: startTimeMs,
+);
 
 Future<VideoFrame> getFirstFrame({required String path, Roi? roi}) =>
     RustLib.instance.api.crateApiSimpleGetFirstFrame(path: path, roi: roi);
@@ -62,12 +69,14 @@ class VideoFrame {
   final int width;
   final int height;
   final bool isCropped;
+  final BigInt timestampMs;
 
   const VideoFrame({
     required this.pixels,
     required this.width,
     required this.height,
     required this.isCropped,
+    required this.timestampMs,
   });
 
   static Future<VideoFrame> default_() =>
@@ -75,7 +84,11 @@ class VideoFrame {
 
   @override
   int get hashCode =>
-      pixels.hashCode ^ width.hashCode ^ height.hashCode ^ isCropped.hashCode;
+      pixels.hashCode ^
+      width.hashCode ^
+      height.hashCode ^
+      isCropped.hashCode ^
+      timestampMs.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -85,7 +98,8 @@ class VideoFrame {
           pixels == other.pixels &&
           width == other.width &&
           height == other.height &&
-          isCropped == other.isCropped;
+          isCropped == other.isCropped &&
+          timestampMs == other.timestampMs;
 }
 
 class VideoInfo {

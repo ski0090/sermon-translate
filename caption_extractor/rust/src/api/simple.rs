@@ -8,6 +8,7 @@ pub struct VideoFrame {
     pub width: i32,
     pub height: i32,
     pub is_cropped: bool,
+    pub timestamp_ms: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -69,6 +70,7 @@ pub fn get_video_info(path: String) -> anyhow::Result<VideoInfo> {
 pub fn stream_video(
     path: String,
     roi: Option<Roi>,
+    start_time_ms: Option<u64>,
     sink: StreamSink<VideoFrame>,
 ) -> anyhow::Result<()> {
     let uri = if path.starts_with("http") {
@@ -119,13 +121,20 @@ pub fn stream_video(
                     let map = buffer
                         .map_readable()
                         .map_err(|_| gstreamer::FlowError::Error)?;
+                    let pts = buffer.pts().map(|p| p.mseconds()).unwrap_or(0);
 
-                    let _ = sink_clone.add(VideoFrame {
-                        pixels: map.to_vec(),
-                        width: info.width() as i32,
-                        height: info.height() as i32,
-                        is_cropped: false,
-                    });
+                    if sink_clone
+                        .add(VideoFrame {
+                            pixels: map.to_vec(),
+                            width: info.width() as i32,
+                            height: info.height() as i32,
+                            is_cropped: false,
+                            timestamp_ms: pts,
+                        })
+                        .is_err()
+                    {
+                        return Err(gstreamer::FlowError::Error);
+                    }
 
                     Ok(gstreamer::FlowSuccess::Ok)
                 })
@@ -174,16 +183,35 @@ pub fn stream_video(
                         }
                     }
 
-                    let _ = sink_clone.add(VideoFrame {
-                        pixels,
-                        width,
-                        height,
-                        is_cropped: true,
-                    });
+                    let pts = buffer.pts().map(|p| p.mseconds()).unwrap_or(0);
+
+                    if sink_clone
+                        .add(VideoFrame {
+                            pixels,
+                            width,
+                            height,
+                            is_cropped: true,
+                            timestamp_ms: pts,
+                        })
+                        .is_err()
+                    {
+                        return Err(gstreamer::FlowError::Error);
+                    }
 
                     Ok(gstreamer::FlowSuccess::Ok)
                 })
                 .build(),
+        );
+    }
+
+    pipeline.set_state(gstreamer::State::Paused)?;
+    // Wait for the state change to complete before seeking
+    let _ = pipeline.state(Some(gstreamer::ClockTime::from_seconds(5)));
+
+    if let Some(start_ms) = start_time_ms {
+        let _ = pipeline.seek_simple(
+            gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::KEY_UNIT,
+            gstreamer::ClockTime::from_mseconds(start_ms),
         );
     }
 
@@ -266,11 +294,14 @@ pub fn get_first_frame(path: String, roi: Option<Roi>) -> anyhow::Result<VideoFr
         }
     }
 
+    let pts = buffer.pts().map(|p| p.mseconds()).unwrap_or(0);
+
     let frame = VideoFrame {
         pixels,
         width,
         height,
         is_cropped: roi.is_some(),
+        timestamp_ms: pts,
     };
 
     let _ = pipeline.set_state(gstreamer::State::Null);

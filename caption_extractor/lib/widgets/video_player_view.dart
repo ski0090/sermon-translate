@@ -25,6 +25,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   bool _isLoadingThumbnail = false;
   Rect? _selectedRect;
   bool _isRoiMode = false;
+  int _currentPositionMs = 0;
+  bool _isDragging = false;
 
   @override
   void initState() {
@@ -85,16 +87,26 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     return frameInfo.image;
   }
 
-  void _startStreaming({Roi? roi}) {
+  void _startStreaming({Roi? roi, int? startTimeMs}) {
     final baseStream = streamVideo(
       path: widget.path,
       roi: roi,
+      startTimeMs: startTimeMs != null ? BigInt.from(startTimeMs) : null,
     ).asBroadcastStream();
 
     setState(() {
       _videoStream = baseStream
           .where((frame) => !frame.isCropped)
+          .map((frame) {
+            if (mounted && !_isDragging) {
+              setState(() {
+                _currentPositionMs = frame.timestampMs.toInt();
+              });
+            }
+            return frame;
+          })
           .asyncMap(_convertFrameToImage);
+
       _roiStream = baseStream
           .where((frame) => frame.isCropped)
           .asyncMap(_convertFrameToImage);
@@ -186,7 +198,16 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           const SizedBox(width: 16),
 
           // 중앙: 비디오 영역 (비율 5)
-          Expanded(flex: 5, child: _buildVideoArea()),
+          Expanded(
+            flex: 5,
+            child: Column(
+              children: [
+                _buildVideoArea(),
+                const SizedBox(height: 8),
+                _buildPlayerControls(),
+              ],
+            ),
+          ),
           const SizedBox(width: 16),
 
           // 오른쪽: ROI 프리뷰 (비율 2)
@@ -324,6 +345,67 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         );
       },
     );
+  }
+
+  Widget _buildPlayerControls() {
+    final duration = widget.videoInfo.durationMs.toInt();
+    if (duration <= 0) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 4,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+          ),
+          child: Slider(
+            value: _currentPositionMs.toDouble().clamp(0, duration.toDouble()),
+            max: duration.toDouble(),
+            onChanged: (value) {
+              setState(() {
+                _isDragging = true;
+                _currentPositionMs = value.toInt();
+              });
+            },
+            onChangeEnd: (value) {
+              _isDragging = false;
+              _startStreaming(
+                roi: _convertRectToRoi(_selectedRect, _lastWidgetSize),
+                startTimeMs: value.toInt(),
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _formatDuration(_currentPositionMs),
+                style: const TextStyle(
+                  fontFeatures: [ui.FontFeature.tabularFigures()],
+                ),
+              ),
+              Text(
+                _formatDuration(duration),
+                style: const TextStyle(
+                  fontFeatures: [ui.FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDuration(int ms) {
+    final duration = Duration(milliseconds: ms);
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 
   Widget _buildLoadingWidget(String message) {
