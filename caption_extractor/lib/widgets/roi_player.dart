@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 
 class RoiPlayer extends StatelessWidget {
   final Stream<ui.Image>? roiStream;
+  final ui.Image? staticImage;
   final String title;
 
   const RoiPlayer({
     super.key,
     required this.roiStream,
+    this.staticImage,
     this.title = '크롭된 화면 (ROI)',
   });
 
@@ -34,6 +36,9 @@ class RoiPlayer extends StatelessWidget {
             builder: (context, snapshot) {
               if (snapshot.hasData) {
                 return RawImage(image: snapshot.data!, fit: BoxFit.contain);
+              }
+              if (staticImage != null) {
+                return RawImage(image: staticImage!, fit: BoxFit.contain);
               }
               if (snapshot.hasError) {
                 return Center(

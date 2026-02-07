@@ -17,21 +17,33 @@ String getGstreamerVersion() =>
 Future<VideoInfo> getVideoInfo({required String path}) =>
     RustLib.instance.api.crateApiSimpleGetVideoInfo(path: path);
 
-Stream<VideoFrame> streamVideo({
-  required String path,
-  Roi? roi,
-  BigInt? startTimeMs,
-}) => RustLib.instance.api.crateApiSimpleStreamVideo(
-  path: path,
-  roi: roi,
-  startTimeMs: startTimeMs,
-);
+Future<NativePlayer> createPlayer({required String path}) =>
+    RustLib.instance.api.crateApiSimpleCreatePlayer(path: path);
 
-Future<VideoFrame> getFirstFrame({required String path, Roi? roi}) =>
-    RustLib.instance.api.crateApiSimpleGetFirstFrame(path: path, roi: roi);
+Future<VideoFrame> getFrame({required String path, Roi? roi, BigInt? timeMs}) =>
+    RustLib.instance.api.crateApiSimpleGetFrame(
+      path: path,
+      roi: roi,
+      timeMs: timeMs,
+    );
 
 Future<void> playVideo({required String path}) =>
     RustLib.instance.api.crateApiSimplePlayVideo(path: path);
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<NativePlayer>>
+abstract class NativePlayer implements RustOpaqueInterface {
+  Future<void> pause();
+
+  Future<void> resume();
+
+  Future<void> seek({required BigInt timeMs});
+
+  Future<void> setRoi({Roi? roi});
+
+  Stream<VideoFrame> start({Roi? roi, BigInt? startTimeMs});
+
+  Future<void> stop();
+}
 
 class Roi {
   final int x;

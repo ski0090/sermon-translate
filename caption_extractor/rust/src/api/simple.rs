@@ -69,12 +69,12 @@ pub fn get_video_info(path: String) -> anyhow::Result<VideoInfo> {
     Ok(video_info)
 }
 
-pub fn stream_video(
-    path: String,
-    roi: Option<Roi>,
-    start_time_ms: Option<u64>,
-    sink: StreamSink<VideoFrame>,
-) -> anyhow::Result<()> {
+pub struct NativePlayer {
+    pipeline: gstreamer::Pipeline,
+    roi: std::sync::Arc<std::sync::Mutex<Option<Roi>>>,
+}
+
+pub fn create_player(path: String) -> anyhow::Result<NativePlayer> {
     let uri = if path.starts_with("http") {
         path
     } else {
@@ -92,149 +92,195 @@ pub fn stream_video(
         .dynamic_cast::<gstreamer::Pipeline>()
         .map_err(|el| anyhow::anyhow!("Failed to cast to Pipeline. Type: {}", el.type_().name()))?;
 
-    let orig_sink = pipeline
-        .by_name("orig_sink")
-        .ok_or_else(|| anyhow::anyhow!("Original sink not found"))?
-        .dynamic_cast::<gstreamer_app::AppSink>()
-        .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
+    Ok(NativePlayer {
+        pipeline,
+        roi: std::sync::Arc::new(std::sync::Mutex::new(None)),
+    })
+}
 
-    let roi_sink = pipeline
-        .by_name("roi_sink")
-        .ok_or_else(|| anyhow::anyhow!("ROI sink not found"))?
-        .dynamic_cast::<gstreamer_app::AppSink>()
-        .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
+impl NativePlayer {
+    pub fn start(
+        &self,
+        roi: Option<Roi>,
+        start_time_ms: Option<u64>,
+        sink: StreamSink<VideoFrame>,
+    ) -> anyhow::Result<()> {
+        let orig_sink = self
+            .pipeline
+            .by_name("orig_sink")
+            .ok_or_else(|| anyhow::anyhow!("Original sink not found"))?
+            .dynamic_cast::<gstreamer_app::AppSink>()
+            .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
 
-    let roi_arc = std::sync::Arc::new(roi);
-    let sink_arc = std::sync::Arc::new(sink);
+        let roi_sink = self
+            .pipeline
+            .by_name("roi_sink")
+            .ok_or_else(|| anyhow::anyhow!("ROI sink not found"))?
+            .dynamic_cast::<gstreamer_app::AppSink>()
+            .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
 
-    // 원본 스트림 콜백
-    {
-        let sink_clone = sink_arc.clone();
-        orig_sink.set_callbacks(
-            gstreamer_app::AppSinkCallbacks::builder()
-                .new_sample(move |appsink| {
-                    let sample = appsink
-                        .pull_sample()
-                        .map_err(|_| gstreamer::FlowError::Error)?;
-                    let buffer = sample.buffer().ok_or(gstreamer::FlowError::Error)?;
-                    let caps = sample.caps().ok_or(gstreamer::FlowError::Error)?;
-                    let info = gstreamer_video::VideoInfo::from_caps(caps)
-                        .map_err(|_| gstreamer::FlowError::Error)?;
-                    let map = buffer
-                        .map_readable()
-                        .map_err(|_| gstreamer::FlowError::Error)?;
-                    let pts = buffer.pts().map(|p| p.mseconds()).unwrap_or(0);
+        {
+            let mut r = self.roi.lock().unwrap();
+            *r = roi;
+        }
 
-                    if sink_clone
-                        .add(VideoFrame {
+        let roi_arc = self.roi.clone();
+        let sink_arc = std::sync::Arc::new(sink);
+
+        // 원본 스트림 콜백
+        {
+            let sink_clone = sink_arc.clone();
+            orig_sink.set_callbacks(
+                gstreamer_app::AppSinkCallbacks::builder()
+                    .new_sample(move |appsink| {
+                        let sample = appsink
+                            .pull_sample()
+                            .map_err(|_| gstreamer::FlowError::Error)?;
+                        let buffer = sample.buffer().ok_or(gstreamer::FlowError::Error)?;
+                        let caps = sample.caps().ok_or(gstreamer::FlowError::Error)?;
+                        let info = gstreamer_video::VideoInfo::from_caps(caps)
+                            .map_err(|_| gstreamer::FlowError::Error)?;
+                        let map = buffer
+                            .map_readable()
+                            .map_err(|_| gstreamer::FlowError::Error)?;
+                        let pts = buffer.pts().map(|p| p.mseconds()).unwrap_or(0);
+
+                        let _ = sink_clone.add(VideoFrame {
                             pixels: map.to_vec(),
                             width: info.width() as i32,
                             height: info.height() as i32,
                             is_cropped: false,
                             timestamp_ms: pts,
-                        })
-                        .is_err()
-                    {
-                        return Err(gstreamer::FlowError::Error);
-                    }
+                        });
 
-                    Ok(gstreamer::FlowSuccess::Ok)
-                })
-                .build(),
-        );
-    }
+                        Ok(gstreamer::FlowSuccess::Ok)
+                    })
+                    .build(),
+            );
+        }
 
-    // ROI 스트림 콜백
-    {
-        let sink_clone = sink_arc.clone();
-        let roi_clone = roi_arc.clone();
-        roi_sink.set_callbacks(
-            gstreamer_app::AppSinkCallbacks::builder()
-                .new_sample(move |appsink| {
-                    let sample = appsink
-                        .pull_sample()
-                        .map_err(|_| gstreamer::FlowError::Error)?;
-                    let buffer = sample.buffer().ok_or(gstreamer::FlowError::Error)?;
-                    let caps = sample.caps().ok_or(gstreamer::FlowError::Error)?;
-                    let info = gstreamer_video::VideoInfo::from_caps(caps)
-                        .map_err(|_| gstreamer::FlowError::Error)?;
-                    let map = buffer
-                        .map_readable()
-                        .map_err(|_| gstreamer::FlowError::Error)?;
+        // ROI 스트림 콜백
+        {
+            let sink_clone = sink_arc.clone();
+            let roi_clone = roi_arc.clone();
+            roi_sink.set_callbacks(
+                gstreamer_app::AppSinkCallbacks::builder()
+                    .new_sample(move |appsink| {
+                        let sample = appsink
+                            .pull_sample()
+                            .map_err(|_| gstreamer::FlowError::Error)?;
+                        let buffer = sample.buffer().ok_or(gstreamer::FlowError::Error)?;
+                        let caps = sample.caps().ok_or(gstreamer::FlowError::Error)?;
+                        let info = gstreamer_video::VideoInfo::from_caps(caps)
+                            .map_err(|_| gstreamer::FlowError::Error)?;
+                        let map = buffer
+                            .map_readable()
+                            .map_err(|_| gstreamer::FlowError::Error)?;
 
-                    let mut pixels = map.to_vec();
-                    let mut width = info.width() as i32;
-                    let mut height = info.height() as i32;
+                        let mut pixels = map.to_vec();
+                        let mut width = info.width() as i32;
+                        let mut height = info.height() as i32;
 
-                    if let Some(ref roi) = *roi_clone {
-                        let roi_x = roi.x.clamp(0, width);
-                        let roi_y = roi.y.clamp(0, height);
-                        let roi_w = roi.width.clamp(0, width - roi_x);
-                        let roi_h = roi.height.clamp(0, height - roi_y);
+                        let roi_lock = roi_clone.lock().unwrap();
+                        if let Some(ref roi) = *roi_lock {
+                            let roi_x = roi.x.clamp(0, width);
+                            let roi_y = roi.y.clamp(0, height);
+                            let roi_w = roi.width.clamp(0, width - roi_x);
+                            let roi_h = roi.height.clamp(0, height - roi_y);
 
-                        if roi_w > 0 && roi_h > 0 {
-                            let mut cropped = Vec::with_capacity((roi_w * roi_h * 4) as usize);
-                            for y in 0..roi_h {
-                                let start = (((roi_y + y) * width + roi_x) * 4) as usize;
-                                let end = start + (roi_w * 4) as usize;
-                                cropped.extend_from_slice(&pixels[start..end]);
+                            if roi_w > 0 && roi_h > 0 {
+                                let mut cropped = Vec::with_capacity((roi_w * roi_h * 4) as usize);
+                                for y in 0..roi_h {
+                                    let start = (((roi_y + y) * width + roi_x) * 4) as usize;
+                                    let end = start + (roi_w * 4) as usize;
+                                    cropped.extend_from_slice(&pixels[start..end]);
+                                }
+                                pixels = cropped;
+                                width = roi_w;
+                                height = roi_h;
                             }
-                            pixels = cropped;
-                            width = roi_w;
-                            height = roi_h;
                         }
-                    }
 
-                    let pts = buffer.pts().map(|p| p.mseconds()).unwrap_or(0);
+                        let pts = buffer.pts().map(|p| p.mseconds()).unwrap_or(0);
 
-                    if sink_clone
-                        .add(VideoFrame {
+                        let _ = sink_clone.add(VideoFrame {
                             pixels,
                             width,
                             height,
                             is_cropped: true,
                             timestamp_ms: pts,
-                        })
-                        .is_err()
-                    {
-                        return Err(gstreamer::FlowError::Error);
-                    }
+                        });
 
-                    Ok(gstreamer::FlowSuccess::Ok)
-                })
-                .build(),
-        );
-    }
-
-    pipeline.set_state(gstreamer::State::Paused)?;
-    // Wait for the state change to complete before seeking
-    let _ = pipeline.state(Some(gstreamer::ClockTime::from_seconds(5)));
-
-    if let Some(start_ms) = start_time_ms {
-        let _ = pipeline.seek_simple(
-            gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::KEY_UNIT,
-            gstreamer::ClockTime::from_mseconds(start_ms),
-        );
-    }
-
-    pipeline.set_state(gstreamer::State::Playing)?;
-
-    std::thread::spawn(move || {
-        let bus = pipeline.bus().unwrap();
-        for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
-            use gstreamer::MessageView;
-            match msg.view() {
-                MessageView::Eos(..) | MessageView::Error(..) => break,
-                _ => (),
-            }
+                        Ok(gstreamer::FlowSuccess::Ok)
+                    })
+                    .build(),
+            );
         }
-        let _ = pipeline.set_state(gstreamer::State::Null);
-    });
 
-    Ok(())
+        self.pipeline.set_state(gstreamer::State::Paused)?;
+        let _ = self
+            .pipeline
+            .state(Some(gstreamer::ClockTime::from_seconds(5)));
+
+        if let Some(start_ms) = start_time_ms {
+            let _ = self.pipeline.seek_simple(
+                gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::KEY_UNIT,
+                gstreamer::ClockTime::from_mseconds(start_ms),
+            );
+        }
+
+        self.pipeline.set_state(gstreamer::State::Playing)?;
+
+        let pipeline_clone = self.pipeline.clone();
+        std::thread::spawn(move || {
+            let bus = pipeline_clone.bus().unwrap();
+            for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
+                use gstreamer::MessageView;
+                match msg.view() {
+                    MessageView::Eos(..) | MessageView::Error(..) => break,
+                    _ => (),
+                }
+            }
+            let _ = pipeline_clone.set_state(gstreamer::State::Null);
+        });
+
+        Ok(())
+    }
+
+    pub fn pause(&self) -> anyhow::Result<()> {
+        self.pipeline.set_state(gstreamer::State::Paused)?;
+        Ok(())
+    }
+
+    pub fn resume(&self) -> anyhow::Result<()> {
+        self.pipeline.set_state(gstreamer::State::Playing)?;
+        Ok(())
+    }
+
+    pub fn seek(&self, time_ms: u64) -> anyhow::Result<()> {
+        self.pipeline.seek_simple(
+            gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::KEY_UNIT,
+            gstreamer::ClockTime::from_mseconds(time_ms),
+        )?;
+        Ok(())
+    }
+
+    pub fn set_roi(&self, roi: Option<Roi>) {
+        let mut r = self.roi.lock().unwrap();
+        *r = roi;
+    }
+
+    pub fn stop(&self) -> anyhow::Result<()> {
+        self.pipeline.set_state(gstreamer::State::Null)?;
+        Ok(())
+    }
 }
 
-pub fn get_first_frame(path: String, roi: Option<Roi>) -> anyhow::Result<VideoFrame> {
+pub fn get_frame(
+    path: String,
+    roi: Option<Roi>,
+    time_ms: Option<u64>,
+) -> anyhow::Result<VideoFrame> {
     let uri = if path.starts_with("http") {
         path
     } else {
@@ -255,6 +301,17 @@ pub fn get_first_frame(path: String, roi: Option<Roi>) -> anyhow::Result<VideoFr
         .ok_or_else(|| anyhow::anyhow!("Sink not found"))?
         .dynamic_cast::<gstreamer_app::AppSink>()
         .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
+
+    pipeline.set_state(gstreamer::State::Paused)?;
+    // Wait for the state change to complete before seeking
+    let _ = pipeline.state(Some(gstreamer::ClockTime::from_seconds(5)));
+
+    if let Some(ms) = time_ms {
+        let _ = pipeline.seek_simple(
+            gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::KEY_UNIT,
+            gstreamer::ClockTime::from_mseconds(ms),
+        );
+    }
 
     pipeline.set_state(gstreamer::State::Playing)?;
 

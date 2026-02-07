@@ -21,12 +21,15 @@ class VideoPlayerView extends StatefulWidget {
 class _VideoPlayerViewState extends State<VideoPlayerView> {
   Stream<ui.Image>? _videoStream;
   Stream<ui.Image>? _roiStream;
+  NativePlayer? _player;
   ui.Image? _thumbnail;
   bool _isLoadingThumbnail = false;
   Roi? _selectedRoi;
+  ui.Image? _roiThumbnail;
   bool _isRoiMode = false;
   int _currentPositionMs = 0;
   bool _isDragging = false;
+  Size _lastWidgetSize = Size.zero;
 
   @override
   void initState() {
@@ -38,6 +41,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   void didUpdateWidget(VideoPlayerView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.path != widget.path) {
+      if (_player != null) {
+        _player!.stop();
+        _player = null;
+      }
       setState(() {
         _videoStream = null;
         _roiStream = null;
@@ -49,13 +56,23 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     }
   }
 
-  Future<void> _loadThumbnail({Roi? roi}) async {
+  @override
+  void dispose() {
+    _player?.stop();
+    super.dispose();
+  }
+
+  Future<void> _loadThumbnail({Roi? roi, int? timeMs}) async {
     setState(() {
       _isLoadingThumbnail = true;
     });
 
     try {
-      final frame = await getFirstFrame(path: widget.path, roi: roi);
+      final frame = await getFrame(
+        path: widget.path,
+        roi: roi,
+        timeMs: timeMs != null ? BigInt.from(timeMs) : null,
+      );
       final image = await _convertFrameToImage(frame);
 
       if (mounted) {
@@ -74,6 +91,27 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     }
   }
 
+  Future<void> _loadRoiThumbnail() async {
+    if (_selectedRoi == null) return;
+
+    try {
+      final frame = await getFrame(
+        path: widget.path,
+        roi: _selectedRoi,
+        timeMs: BigInt.from(_currentPositionMs),
+      );
+      final image = await _convertFrameToImage(frame);
+
+      if (mounted) {
+        setState(() {
+          _roiThumbnail = image;
+        });
+      }
+    } catch (e) {
+      debugPrint('ROI Thumbnail loading error: $e');
+    }
+  }
+
   Future<ui.Image> _convertFrameToImage(VideoFrame frame) async {
     final buffer = await ui.ImmutableBuffer.fromUint8List(frame.pixels);
     final descriptor = ui.ImageDescriptor.raw(
@@ -87,12 +125,22 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     return frameInfo.image;
   }
 
-  void _startStreaming({Roi? roi, int? startTimeMs}) {
-    final baseStream = streamVideo(
-      path: widget.path,
-      roi: roi,
-      startTimeMs: startTimeMs != null ? BigInt.from(startTimeMs) : null,
-    ).asBroadcastStream();
+  Future<void> _startStreaming({Roi? roi, int? startTimeMs}) async {
+    if (_player == null) {
+      try {
+        _player = await createPlayer(path: widget.path);
+      } catch (e) {
+        debugPrint('Failed to create player: $e');
+        return;
+      }
+    }
+
+    final baseStream = _player!
+        .start(
+          roi: roi,
+          startTimeMs: startTimeMs != null ? BigInt.from(startTimeMs) : null,
+        )
+        .asBroadcastStream();
 
     setState(() {
       _videoStream = baseStream
@@ -113,17 +161,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     });
   }
 
-  void _applyRoi() {
-    if (_videoStream != null) {
-      setState(() {
-        _videoStream = null;
-      });
-    }
-    _loadThumbnail();
-  }
-
-  Size _lastWidgetSize = Size.zero;
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -139,8 +176,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                   onPressed: () {
                     setState(() {
                       _isRoiMode = !_isRoiMode;
-                      if (!_isRoiMode) {
-                        _applyRoi();
+                      if (_isRoiMode) {
+                        _player?.pause();
+                        _loadThumbnail(roi: null, timeMs: _currentPositionMs);
+                        _loadRoiThumbnail();
+                      } else {
+                        _player?.setRoi(roi: _selectedRoi);
+                        _player?.resume();
                       }
                     });
                   },
@@ -187,7 +229,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             ),
           ),
           const SizedBox(width: 16),
-          Expanded(flex: 2, child: RoiPlayer(roiStream: _roiStream)),
+          Expanded(
+            flex: 2,
+            child: RoiPlayer(roiStream: _roiStream, staticImage: _roiThumbnail),
+          ),
         ],
       ),
     );
@@ -263,6 +308,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                       setState(() {
                         _selectedRoi = roi;
                       });
+                      _player?.setRoi(roi: roi);
+                      _loadRoiThumbnail();
                     },
                   ),
                 )
@@ -351,7 +398,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             },
             onChangeEnd: (value) {
               _isDragging = false;
-              _startStreaming(roi: _selectedRoi, startTimeMs: value.toInt());
+              if (_videoStream == null) {
+                _startStreaming(roi: _selectedRoi, startTimeMs: value.toInt());
+              } else {
+                _player?.seek(timeMs: BigInt.from(value.toInt()));
+              }
             },
           ),
         ),

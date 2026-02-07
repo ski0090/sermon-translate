@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1623707462;
+  int get rustContentHash => 259349631;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -77,9 +77,34 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  Future<VideoFrame> crateApiSimpleGetFirstFrame({
+  Future<void> crateApiSimpleNativePlayerPause({required NativePlayer that});
+
+  Future<void> crateApiSimpleNativePlayerResume({required NativePlayer that});
+
+  Future<void> crateApiSimpleNativePlayerSeek({
+    required NativePlayer that,
+    required BigInt timeMs,
+  });
+
+  Future<void> crateApiSimpleNativePlayerSetRoi({
+    required NativePlayer that,
+    Roi? roi,
+  });
+
+  Stream<VideoFrame> crateApiSimpleNativePlayerStart({
+    required NativePlayer that,
+    Roi? roi,
+    BigInt? startTimeMs,
+  });
+
+  Future<void> crateApiSimpleNativePlayerStop({required NativePlayer that});
+
+  Future<NativePlayer> crateApiSimpleCreatePlayer({required String path});
+
+  Future<VideoFrame> crateApiSimpleGetFrame({
     required String path,
     Roi? roi,
+    BigInt? timeMs,
   });
 
   String crateApiSimpleGetGstreamerVersion();
@@ -94,15 +119,17 @@ abstract class RustLibApi extends BaseApi {
 
   Future<Roi> crateApiSimpleRoiDefault();
 
-  Stream<VideoFrame> crateApiSimpleStreamVideo({
-    required String path,
-    Roi? roi,
-    BigInt? startTimeMs,
-  });
-
   Future<VideoFrame> crateApiSimpleVideoFrameDefault();
 
   Future<VideoInfo> crateApiSimpleVideoInfoDefault();
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_NativePlayer;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_NativePlayer;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_NativePlayerPtr;
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -114,16 +141,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  Future<VideoFrame> crateApiSimpleGetFirstFrame({
-    required String path,
-    Roi? roi,
-  }) {
+  Future<void> crateApiSimpleNativePlayerPause({required NativePlayer that}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(path, serializer);
-          sse_encode_opt_box_autoadd_roi(roi, serializer);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+            that,
+            serializer,
+          );
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -132,21 +158,266 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_video_frame,
+          decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_AnyhowException,
         ),
-        constMeta: kCrateApiSimpleGetFirstFrameConstMeta,
-        argValues: [path, roi],
+        constMeta: kCrateApiSimpleNativePlayerPauseConstMeta,
+        argValues: [that],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleGetFirstFrameConstMeta =>
+  TaskConstMeta get kCrateApiSimpleNativePlayerPauseConstMeta =>
+      const TaskConstMeta(debugName: "NativePlayer_pause", argNames: ["that"]);
+
+  @override
+  Future<void> crateApiSimpleNativePlayerResume({required NativePlayer that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSimpleNativePlayerResumeConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleNativePlayerResumeConstMeta =>
+      const TaskConstMeta(debugName: "NativePlayer_resume", argNames: ["that"]);
+
+  @override
+  Future<void> crateApiSimpleNativePlayerSeek({
+    required NativePlayer that,
+    required BigInt timeMs,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+            that,
+            serializer,
+          );
+          sse_encode_u_64(timeMs, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSimpleNativePlayerSeekConstMeta,
+        argValues: [that, timeMs],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleNativePlayerSeekConstMeta =>
       const TaskConstMeta(
-        debugName: "get_first_frame",
-        argNames: ["path", "roi"],
+        debugName: "NativePlayer_seek",
+        argNames: ["that", "timeMs"],
       );
+
+  @override
+  Future<void> crateApiSimpleNativePlayerSetRoi({
+    required NativePlayer that,
+    Roi? roi,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+            that,
+            serializer,
+          );
+          sse_encode_opt_box_autoadd_roi(roi, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSimpleNativePlayerSetRoiConstMeta,
+        argValues: [that, roi],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleNativePlayerSetRoiConstMeta =>
+      const TaskConstMeta(
+        debugName: "NativePlayer_set_roi",
+        argNames: ["that", "roi"],
+      );
+
+  @override
+  Stream<VideoFrame> crateApiSimpleNativePlayerStart({
+    required NativePlayer that,
+    Roi? roi,
+    BigInt? startTimeMs,
+  }) {
+    final sink = RustStreamSink<VideoFrame>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+              that,
+              serializer,
+            );
+            sse_encode_opt_box_autoadd_roi(roi, serializer);
+            sse_encode_opt_box_autoadd_u_64(startTimeMs, serializer);
+            sse_encode_StreamSink_video_frame_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 5,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: sse_decode_AnyhowException,
+          ),
+          constMeta: kCrateApiSimpleNativePlayerStartConstMeta,
+          argValues: [that, roi, startTimeMs, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiSimpleNativePlayerStartConstMeta =>
+      const TaskConstMeta(
+        debugName: "NativePlayer_start",
+        argNames: ["that", "roi", "startTimeMs", "sink"],
+      );
+
+  @override
+  Future<void> crateApiSimpleNativePlayerStop({required NativePlayer that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSimpleNativePlayerStopConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleNativePlayerStopConstMeta =>
+      const TaskConstMeta(debugName: "NativePlayer_stop", argNames: ["that"]);
+
+  @override
+  Future<NativePlayer> crateApiSimpleCreatePlayer({required String path}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSimpleCreatePlayerConstMeta,
+        argValues: [path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleCreatePlayerConstMeta =>
+      const TaskConstMeta(debugName: "create_player", argNames: ["path"]);
+
+  @override
+  Future<VideoFrame> crateApiSimpleGetFrame({
+    required String path,
+    Roi? roi,
+    BigInt? timeMs,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_opt_box_autoadd_roi(roi, serializer);
+          sse_encode_opt_box_autoadd_u_64(timeMs, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_video_frame,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSimpleGetFrameConstMeta,
+        argValues: [path, roi, timeMs],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleGetFrameConstMeta => const TaskConstMeta(
+    debugName: "get_frame",
+    argNames: ["path", "roi", "timeMs"],
+  );
 
   @override
   String crateApiSimpleGetGstreamerVersion() {
@@ -154,7 +425,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -180,7 +451,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 10,
             port: port_,
           );
         },
@@ -205,7 +476,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -230,7 +501,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 12,
             port: port_,
           );
         },
@@ -258,7 +529,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 13,
             port: port_,
           );
         },
@@ -285,7 +556,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 14,
             port: port_,
           );
         },
@@ -304,47 +575,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "roi_default", argNames: []);
 
   @override
-  Stream<VideoFrame> crateApiSimpleStreamVideo({
-    required String path,
-    Roi? roi,
-    BigInt? startTimeMs,
-  }) {
-    final sink = RustStreamSink<VideoFrame>();
-    unawaited(
-      handler.executeNormal(
-        NormalTask(
-          callFfi: (port_) {
-            final serializer = SseSerializer(generalizedFrbRustBinding);
-            sse_encode_String(path, serializer);
-            sse_encode_opt_box_autoadd_roi(roi, serializer);
-            sse_encode_opt_box_autoadd_u_64(startTimeMs, serializer);
-            sse_encode_StreamSink_video_frame_Sse(sink, serializer);
-            pdeCallFfi(
-              generalizedFrbRustBinding,
-              serializer,
-              funcId: 8,
-              port: port_,
-            );
-          },
-          codec: SseCodec(
-            decodeSuccessData: sse_decode_unit,
-            decodeErrorData: sse_decode_AnyhowException,
-          ),
-          constMeta: kCrateApiSimpleStreamVideoConstMeta,
-          argValues: [path, roi, startTimeMs, sink],
-          apiImpl: this,
-        ),
-      ),
-    );
-    return sink.stream;
-  }
-
-  TaskConstMeta get kCrateApiSimpleStreamVideoConstMeta => const TaskConstMeta(
-    debugName: "stream_video",
-    argNames: ["path", "roi", "startTimeMs", "sink"],
-  );
-
-  @override
   Future<VideoFrame> crateApiSimpleVideoFrameDefault() {
     return handler.executeNormal(
       NormalTask(
@@ -353,7 +583,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 15,
             port: port_,
           );
         },
@@ -380,7 +610,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 16,
             port: port_,
           );
         },
@@ -398,10 +628,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiSimpleVideoInfoDefaultConstMeta =>
       const TaskConstMeta(debugName: "video_info_default", argNames: []);
 
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_NativePlayer => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_NativePlayer => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer;
+
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return AnyhowException(raw as String);
+  }
+
+  @protected
+  NativePlayer
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return NativePlayerImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  NativePlayer
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return NativePlayerImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  NativePlayer
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return NativePlayerImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -501,6 +766,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BigInt dco_decode_usize(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeU64(raw);
+  }
+
+  @protected
   VideoFrame dco_decode_video_frame(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -535,6 +806,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_String(deserializer);
     return AnyhowException(inner);
+  }
+
+  @protected
+  NativePlayer
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return NativePlayerImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  NativePlayer
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return NativePlayerImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  NativePlayer
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return NativePlayerImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
   }
 
   @protected
@@ -648,6 +955,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BigInt sse_decode_usize(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getBigUint64();
+  }
+
+  @protected
   VideoFrame sse_decode_video_frame(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_pixels = sse_decode_list_prim_u_8_strict(deserializer);
@@ -688,6 +1001,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    NativePlayer self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as NativePlayerImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    NativePlayer self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as NativePlayerImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    NativePlayer self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as NativePlayerImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
   }
 
   @protected
@@ -802,6 +1154,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_usize(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putBigUint64(self);
+  }
+
+  @protected
   void sse_encode_video_frame(VideoFrame self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(self.pixels, serializer);
@@ -820,4 +1178,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.format, serializer);
     sse_encode_f_64(self.fps, serializer);
   }
+}
+
+@sealed
+class NativePlayerImpl extends RustOpaque implements NativePlayer {
+  // Not to be used by end users
+  NativePlayerImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  NativePlayerImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        RustLib.instance.api.rust_arc_increment_strong_count_NativePlayer,
+    rustArcDecrementStrongCount:
+        RustLib.instance.api.rust_arc_decrement_strong_count_NativePlayer,
+    rustArcDecrementStrongCountPtr:
+        RustLib.instance.api.rust_arc_decrement_strong_count_NativePlayerPtr,
+  );
+
+  Future<void> pause() =>
+      RustLib.instance.api.crateApiSimpleNativePlayerPause(that: this);
+
+  Future<void> resume() =>
+      RustLib.instance.api.crateApiSimpleNativePlayerResume(that: this);
+
+  Future<void> seek({required BigInt timeMs}) => RustLib.instance.api
+      .crateApiSimpleNativePlayerSeek(that: this, timeMs: timeMs);
+
+  Future<void> setRoi({Roi? roi}) => RustLib.instance.api
+      .crateApiSimpleNativePlayerSetRoi(that: this, roi: roi);
+
+  Stream<VideoFrame> start({Roi? roi, BigInt? startTimeMs}) =>
+      RustLib.instance.api.crateApiSimpleNativePlayerStart(
+        that: this,
+        roi: roi,
+        startTimeMs: startTimeMs,
+      );
+
+  Future<void> stop() =>
+      RustLib.instance.api.crateApiSimpleNativePlayerStop(that: this);
 }
