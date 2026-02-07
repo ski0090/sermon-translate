@@ -28,6 +28,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   ui.Image? _roiThumbnail;
   bool _isRoiMode = false;
   int _currentPositionMs = 0;
+  bool _isPlaying = false;
   bool _isDragging = false;
   Size _lastWidgetSize = Size.zero;
 
@@ -143,6 +144,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         .asBroadcastStream();
 
     setState(() {
+      _isPlaying = true;
       _videoStream = baseStream
           .where((frame) => !frame.isCropped)
           .map((frame) {
@@ -178,11 +180,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                       _isRoiMode = !_isRoiMode;
                       if (_isRoiMode) {
                         _player?.pause();
+                        _isPlaying = false;
                         _loadThumbnail(roi: null, timeMs: _currentPositionMs);
                         _loadRoiThumbnail();
                       } else {
                         _player?.setRoi(roi: _selectedRoi);
                         _player?.resume();
+                        _isPlaying = true;
                       }
                     });
                   },
@@ -250,17 +254,35 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             fit: StackFit.expand,
             children: [
               if (_videoStream != null)
-                StreamBuilder<ui.Image>(
-                  stream: _videoStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData) {
-                      return RawImage(image: snapshot.data!, fit: BoxFit.fill);
+                GestureDetector(
+                  onTap: () {
+                    if (!_isRoiMode && _player != null) {
+                      setState(() {
+                        if (_isPlaying) {
+                          _player!.pause();
+                          _isPlaying = false;
+                        } else {
+                          _player!.resume();
+                          _isPlaying = true;
+                        }
+                      });
                     }
-                    if (snapshot.hasError) {
-                      return _buildErrorWidget(snapshot.error.toString());
-                    }
-                    return _buildLoadingWidget('스트리밍 대기 중...');
                   },
+                  child: StreamBuilder<ui.Image>(
+                    stream: _videoStream,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData) {
+                        return RawImage(
+                          image: snapshot.data!,
+                          fit: BoxFit.fill,
+                        );
+                      }
+                      if (snapshot.hasError) {
+                        return _buildErrorWidget(snapshot.error.toString());
+                      }
+                      return _buildLoadingWidget('스트리밍 대기 중...');
+                    },
+                  ),
                 )
               else if (_thumbnail != null)
                 GestureDetector(
@@ -395,14 +417,24 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                 _isDragging = true;
                 _currentPositionMs = value.toInt();
               });
-            },
-            onChangeEnd: (value) {
-              _isDragging = false;
-              if (_videoStream == null) {
-                _startStreaming(roi: _selectedRoi, startTimeMs: value.toInt());
-              } else {
+              if (_videoStream != null) {
                 _player?.seek(timeMs: BigInt.from(value.toInt()));
               }
+            },
+            onChangeEnd: (value) async {
+              if (_videoStream == null) {
+                await _startStreaming(
+                  roi: _selectedRoi,
+                  startTimeMs: value.toInt(),
+                );
+              } else {
+                await _player?.seek(timeMs: BigInt.from(value.toInt()));
+              }
+              await _player?.pause();
+              setState(() {
+                _isPlaying = false;
+                _isDragging = false;
+              });
             },
           ),
         ),
