@@ -477,11 +477,15 @@ impl SseDecode for crate::api::simple::Roi {
         let mut var_y = <i32>::sse_decode(deserializer);
         let mut var_width = <i32>::sse_decode(deserializer);
         let mut var_height = <i32>::sse_decode(deserializer);
+        let mut var_startTimeMs = <u64>::sse_decode(deserializer);
+        let mut var_endTimeMs = <u64>::sse_decode(deserializer);
         return crate::api::simple::Roi {
             x: var_x,
             y: var_y,
             width: var_width,
             height: var_height,
+            start_time_ms: var_startTimeMs,
+            end_time_ms: var_endTimeMs,
         };
     }
 }
@@ -586,6 +590,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::simple::Roi {
             self.y.into_into_dart().into_dart(),
             self.width.into_into_dart().into_dart(),
             self.height.into_into_dart().into_dart(),
+            self.start_time_ms.into_into_dart().into_dart(),
+            self.end_time_ms.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -723,6 +729,8 @@ impl SseEncode for crate::api::simple::Roi {
         <i32>::sse_encode(self.y, serializer);
         <i32>::sse_encode(self.width, serializer);
         <i32>::sse_encode(self.height, serializer);
+        <u64>::sse_encode(self.start_time_ms, serializer);
+        <u64>::sse_encode(self.end_time_ms, serializer);
     }
 }
 

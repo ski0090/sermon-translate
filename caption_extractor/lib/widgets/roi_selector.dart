@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:caption_extractor/src/rust/api/simple.dart';
 
 class RoiSelector extends StatefulWidget {
   final Size videoSize;
-  final Rect? initialRoi;
-  final Function(Rect?) onRoiChanged;
+  final Roi? initialRoi;
+  final Function(Roi?) onRoiChanged;
 
   const RoiSelector({
     super.key,
@@ -29,8 +30,13 @@ enum _RoiAction {
 class _RoiSelectorState extends State<RoiSelector> {
   Offset? _startPos;
   Offset? _lastPos;
-  Rect? _currentRoi;
+  Rect? _currentRect;
+  BigInt _startTimeMs = BigInt.zero;
+  BigInt _endTimeMs = BigInt.zero;
   _RoiAction _action = _RoiAction.none;
+
+  final TextEditingController _startController = TextEditingController();
+  final TextEditingController _endController = TextEditingController();
 
   static const double _handleSize = 12.0;
   static const double _hitAreaSize = 25.0;
@@ -38,24 +44,60 @@ class _RoiSelectorState extends State<RoiSelector> {
   @override
   void initState() {
     super.initState();
-    _currentRoi = widget.initialRoi;
+    if (widget.initialRoi != null) {
+      final roi = widget.initialRoi!;
+      _startTimeMs = roi.startTimeMs;
+      _endTimeMs = roi.endTimeMs;
+      _startController.text = _startTimeMs.toString();
+      _endController.text = _endTimeMs.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _startController.dispose();
+    _endController.dispose();
+    super.dispose();
+  }
+
+  void _notifyChanged(Size containerSize) {
+    if (_currentRect == null) {
+      widget.onRoiChanged(null);
+      return;
+    }
+
+    final vWidth = widget.videoSize.width;
+    final vHeight = widget.videoSize.height;
+
+    final scaleX = vWidth / containerSize.width;
+    final scaleY = vHeight / containerSize.height;
+
+    final roi = Roi(
+      x: (_currentRect!.left * scaleX).toInt(),
+      y: (_currentRect!.top * scaleY).toInt(),
+      width: (_currentRect!.width * scaleX).toInt(),
+      height: (_currentRect!.height * scaleY).toInt(),
+      startTimeMs: _startTimeMs,
+      endTimeMs: _endTimeMs,
+    );
+
+    widget.onRoiChanged(roi);
   }
 
   _RoiAction _getHitAction(Offset pos) {
-    if (_currentRoi == null) return _RoiAction.creating;
+    if (_currentRect == null) return _RoiAction.creating;
 
-    final rect = _currentRoi!;
+    final rect = _currentRect!;
 
-    // 상단 왼쪽
-    if ((pos - rect.topLeft).distance <= _hitAreaSize) return _RoiAction.resizingTopLeft;
-    // 상단 오른쪽
-    if ((pos - rect.topRight).distance <= _hitAreaSize) return _RoiAction.resizingTopRight;
-    // 하단 왼쪽
-    if ((pos - rect.bottomLeft).distance <= _hitAreaSize) return _RoiAction.resizingBottomLeft;
-    // 하단 오른쪽
-    if ((pos - rect.bottomRight).distance <= _hitAreaSize) return _RoiAction.resizingBottomRight;
+    if ((pos - rect.topLeft).distance <= _hitAreaSize)
+      return _RoiAction.resizingTopLeft;
+    if ((pos - rect.topRight).distance <= _hitAreaSize)
+      return _RoiAction.resizingTopRight;
+    if ((pos - rect.bottomLeft).distance <= _hitAreaSize)
+      return _RoiAction.resizingBottomLeft;
+    if ((pos - rect.bottomRight).distance <= _hitAreaSize)
+      return _RoiAction.resizingBottomRight;
 
-    // 내부 이동
     if (rect.contains(pos)) return _RoiAction.moving;
 
     return _RoiAction.creating;
@@ -67,149 +109,237 @@ class _RoiSelectorState extends State<RoiSelector> {
       builder: (context, constraints) {
         final containerSize = constraints.biggest;
 
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onPanStart: (details) {
-            final action = _getHitAction(details.localPosition);
-            setState(() {
-              _action = action;
-              _startPos = details.localPosition;
-              _lastPos = details.localPosition;
-              if (action == _RoiAction.creating) {
-                _currentRoi = Rect.fromPoints(
-                  details.localPosition,
-                  details.localPosition,
-                );
-              }
-            });
-          },
-          onPanUpdate: (details) {
-            if (_lastPos == null || (_currentRoi == null && _action != _RoiAction.creating)) return;
-            final delta = details.localPosition - _lastPos!;
+        // 초기 Roi가 있고 _currentRect가 없는 경우 변환
+        if (widget.initialRoi != null &&
+            _currentRect == null &&
+            containerSize != Size.zero) {
+          final roi = widget.initialRoi!;
+          final vWidth = widget.videoSize.width;
+          final vHeight = widget.videoSize.height;
+          final scaleX = containerSize.width / vWidth;
+          final scaleY = containerSize.height / vHeight;
 
-            setState(() {
-              switch (_action) {
-                case _RoiAction.moving:
-                  _moveRoi(delta, containerSize);
-                  break;
-                case _RoiAction.resizingTopLeft:
-                  _resizeRoi(
-                    details.localPosition,
-                    containerSize,
-                    topLeft: true,
-                  );
-                  break;
-                case _RoiAction.resizingTopRight:
-                  _resizeRoi(
-                    details.localPosition,
-                    containerSize,
-                    topRight: true,
-                  );
-                  break;
-                case _RoiAction.resizingBottomLeft:
-                  _resizeRoi(
-                    details.localPosition,
-                    containerSize,
-                    bottomLeft: true,
-                  );
-                  break;
-                case _RoiAction.resizingBottomRight:
-                  _resizeRoi(
-                    details.localPosition,
-                    containerSize,
-                    bottomRight: true,
-                  );
-                  break;
-                case _RoiAction.creating:
-                  _createRoi(details.localPosition, containerSize);
-                  break;
-                default:
-                  break;
-              }
-              _lastPos = details.localPosition;
-            });
-          },
-          onPanEnd: (details) {
-            widget.onRoiChanged(_currentRoi);
-            setState(() {
-              _action = _RoiAction.none;
-              _startPos = null;
-              _lastPos = null;
-            });
-          },
-          child: Stack(
-            children: [
-              if (_currentRoi != null) ...[
-                // 영역 배경 및 테두리
-                Positioned.fromRect(
-                  rect: _currentRoi!,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: _action == _RoiAction.creating
-                            ? Colors.yellow
-                            : Colors.red,
-                        width: 2,
+          _currentRect = Rect.fromLTWH(
+            roi.x * scaleX,
+            roi.y * scaleY,
+            roi.width * scaleX,
+            roi.height * scaleY,
+          );
+        }
+
+        return Stack(
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanStart: (details) {
+                final action = _getHitAction(details.localPosition);
+                setState(() {
+                  _action = action;
+                  _startPos = details.localPosition;
+                  _lastPos = details.localPosition;
+                  if (action == _RoiAction.creating) {
+                    _currentRect = Rect.fromPoints(
+                      details.localPosition,
+                      details.localPosition,
+                    );
+                  }
+                });
+              },
+              onPanUpdate: (details) {
+                if (_lastPos == null ||
+                    (_currentRect == null && _action != _RoiAction.creating))
+                  return;
+                final delta = details.localPosition - _lastPos!;
+
+                setState(() {
+                  switch (_action) {
+                    case _RoiAction.moving:
+                      _moveRoi(delta, containerSize);
+                      break;
+                    case _RoiAction.resizingTopLeft:
+                      _resizeRoi(
+                        details.localPosition,
+                        containerSize,
+                        topLeft: true,
+                      );
+                      break;
+                    case _RoiAction.resizingTopRight:
+                      _resizeRoi(
+                        details.localPosition,
+                        containerSize,
+                        topRight: true,
+                      );
+                      break;
+                    case _RoiAction.resizingBottomLeft:
+                      _resizeRoi(
+                        details.localPosition,
+                        containerSize,
+                        bottomLeft: true,
+                      );
+                      break;
+                    case _RoiAction.resizingBottomRight:
+                      _resizeRoi(
+                        details.localPosition,
+                        containerSize,
+                        bottomRight: true,
+                      );
+                      break;
+                    case _RoiAction.creating:
+                      _createRoi(details.localPosition, containerSize);
+                      break;
+                    default:
+                      break;
+                  }
+                  _lastPos = details.localPosition;
+                });
+              },
+              onPanEnd: (details) {
+                _notifyChanged(containerSize);
+                setState(() {
+                  _action = _RoiAction.none;
+                  _startPos = null;
+                  _lastPos = null;
+                });
+              },
+              child: Stack(
+                children: [
+                  if (_currentRect != null) ...[
+                    Positioned.fromRect(
+                      rect: _currentRect!,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: _action == _RoiAction.creating
+                                ? Colors.yellow
+                                : Colors.red,
+                            width: 2,
+                          ),
+                          color:
+                              (_action == _RoiAction.creating
+                                      ? Colors.yellow
+                                      : Colors.red)
+                                  .withAlpha(100),
+                        ),
                       ),
-                      color:
-                          (_action == _RoiAction.creating
-                                  ? Colors.yellow
-                                  : Colors.red)
-                              .withAlpha(100),
+                    ),
+                    if (_action != _RoiAction.creating) ...[
+                      _buildHandle(_currentRect!.topLeft),
+                      _buildHandle(_currentRect!.topRight),
+                      _buildHandle(_currentRect!.bottomLeft),
+                      _buildHandle(_currentRect!.bottomRight),
+                    ],
+                  ],
+                ],
+              ),
+            ),
+            // 가이드 및 시간 설정 UI
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      _currentRect == null
+                          ? '영역을 드래그하여 선택하세요'
+                          : '영역을 이동하거나 조절하세요',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ),
-                ),
-                // 크기 조절 핸들 (생성 중에는 표시하지 않음)
-                if (_action != _RoiAction.creating) ...[
-                  _buildHandle(_currentRoi!.topLeft),
-                  _buildHandle(_currentRoi!.topRight),
-                  _buildHandle(_currentRoi!.bottomLeft),
-                  _buildHandle(_currentRoi!.bottomRight),
+                  const SizedBox(height: 8),
+                  if (_currentRect != null) _buildTimeInput(containerSize),
                 ],
-              ],
-              // 가이드 텍스트
+              ),
+            ),
+            if (_currentRect != null)
               Positioned(
-                top: 10,
+                bottom: 10,
                 right: 10,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    _currentRoi == null
-                        ? '영역을 드래그하여 선택하세요'
-                        : '영역을 이동하거나 모서리를 드래그하여 조절하세요',
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
+                child: IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _currentRect = null;
+                      _action = _RoiAction.none;
+                    });
+                    widget.onRoiChanged(null);
+                  },
+                  icon: const Icon(Icons.clear, color: Colors.white),
+                  style: IconButton.styleFrom(backgroundColor: Colors.black45),
                 ),
               ),
-              if (_currentRoi != null)
-                Positioned(
-                  bottom: 10,
-                  right: 10,
-                  child: IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _currentRoi = null;
-                        _action = _RoiAction.none;
-                      });
-                      widget.onRoiChanged(null);
-                    },
-                    icon: const Icon(Icons.clear, color: Colors.white),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black45,
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          ],
         );
       },
+    );
+  }
+
+  Widget _buildTimeInput(Size containerSize) {
+    return Container(
+      width: 200,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.black87,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildTimeField('시작(ms)', _startController, (val) {
+            setState(() => _startTimeMs = BigInt.tryParse(val) ?? BigInt.zero);
+            _notifyChanged(containerSize);
+          }),
+          const SizedBox(height: 4),
+          _buildTimeField('종료(ms)', _endController, (val) {
+            setState(() => _endTimeMs = BigInt.tryParse(val) ?? BigInt.zero);
+            _notifyChanged(containerSize);
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimeField(
+    String label,
+    TextEditingController controller,
+    Function(String) onChanged,
+  ) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 60,
+          child: Text(
+            label,
+            style: const TextStyle(color: Colors.white, fontSize: 10),
+          ),
+        ),
+        Expanded(
+          child: SizedBox(
+            height: 30,
+            child: TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                border: OutlineInputBorder(),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white24),
+                ),
+              ),
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -230,12 +360,10 @@ class _RoiSelectorState extends State<RoiSelector> {
   }
 
   void _moveRoi(Offset delta, Size containerSize) {
-    if (_currentRoi == null) return;
-    var newRect = _currentRoi!.shift(delta);
+    if (_currentRect == null) return;
+    var newRect = _currentRect!.shift(delta);
 
-    // 경계 제한
-    double dx = 0;
-    double dy = 0;
+    double dx = 0, dy = 0;
     if (newRect.left < 0) dx = -newRect.left;
     if (newRect.right > containerSize.width)
       dx = containerSize.width - newRect.right;
@@ -243,7 +371,7 @@ class _RoiSelectorState extends State<RoiSelector> {
     if (newRect.bottom > containerSize.height)
       dy = containerSize.height - newRect.bottom;
 
-    _currentRoi = newRect.shift(Offset(dx, dy));
+    _currentRect = newRect.shift(Offset(dx, dy));
   }
 
   void _resizeRoi(
@@ -254,29 +382,28 @@ class _RoiSelectorState extends State<RoiSelector> {
     bool bottomLeft = false,
     bool bottomRight = false,
   }) {
-    if (_currentRoi == null) return;
-
+    if (_currentRect == null) return;
     final p = Offset(
       pos.dx.clamp(0.0, containerSize.width),
       pos.dy.clamp(0.0, containerSize.height),
     );
-    Rect r = _currentRoi!;
+    Rect r = _currentRect!;
 
     if (topLeft) {
-      _currentRoi = Rect.fromLTRB(p.dx, p.dy, r.right, r.bottom);
+      _currentRect = Rect.fromLTRB(p.dx, p.dy, r.right, r.bottom);
     } else if (topRight) {
-      _currentRoi = Rect.fromLTRB(r.left, p.dy, p.dx, r.bottom);
+      _currentRect = Rect.fromLTRB(r.left, p.dy, p.dx, r.bottom);
     } else if (bottomLeft) {
-      _currentRoi = Rect.fromLTRB(p.dx, r.top, r.right, p.dy);
+      _currentRect = Rect.fromLTRB(p.dx, r.top, r.right, p.dy);
     } else if (bottomRight) {
-      _currentRoi = Rect.fromLTRB(r.left, r.top, p.dx, p.dy);
+      _currentRect = Rect.fromLTRB(r.left, r.top, p.dx, p.dy);
     }
   }
 
   void _createRoi(Offset pos, Size containerSize) {
     if (_startPos == null) return;
     final r = Rect.fromPoints(_startPos!, pos);
-    _currentRoi = Rect.fromLTRB(
+    _currentRect = Rect.fromLTRB(
       r.left.clamp(0.0, containerSize.width),
       r.top.clamp(0.0, containerSize.height),
       r.right.clamp(0.0, containerSize.width),

@@ -38,12 +38,16 @@ class Roi {
   final int y;
   final int width;
   final int height;
+  final BigInt startTimeMs;
+  final BigInt endTimeMs;
 
   const Roi({
     required this.x,
     required this.y,
     required this.width,
     required this.height,
+    required this.startTimeMs,
+    required this.endTimeMs,
   });
 
   static Future<Roi> default_() =>
@@ -51,7 +55,12 @@ class Roi {
 
   @override
   int get hashCode =>
-      x.hashCode ^ y.hashCode ^ width.hashCode ^ height.hashCode;
+      x.hashCode ^
+      y.hashCode ^
+      width.hashCode ^
+      height.hashCode ^
+      startTimeMs.hashCode ^
+      endTimeMs.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -61,7 +70,9 @@ class Roi {
           x == other.x &&
           y == other.y &&
           width == other.width &&
-          height == other.height;
+          height == other.height &&
+          startTimeMs == other.startTimeMs &&
+          endTimeMs == other.endTimeMs;
 }
 
 class VideoFrame {

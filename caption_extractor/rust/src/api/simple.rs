@@ -17,6 +17,8 @@ pub struct Roi {
     pub y: i32,
     pub width: i32,
     pub height: i32,
+    pub start_time_ms: u64,
+    pub end_time_ms: u64,
 }
 
 #[derive(Debug, Clone, Default)]

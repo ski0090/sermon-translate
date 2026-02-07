@@ -470,13 +470,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Roi dco_decode_roi(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 4)
-      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
     return Roi(
       x: dco_decode_i_32(arr[0]),
       y: dco_decode_i_32(arr[1]),
       width: dco_decode_i_32(arr[2]),
       height: dco_decode_i_32(arr[3]),
+      startTimeMs: dco_decode_u_64(arr[4]),
+      endTimeMs: dco_decode_u_64(arr[5]),
     );
   }
 
@@ -616,7 +618,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_y = sse_decode_i_32(deserializer);
     var var_width = sse_decode_i_32(deserializer);
     var var_height = sse_decode_i_32(deserializer);
-    return Roi(x: var_x, y: var_y, width: var_width, height: var_height);
+    var var_startTimeMs = sse_decode_u_64(deserializer);
+    var var_endTimeMs = sse_decode_u_64(deserializer);
+    return Roi(
+      x: var_x,
+      y: var_y,
+      width: var_width,
+      height: var_height,
+      startTimeMs: var_startTimeMs,
+      endTimeMs: var_endTimeMs,
+    );
   }
 
   @protected
@@ -769,6 +780,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.y, serializer);
     sse_encode_i_32(self.width, serializer);
     sse_encode_i_32(self.height, serializer);
+    sse_encode_u_64(self.startTimeMs, serializer);
+    sse_encode_u_64(self.endTimeMs, serializer);
   }
 
   @protected

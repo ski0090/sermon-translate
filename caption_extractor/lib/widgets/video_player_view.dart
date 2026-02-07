@@ -23,7 +23,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   Stream<ui.Image>? _roiStream;
   ui.Image? _thumbnail;
   bool _isLoadingThumbnail = false;
-  Rect? _selectedRect;
+  Roi? _selectedRoi;
   bool _isRoiMode = false;
   int _currentPositionMs = 0;
   bool _isDragging = false;
@@ -42,7 +42,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         _videoStream = null;
         _roiStream = null;
         _thumbnail = null;
-        _selectedRect = null;
+        _selectedRoi = null;
         _isRoiMode = false;
       });
       _loadThumbnail();
@@ -115,33 +115,14 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   void _applyRoi() {
     if (_videoStream != null) {
-      // 스트리밍 중이면 중지
       setState(() {
         _videoStream = null;
       });
     }
-    // 프리뷰(썸네일)는 항상 전체 영상을 보여주기 위해 roi를 전달하지 않음
     _loadThumbnail();
   }
 
   Size _lastWidgetSize = Size.zero;
-
-  Roi? _convertRectToRoi(Rect? rect, Size widgetSize) {
-    if (rect == null || widgetSize == Size.zero) return null;
-
-    final vWidth = widget.videoInfo.width;
-    final vHeight = widget.videoInfo.height;
-
-    final scaleX = vWidth / widgetSize.width;
-    final scaleY = vHeight / widgetSize.height;
-
-    return Roi(
-      x: (rect.left * scaleX).toInt(),
-      y: (rect.top * scaleY).toInt(),
-      width: (rect.width * scaleX).toInt(),
-      height: (rect.height * scaleY).toInt(),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -150,7 +131,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 왼쪽: 영역 선택 및 초기화 버튼 (비율 1)
           Expanded(
             flex: 1,
             child: Column(
@@ -173,12 +153,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                   ),
                 ),
-                if (_selectedRect != null) ...[
+                if (_selectedRoi != null) ...[
                   const SizedBox(height: 12),
                   TextButton.icon(
                     onPressed: () {
                       setState(() {
-                        _selectedRect = null;
+                        _selectedRoi = null;
                         _videoStream = null;
                         _roiStream = null;
                       });
@@ -196,8 +176,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             ),
           ),
           const SizedBox(width: 16),
-
-          // 중앙: 비디오 영역 (비율 5)
           Expanded(
             flex: 5,
             child: Column(
@@ -209,8 +187,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             ),
           ),
           const SizedBox(width: 16),
-
-          // 오른쪽: ROI 프리뷰 (비율 2)
           Expanded(flex: 2, child: RoiPlayer(roiStream: _roiStream)),
         ],
       ),
@@ -218,7 +194,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Widget _buildVideoArea() {
-    // 항상 원본 영상의 종횡비 유지
     final double aspectRatio = widget.videoInfo.width / widget.videoInfo.height;
 
     return ConstrainedBox(
@@ -246,9 +221,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                 GestureDetector(
                   onTap: () {
                     if (!_isRoiMode) {
-                      _startStreaming(
-                        roi: _convertRectToRoi(_selectedRect, _lastWidgetSize),
-                      );
+                      _startStreaming(roi: _selectedRoi);
                     }
                   },
                   child: Stack(
@@ -278,8 +251,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                 _buildLoadingWidget('썸네일 로드 중...')
               else
                 _buildErrorWidget('비디오를 로드할 수 없습니다.'),
-
-              // ROI 선택 모드이거나 선택된 영역이 있을 때 오버레이 표시
               if (_isRoiMode)
                 Positioned.fill(
                   child: RoiSelector(
@@ -287,17 +258,28 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                       widget.videoInfo.width.toDouble(),
                       widget.videoInfo.height.toDouble(),
                     ),
-                    initialRoi: _selectedRect,
-                    onRoiChanged: (rect) {
+                    initialRoi: _selectedRoi,
+                    onRoiChanged: (roi) {
                       setState(() {
-                        _selectedRect = rect;
+                        _selectedRoi = roi;
                       });
                     },
                   ),
                 )
-              else if (_selectedRect != null)
-                Positioned.fromRect(
-                  rect: _selectedRect!,
+              else if (_selectedRoi != null)
+                Positioned(
+                  left:
+                      (_selectedRoi!.x / widget.videoInfo.width) *
+                      _lastWidgetSize.width,
+                  top:
+                      (_selectedRoi!.y / widget.videoInfo.height) *
+                      _lastWidgetSize.height,
+                  width:
+                      (_selectedRoi!.width / widget.videoInfo.width) *
+                      _lastWidgetSize.width,
+                  height:
+                      (_selectedRoi!.height / widget.videoInfo.height) *
+                      _lastWidgetSize.height,
                   child: Container(
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.red, width: 2),
@@ -318,7 +300,6 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   Widget _buildVideoContainer(Widget child, {Function(Size)? onSizeLayout}) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // 실제 컨테이너의 크기를 ROI 선택기에 전달하기 위해 측정
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (onSizeLayout != null) {
             final box = context.findRenderObject() as RenderBox?;
@@ -370,10 +351,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             },
             onChangeEnd: (value) {
               _isDragging = false;
-              _startStreaming(
-                roi: _convertRectToRoi(_selectedRect, _lastWidgetSize),
-                startTimeMs: value.toInt(),
-              );
+              _startStreaming(roi: _selectedRoi, startTimeMs: value.toInt());
             },
           ),
         ),
