@@ -313,8 +313,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                         _loadRoiThumbnail();
                       } else {
                         _player?.setRoi(roi: _selectedRoi);
-                        _player?.resume();
-                        _isPlaying = true;
+                        // 완료 시 자동으로 재생하지 않음
                       }
                     });
                   },
@@ -563,61 +562,81 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
     return Column(
       children: [
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            trackHeight: 4,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-          ),
-          child: Slider(
-            value: _currentPositionMs.toDouble().clamp(0, duration.toDouble()),
-            max: duration.toDouble(),
-            onChanged: (value) {
-              setState(() {
-                _isDragging = true;
-                _currentPositionMs = value.toInt();
-              });
-              if (_videoStream != null) {
-                _player?.seek(timeMs: BigInt.from(value.toInt()));
-              }
-            },
-            onChangeEnd: (value) async {
-              setState(() {
-                _isSeeking = true;
-                _isDragging = true;
-              });
-              if (_videoStream == null) {
-                await _startStreaming(
-                  roi: _selectedRoi,
-                  startTimeMs: value.toInt(),
-                );
-              } else {
-                await _player?.seek(timeMs: BigInt.from(value.toInt()));
-              }
-              await _player?.pause();
-              if (mounted) {
-                setState(() {
-                  _isPlaying = false;
-                });
-              }
+        Row(
+          children: [
+            IconButton(
+              onPressed: _togglePlayPause,
+              icon: Icon(_isPlaying ? Icons.pause_circle : Icons.play_circle),
+              iconSize: 36,
+              color: Colors.blue,
+            ),
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 4,
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6,
+                  ),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 14,
+                  ),
+                ),
+                child: Slider(
+                  value: _currentPositionMs.toDouble().clamp(
+                    0,
+                    duration.toDouble(),
+                  ),
+                  max: duration.toDouble(),
+                  onChanged: (value) {
+                    setState(() {
+                      _isDragging = true;
+                      _currentPositionMs = value.toInt();
+                    });
+                    if (_videoStream != null) {
+                      _player?.seek(timeMs: BigInt.from(value.toInt()));
+                    }
+                  },
+                  onChangeEnd: (value) async {
+                    setState(() {
+                      _isSeeking = true;
+                      _isDragging = true;
+                    });
+                    if (_videoStream == null) {
+                      await _startStreaming(
+                        roi: _selectedRoi,
+                        startTimeMs: value.toInt(),
+                      );
+                    } else {
+                      await _player?.seek(timeMs: BigInt.from(value.toInt()));
+                    }
+                    await _player?.pause();
+                    if (mounted) {
+                      setState(() {
+                        _isPlaying = false;
+                      });
+                    }
 
-              // 안전 장치: 2초 타임아웃
-              Future.delayed(const Duration(seconds: 2)).then((_) {
-                if (mounted && _isSeeking) {
-                  setState(() {
-                    _isSeeking = false;
-                    _isDragging = false;
-                  });
-                }
-              });
-            },
-          ),
+                    // 안전 장치: 2초 타임아웃
+                    Future.delayed(const Duration(seconds: 2)).then((_) {
+                      if (mounted && _isSeeking) {
+                        setState(() {
+                          _isSeeking = false;
+                          _isDragging = false;
+                        });
+                      }
+                    });
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              const SizedBox(width: 48), // 재생 버튼 공간 보정
               Text(
                 _formatDuration(_currentPositionMs),
                 style: const TextStyle(
