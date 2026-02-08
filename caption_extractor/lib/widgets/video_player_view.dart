@@ -313,7 +313,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                         _loadRoiThumbnail();
                       } else {
                         _player?.setRoi(roi: _selectedRoi);
-                        // 완료 시 자동으로 재생하지 않음
+                        _loadRoiThumbnail();
                       }
                     });
                   },
@@ -468,6 +468,12 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                         _selectedRoi = roi;
                       });
                       _player?.setRoi(roi: roi);
+
+                      // 일시정지 상태라면 현재 위치로 seek하여 프리뷰 스트림 갱신 유도
+                      if (!_isPlaying && _player != null) {
+                        _player?.seek(timeMs: BigInt.from(_currentPositionMs));
+                      }
+
                       _loadRoiThumbnail();
                     },
                   ),
