@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:caption_extractor/src/rust/api/simple.dart';
 import 'roi_selector.dart';
 import 'roi_player.dart';
@@ -31,11 +32,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   bool _isPlaying = false;
   bool _isDragging = false;
   Size _lastWidgetSize = Size.zero;
+  final FocusNode _focusNode = FocusNode();
+  bool _isSeeking = false;
+  int _selectedIntervalMs = 5000; // 기본 5초
 
   @override
   void initState() {
     super.initState();
     _loadThumbnail();
+    HardwareKeyboard.instance.addHandler(_handleGlobalKeyEvent);
   }
 
   @override
@@ -60,7 +65,101 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   @override
   void dispose() {
     _player?.stop();
+    HardwareKeyboard.instance.removeHandler(_handleGlobalKeyEvent);
+    _focusNode.dispose();
     super.dispose();
+  }
+
+  bool _handleGlobalKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+
+    if (event.logicalKey == LogicalKeyboardKey.space) {
+      _togglePlayPause();
+      return true;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _seekWithCurrentInterval(-1);
+      return true;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      _seekWithCurrentInterval(1);
+      return true;
+    }
+    return false;
+  }
+
+  void _seekWithCurrentInterval(int direction) {
+    int interval;
+    if (_selectedIntervalMs == -1) {
+      // 1프레임 계산
+      final fps = widget.videoInfo.fps;
+      interval = (1000 / (fps > 0 ? fps : 30)).round();
+      if (interval == 0) interval = 1;
+    } else {
+      interval = _selectedIntervalMs;
+    }
+    _seekRelative(direction * interval);
+  }
+
+  void _togglePlayPause() {
+    if (_player == null) {
+      if (!_isRoiMode) {
+        _startStreaming(roi: _selectedRoi);
+      }
+      return;
+    }
+
+    setState(() {
+      if (_isPlaying) {
+        _player!.pause();
+        _isPlaying = false;
+      } else {
+        _player!.resume();
+        _isPlaying = true;
+      }
+    });
+  }
+
+  Future<void> _seekRelative(int offsetMs) async {
+    if (_isSeeking) return;
+
+    final duration = widget.videoInfo.durationMs.toInt();
+    int newPosition = (_currentPositionMs + offsetMs).clamp(0, duration);
+
+    setState(() {
+      _isSeeking = true;
+      _isDragging = true;
+      _currentPositionMs = newPosition;
+    });
+
+    try {
+      if (_videoStream == null) {
+        await _startStreaming(roi: _selectedRoi, startTimeMs: newPosition);
+        await _player?.pause();
+        if (mounted) {
+          setState(() {
+            _isPlaying = false;
+          });
+        }
+      } else {
+        await _player?.seek(timeMs: BigInt.from(newPosition));
+      }
+
+      // 안전 장치: 2초 후에도 프레임이 안 오면 강제로 로딩 해제
+      Future.delayed(const Duration(seconds: 2)).then((_) {
+        if (mounted && _isSeeking) {
+          setState(() {
+            _isSeeking = false;
+            _isDragging = false;
+          });
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSeeking = false;
+          _isDragging = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadThumbnail({Roi? roi, int? timeMs}) async {
@@ -148,7 +247,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       _videoStream = baseStream
           .where((frame) => !frame.isCropped)
           .map((frame) {
-            if (mounted && !_isDragging) {
+            if (mounted) {
+              if (_isSeeking || _isDragging) {
+                setState(() {
+                  _isSeeking = false;
+                  _isDragging = false;
+                });
+              }
               setState(() {
                 _currentPositionMs = frame.timestampMs.toInt();
               });
@@ -241,6 +346,24 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                     ),
                   ),
                 ],
+                const SizedBox(height: 24),
+                const Divider(),
+                const SizedBox(height: 12),
+                const Text(
+                  '이동 단위',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      _buildIntervalOption('1프레임', -1),
+                      _buildIntervalOption('1초', 1000),
+                      _buildIntervalOption('5초', 5000),
+                      _buildIntervalOption('10초', 10000),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -279,16 +402,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               if (_videoStream != null)
                 GestureDetector(
                   onTap: () {
-                    if (!_isRoiMode && _player != null) {
-                      setState(() {
-                        if (_isPlaying) {
-                          _player!.pause();
-                          _isPlaying = false;
-                        } else {
-                          _player!.resume();
-                          _isPlaying = true;
-                        }
-                      });
+                    if (!_isRoiMode) {
+                      _togglePlayPause();
                     }
                   },
                   child: StreamBuilder<ui.Image>(
@@ -379,6 +494,28 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                     ),
                   ),
                 ),
+              if (_isSeeking)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black45,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const CircularProgressIndicator(color: Colors.white),
+                          const SizedBox(height: 16),
+                          const Text(
+                            '이동 중...',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
           onSizeLayout: (size) {
@@ -445,6 +582,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               }
             },
             onChangeEnd: (value) async {
+              setState(() {
+                _isSeeking = true;
+                _isDragging = true;
+              });
               if (_videoStream == null) {
                 await _startStreaming(
                   roi: _selectedRoi,
@@ -454,9 +595,20 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                 await _player?.seek(timeMs: BigInt.from(value.toInt()));
               }
               await _player?.pause();
-              setState(() {
-                _isPlaying = false;
-                _isDragging = false;
+              if (mounted) {
+                setState(() {
+                  _isPlaying = false;
+                });
+              }
+
+              // 안전 장치: 2초 타임아웃
+              Future.delayed(const Duration(seconds: 2)).then((_) {
+                if (mounted && _isSeeking) {
+                  setState(() {
+                    _isSeeking = false;
+                    _isDragging = false;
+                  });
+                }
               });
             },
           ),
@@ -520,6 +672,33 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           const SizedBox(height: 10),
           Text('오류: $error', textAlign: TextAlign.center),
         ],
+      ),
+    );
+  }
+
+  Widget _buildIntervalOption(String label, int value) {
+    final isSelected = _selectedIntervalMs == value;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: OutlinedButton(
+        onPressed: () {
+          setState(() {
+            _selectedIntervalMs = value;
+          });
+        },
+        style: OutlinedButton.styleFrom(
+          backgroundColor: isSelected ? Colors.blue.shade50 : null,
+          side: BorderSide(
+            color: isSelected ? Colors.blue : Colors.grey.shade300,
+            width: isSelected ? 2 : 1,
+          ),
+          foregroundColor: isSelected
+              ? Colors.blue.shade700
+              : Colors.grey.shade700,
+          minimumSize: const Size(double.infinity, 40),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        child: Text(label),
       ),
     );
   }

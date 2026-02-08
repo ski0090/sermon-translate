@@ -271,7 +271,7 @@ impl NativePlayer {
 
         if let Some(start_ms) = start_time_ms {
             let _ = self.pipeline.seek_simple(
-                gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::KEY_UNIT,
+                gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::ACCURATE,
                 gstreamer::ClockTime::from_mseconds(start_ms),
             );
         }
@@ -306,7 +306,7 @@ impl NativePlayer {
 
     pub fn seek(&self, time_ms: u64) -> anyhow::Result<()> {
         self.pipeline.seek_simple(
-            gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::KEY_UNIT,
+            gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::ACCURATE,
             gstreamer::ClockTime::from_mseconds(time_ms),
         )?;
         Ok(())
@@ -355,7 +355,7 @@ pub fn get_frame(
 
     if let Some(ms) = time_ms {
         let _ = pipeline.seek_simple(
-            gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::KEY_UNIT,
+            gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::ACCURATE,
             gstreamer::ClockTime::from_mseconds(ms),
         );
     }
