@@ -1,7 +1,8 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:caption_extractor/src/rust/api/simple.dart';
+import 'package:caption_extractor/src/rust/api/gstreamer.dart';
+import 'package:caption_extractor/src/rust/api/models.dart';
 import 'roi_selector.dart';
 import 'roi_player.dart';
 

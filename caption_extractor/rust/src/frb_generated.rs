@@ -25,7 +25,7 @@
 
 // Section: imports
 
-use crate::api::simple::*;
+use crate::api::gstreamer::*;
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
 use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
 use flutter_rust_bridge::{Handler, IntoIntoDart};
@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 259349631;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1594498884;
 
 // Section: executor
 
@@ -46,7 +46,7 @@ flutter_rust_bridge::frb_generated_default_handler!();
 
 // Section: wire_funcs
 
-fn wire__crate__api__simple__NativePlayer_pause_impl(
+fn wire__crate__api__gstreamer__NativePlayer_pause_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -89,7 +89,8 @@ fn wire__crate__api__simple__NativePlayer_pause_impl(
                             }
                         }
                         let api_that_guard = api_that_guard.unwrap();
-                        let output_ok = crate::api::simple::NativePlayer::pause(&*api_that_guard)?;
+                        let output_ok =
+                            crate::api::gstreamer::NativePlayer::pause(&*api_that_guard)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -97,7 +98,7 @@ fn wire__crate__api__simple__NativePlayer_pause_impl(
         },
     )
 }
-fn wire__crate__api__simple__NativePlayer_resume_impl(
+fn wire__crate__api__gstreamer__NativePlayer_resume_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -140,7 +141,8 @@ fn wire__crate__api__simple__NativePlayer_resume_impl(
                             }
                         }
                         let api_that_guard = api_that_guard.unwrap();
-                        let output_ok = crate::api::simple::NativePlayer::resume(&*api_that_guard)?;
+                        let output_ok =
+                            crate::api::gstreamer::NativePlayer::resume(&*api_that_guard)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -148,7 +150,7 @@ fn wire__crate__api__simple__NativePlayer_resume_impl(
         },
     )
 }
-fn wire__crate__api__simple__NativePlayer_seek_impl(
+fn wire__crate__api__gstreamer__NativePlayer_seek_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -192,8 +194,10 @@ fn wire__crate__api__simple__NativePlayer_seek_impl(
                             }
                         }
                         let api_that_guard = api_that_guard.unwrap();
-                        let output_ok =
-                            crate::api::simple::NativePlayer::seek(&*api_that_guard, api_time_ms)?;
+                        let output_ok = crate::api::gstreamer::NativePlayer::seek(
+                            &*api_that_guard,
+                            api_time_ms,
+                        )?;
                         Ok(output_ok)
                     })(),
                 )
@@ -201,7 +205,7 @@ fn wire__crate__api__simple__NativePlayer_seek_impl(
         },
     )
 }
-fn wire__crate__api__simple__NativePlayer_set_roi_impl(
+fn wire__crate__api__gstreamer__NativePlayer_set_roi_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -226,7 +230,7 @@ fn wire__crate__api__simple__NativePlayer_set_roi_impl(
             let api_that = <RustOpaqueMoi<
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<NativePlayer>,
             >>::sse_decode(&mut deserializer);
-            let api_roi = <Option<crate::api::simple::Roi>>::sse_decode(&mut deserializer);
+            let api_roi = <Option<crate::api::models::Roi>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, ()>((move || {
@@ -245,7 +249,7 @@ fn wire__crate__api__simple__NativePlayer_set_roi_impl(
                     }
                     let api_that_guard = api_that_guard.unwrap();
                     let output_ok = Result::<_, ()>::Ok({
-                        crate::api::simple::NativePlayer::set_roi(&*api_that_guard, api_roi);
+                        crate::api::gstreamer::NativePlayer::set_roi(&*api_that_guard, api_roi);
                     })?;
                     Ok(output_ok)
                 })())
@@ -253,7 +257,7 @@ fn wire__crate__api__simple__NativePlayer_set_roi_impl(
         },
     )
 }
-fn wire__crate__api__simple__NativePlayer_start_impl(
+fn wire__crate__api__gstreamer__NativePlayer_start_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -278,10 +282,10 @@ fn wire__crate__api__simple__NativePlayer_start_impl(
             let api_that = <RustOpaqueMoi<
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<NativePlayer>,
             >>::sse_decode(&mut deserializer);
-            let api_roi = <Option<crate::api::simple::Roi>>::sse_decode(&mut deserializer);
+            let api_roi = <Option<crate::api::models::Roi>>::sse_decode(&mut deserializer);
             let api_start_time_ms = <Option<u64>>::sse_decode(&mut deserializer);
             let api_sink = <StreamSink<
-                crate::api::simple::VideoFrame,
+                crate::api::models::VideoFrame,
                 flutter_rust_bridge::for_generated::SseCodec,
             >>::sse_decode(&mut deserializer);
             deserializer.end();
@@ -302,7 +306,7 @@ fn wire__crate__api__simple__NativePlayer_start_impl(
                             }
                         }
                         let api_that_guard = api_that_guard.unwrap();
-                        let output_ok = crate::api::simple::NativePlayer::start(
+                        let output_ok = crate::api::gstreamer::NativePlayer::start(
                             &*api_that_guard,
                             api_roi,
                             api_start_time_ms,
@@ -315,7 +319,7 @@ fn wire__crate__api__simple__NativePlayer_start_impl(
         },
     )
 }
-fn wire__crate__api__simple__NativePlayer_stop_impl(
+fn wire__crate__api__gstreamer__NativePlayer_stop_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -358,7 +362,8 @@ fn wire__crate__api__simple__NativePlayer_stop_impl(
                             }
                         }
                         let api_that_guard = api_that_guard.unwrap();
-                        let output_ok = crate::api::simple::NativePlayer::stop(&*api_that_guard)?;
+                        let output_ok =
+                            crate::api::gstreamer::NativePlayer::stop(&*api_that_guard)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -366,7 +371,7 @@ fn wire__crate__api__simple__NativePlayer_stop_impl(
         },
     )
 }
-fn wire__crate__api__simple__create_player_impl(
+fn wire__crate__api__gstreamer__create_player_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -393,7 +398,7 @@ fn wire__crate__api__simple__create_player_impl(
             move |context| {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok = crate::api::simple::create_player(api_path)?;
+                        let output_ok = crate::api::gstreamer::create_player(api_path)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -401,7 +406,7 @@ fn wire__crate__api__simple__create_player_impl(
         },
     )
 }
-fn wire__crate__api__simple__get_frame_impl(
+fn wire__crate__api__gstreamer__get_frame_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -424,14 +429,14 @@ fn wire__crate__api__simple__get_frame_impl(
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_path = <String>::sse_decode(&mut deserializer);
-            let api_roi = <Option<crate::api::simple::Roi>>::sse_decode(&mut deserializer);
+            let api_roi = <Option<crate::api::models::Roi>>::sse_decode(&mut deserializer);
             let api_time_ms = <Option<u64>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
                         let output_ok =
-                            crate::api::simple::get_frame(api_path, api_roi, api_time_ms)?;
+                            crate::api::gstreamer::get_frame(api_path, api_roi, api_time_ms)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -439,7 +444,7 @@ fn wire__crate__api__simple__get_frame_impl(
         },
     )
 }
-fn wire__crate__api__simple__get_gstreamer_version_impl(
+fn wire__crate__api__gstreamer__get_gstreamer_version_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
@@ -462,13 +467,14 @@ fn wire__crate__api__simple__get_gstreamer_version_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
             transform_result_sse::<_, ()>((move || {
-                let output_ok = Result::<_, ()>::Ok(crate::api::simple::get_gstreamer_version())?;
+                let output_ok =
+                    Result::<_, ()>::Ok(crate::api::gstreamer::get_gstreamer_version())?;
                 Ok(output_ok)
             })())
         },
     )
 }
-fn wire__crate__api__simple__get_video_info_impl(
+fn wire__crate__api__gstreamer__get_video_info_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -495,7 +501,7 @@ fn wire__crate__api__simple__get_video_info_impl(
             move |context| {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok = crate::api::simple::get_video_info(api_path)?;
+                        let output_ok = crate::api::gstreamer::get_video_info(api_path)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -503,7 +509,7 @@ fn wire__crate__api__simple__get_video_info_impl(
         },
     )
 }
-fn wire__crate__api__simple__greet_impl(
+fn wire__crate__api__gstreamer__greet_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
@@ -527,13 +533,13 @@ fn wire__crate__api__simple__greet_impl(
             let api_name = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             transform_result_sse::<_, ()>((move || {
-                let output_ok = Result::<_, ()>::Ok(crate::api::simple::greet(api_name))?;
+                let output_ok = Result::<_, ()>::Ok(crate::api::gstreamer::greet(api_name))?;
                 Ok(output_ok)
             })())
         },
     )
 }
-fn wire__crate__api__simple__init_app_impl(
+fn wire__crate__api__gstreamer__init_app_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -559,7 +565,7 @@ fn wire__crate__api__simple__init_app_impl(
             move |context| {
                 transform_result_sse::<_, ()>((move || {
                     let output_ok = Result::<_, ()>::Ok({
-                        crate::api::simple::init_app();
+                        crate::api::gstreamer::init_app();
                     })?;
                     Ok(output_ok)
                 })())
@@ -567,7 +573,7 @@ fn wire__crate__api__simple__init_app_impl(
         },
     )
 }
-fn wire__crate__api__simple__play_video_impl(
+fn wire__crate__api__gstreamer__init_gstreamer_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -575,7 +581,7 @@ fn wire__crate__api__simple__play_video_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "play_video",
+            debug_name: "init_gstreamer",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -589,12 +595,11 @@ fn wire__crate__api__simple__play_video_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_path = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok = crate::api::simple::play_video(api_path)?;
+                        let output_ok = crate::api::gstreamer::init_gstreamer()?;
                         Ok(output_ok)
                     })(),
                 )
@@ -602,7 +607,7 @@ fn wire__crate__api__simple__play_video_impl(
         },
     )
 }
-fn wire__crate__api__simple__roi_default_impl(
+fn wire__crate__api__models__roi_default_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -627,14 +632,14 @@ fn wire__crate__api__simple__roi_default_impl(
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, ()>((move || {
-                    let output_ok = Result::<_, ()>::Ok(crate::api::simple::Roi::default())?;
+                    let output_ok = Result::<_, ()>::Ok(crate::api::models::Roi::default())?;
                     Ok(output_ok)
                 })())
             }
         },
     )
 }
-fn wire__crate__api__simple__video_frame_default_impl(
+fn wire__crate__api__models__video_frame_default_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -659,14 +664,14 @@ fn wire__crate__api__simple__video_frame_default_impl(
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, ()>((move || {
-                    let output_ok = Result::<_, ()>::Ok(crate::api::simple::VideoFrame::default())?;
+                    let output_ok = Result::<_, ()>::Ok(crate::api::models::VideoFrame::default())?;
                     Ok(output_ok)
                 })())
             }
         },
     )
 }
-fn wire__crate__api__simple__video_info_default_impl(
+fn wire__crate__api__models__video_info_default_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -691,7 +696,7 @@ fn wire__crate__api__simple__video_info_default_impl(
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, ()>((move || {
-                    let output_ok = Result::<_, ()>::Ok(crate::api::simple::VideoInfo::default())?;
+                    let output_ok = Result::<_, ()>::Ok(crate::api::models::VideoInfo::default())?;
                     Ok(output_ok)
                 })())
             }
@@ -736,7 +741,7 @@ impl SseDecode
 }
 
 impl SseDecode
-    for StreamSink<crate::api::simple::VideoFrame, flutter_rust_bridge::for_generated::SseCodec>
+    for StreamSink<crate::api::models::VideoFrame, flutter_rust_bridge::for_generated::SseCodec>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -786,11 +791,11 @@ impl SseDecode for Vec<u8> {
     }
 }
 
-impl SseDecode for Option<crate::api::simple::Roi> {
+impl SseDecode for Option<crate::api::models::Roi> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
-            return Some(<crate::api::simple::Roi>::sse_decode(deserializer));
+            return Some(<crate::api::models::Roi>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -808,7 +813,7 @@ impl SseDecode for Option<u64> {
     }
 }
 
-impl SseDecode for crate::api::simple::Roi {
+impl SseDecode for crate::api::models::Roi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_x = <i32>::sse_decode(deserializer);
@@ -817,7 +822,7 @@ impl SseDecode for crate::api::simple::Roi {
         let mut var_height = <i32>::sse_decode(deserializer);
         let mut var_startTimeMs = <u64>::sse_decode(deserializer);
         let mut var_endTimeMs = <u64>::sse_decode(deserializer);
-        return crate::api::simple::Roi {
+        return crate::api::models::Roi {
             x: var_x,
             y: var_y,
             width: var_width,
@@ -854,7 +859,7 @@ impl SseDecode for usize {
     }
 }
 
-impl SseDecode for crate::api::simple::VideoFrame {
+impl SseDecode for crate::api::models::VideoFrame {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_pixels = <Vec<u8>>::sse_decode(deserializer);
@@ -862,7 +867,7 @@ impl SseDecode for crate::api::simple::VideoFrame {
         let mut var_height = <i32>::sse_decode(deserializer);
         let mut var_isCropped = <bool>::sse_decode(deserializer);
         let mut var_timestampMs = <u64>::sse_decode(deserializer);
-        return crate::api::simple::VideoFrame {
+        return crate::api::models::VideoFrame {
             pixels: var_pixels,
             width: var_width,
             height: var_height,
@@ -872,7 +877,7 @@ impl SseDecode for crate::api::simple::VideoFrame {
     }
 }
 
-impl SseDecode for crate::api::simple::VideoInfo {
+impl SseDecode for crate::api::models::VideoInfo {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_width = <i32>::sse_decode(deserializer);
@@ -880,7 +885,7 @@ impl SseDecode for crate::api::simple::VideoInfo {
         let mut var_durationMs = <u64>::sse_decode(deserializer);
         let mut var_format = <String>::sse_decode(deserializer);
         let mut var_fps = <f64>::sse_decode(deserializer);
-        return crate::api::simple::VideoInfo {
+        return crate::api::models::VideoInfo {
             width: var_width,
             height: var_height,
             duration_ms: var_durationMs,
@@ -899,20 +904,31 @@ fn pde_ffi_dispatcher_primary_impl(
 ) {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        1 => wire__crate__api__simple__NativePlayer_pause_impl(port, ptr, rust_vec_len, data_len),
-        2 => wire__crate__api__simple__NativePlayer_resume_impl(port, ptr, rust_vec_len, data_len),
-        3 => wire__crate__api__simple__NativePlayer_seek_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__simple__NativePlayer_set_roi_impl(port, ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__simple__NativePlayer_start_impl(port, ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__simple__NativePlayer_stop_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__simple__create_player_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__simple__get_frame_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__simple__get_video_info_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__simple__play_video_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__simple__roi_default_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__simple__video_frame_default_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__simple__video_info_default_impl(port, ptr, rust_vec_len, data_len),
+        1 => {
+            wire__crate__api__gstreamer__NativePlayer_pause_impl(port, ptr, rust_vec_len, data_len)
+        }
+        2 => {
+            wire__crate__api__gstreamer__NativePlayer_resume_impl(port, ptr, rust_vec_len, data_len)
+        }
+        3 => wire__crate__api__gstreamer__NativePlayer_seek_impl(port, ptr, rust_vec_len, data_len),
+        4 => wire__crate__api__gstreamer__NativePlayer_set_roi_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        5 => {
+            wire__crate__api__gstreamer__NativePlayer_start_impl(port, ptr, rust_vec_len, data_len)
+        }
+        6 => wire__crate__api__gstreamer__NativePlayer_stop_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__gstreamer__create_player_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__gstreamer__get_frame_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__gstreamer__get_video_info_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__gstreamer__init_app_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__gstreamer__init_gstreamer_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__models__roi_default_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__models__video_frame_default_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__models__video_info_default_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -925,8 +941,8 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        9 => wire__crate__api__simple__get_gstreamer_version_impl(ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__gstreamer__get_gstreamer_version_impl(ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__gstreamer__greet_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -949,7 +965,7 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<NativePlayer>> for NativePlaye
 }
 
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::simple::Roi {
+impl flutter_rust_bridge::IntoDart for crate::api::models::Roi {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.x.into_into_dart().into_dart(),
@@ -962,14 +978,14 @@ impl flutter_rust_bridge::IntoDart for crate::api::simple::Roi {
         .into_dart()
     }
 }
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::simple::Roi {}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::simple::Roi> for crate::api::simple::Roi {
-    fn into_into_dart(self) -> crate::api::simple::Roi {
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::models::Roi {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::models::Roi> for crate::api::models::Roi {
+    fn into_into_dart(self) -> crate::api::models::Roi {
         self
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::simple::VideoFrame {
+impl flutter_rust_bridge::IntoDart for crate::api::models::VideoFrame {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.pixels.into_into_dart().into_dart(),
@@ -982,18 +998,18 @@ impl flutter_rust_bridge::IntoDart for crate::api::simple::VideoFrame {
     }
 }
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::simple::VideoFrame
+    for crate::api::models::VideoFrame
 {
 }
-impl flutter_rust_bridge::IntoIntoDart<crate::api::simple::VideoFrame>
-    for crate::api::simple::VideoFrame
+impl flutter_rust_bridge::IntoIntoDart<crate::api::models::VideoFrame>
+    for crate::api::models::VideoFrame
 {
-    fn into_into_dart(self) -> crate::api::simple::VideoFrame {
+    fn into_into_dart(self) -> crate::api::models::VideoFrame {
         self
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::simple::VideoInfo {
+impl flutter_rust_bridge::IntoDart for crate::api::models::VideoInfo {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.width.into_into_dart().into_dart(),
@@ -1005,11 +1021,11 @@ impl flutter_rust_bridge::IntoDart for crate::api::simple::VideoInfo {
         .into_dart()
     }
 }
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::simple::VideoInfo {}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::simple::VideoInfo>
-    for crate::api::simple::VideoInfo
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::models::VideoInfo {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::models::VideoInfo>
+    for crate::api::models::VideoInfo
 {
-    fn into_into_dart(self) -> crate::api::simple::VideoInfo {
+    fn into_into_dart(self) -> crate::api::models::VideoInfo {
         self
     }
 }
@@ -1040,7 +1056,7 @@ impl SseEncode
 }
 
 impl SseEncode
-    for StreamSink<crate::api::simple::VideoFrame, flutter_rust_bridge::for_generated::SseCodec>
+    for StreamSink<crate::api::models::VideoFrame, flutter_rust_bridge::for_generated::SseCodec>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1086,12 +1102,12 @@ impl SseEncode for Vec<u8> {
     }
 }
 
-impl SseEncode for Option<crate::api::simple::Roi> {
+impl SseEncode for Option<crate::api::models::Roi> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
-            <crate::api::simple::Roi>::sse_encode(value, serializer);
+            <crate::api::models::Roi>::sse_encode(value, serializer);
         }
     }
 }
@@ -1106,7 +1122,7 @@ impl SseEncode for Option<u64> {
     }
 }
 
-impl SseEncode for crate::api::simple::Roi {
+impl SseEncode for crate::api::models::Roi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i32>::sse_encode(self.x, serializer);
@@ -1147,7 +1163,7 @@ impl SseEncode for usize {
     }
 }
 
-impl SseEncode for crate::api::simple::VideoFrame {
+impl SseEncode for crate::api::models::VideoFrame {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <Vec<u8>>::sse_encode(self.pixels, serializer);
@@ -1158,7 +1174,7 @@ impl SseEncode for crate::api::simple::VideoFrame {
     }
 }
 
-impl SseEncode for crate::api::simple::VideoInfo {
+impl SseEncode for crate::api::models::VideoInfo {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i32>::sse_encode(self.width, serializer);
@@ -1177,7 +1193,7 @@ mod io {
     // Section: imports
 
     use super::*;
-    use crate::api::simple::*;
+    use crate::api::gstreamer::*;
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
@@ -1214,7 +1230,7 @@ mod web {
     // Section: imports
 
     use super::*;
-    use crate::api::simple::*;
+    use crate::api::gstreamer::*;
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };

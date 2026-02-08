@@ -6,45 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `process_sample_no_roi`, `process_sample`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`
-
-String greet({required String name}) =>
-    RustLib.instance.api.crateApiSimpleGreet(name: name);
-
-String getGstreamerVersion() =>
-    RustLib.instance.api.crateApiSimpleGetGstreamerVersion();
-
-Future<VideoInfo> getVideoInfo({required String path}) =>
-    RustLib.instance.api.crateApiSimpleGetVideoInfo(path: path);
-
-Future<NativePlayer> createPlayer({required String path}) =>
-    RustLib.instance.api.crateApiSimpleCreatePlayer(path: path);
-
-Future<VideoFrame> getFrame({required String path, Roi? roi, BigInt? timeMs}) =>
-    RustLib.instance.api.crateApiSimpleGetFrame(
-      path: path,
-      roi: roi,
-      timeMs: timeMs,
-    );
-
-Future<void> playVideo({required String path}) =>
-    RustLib.instance.api.crateApiSimplePlayVideo(path: path);
-
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<NativePlayer>>
-abstract class NativePlayer implements RustOpaqueInterface {
-  Future<void> pause();
-
-  Future<void> resume();
-
-  Future<void> seek({required BigInt timeMs});
-
-  Future<void> setRoi({Roi? roi});
-
-  Stream<VideoFrame> start({Roi? roi, BigInt? startTimeMs});
-
-  Future<void> stop();
-}
 
 class Roi {
   final int x;
@@ -64,7 +26,7 @@ class Roi {
   });
 
   static Future<Roi> default_() =>
-      RustLib.instance.api.crateApiSimpleRoiDefault();
+      RustLib.instance.api.crateApiModelsRoiDefault();
 
   @override
   int get hashCode =>
@@ -104,7 +66,7 @@ class VideoFrame {
   });
 
   static Future<VideoFrame> default_() =>
-      RustLib.instance.api.crateApiSimpleVideoFrameDefault();
+      RustLib.instance.api.crateApiModelsVideoFrameDefault();
 
   @override
   int get hashCode =>
@@ -142,7 +104,7 @@ class VideoInfo {
   });
 
   static Future<VideoInfo> default_() =>
-      RustLib.instance.api.crateApiSimpleVideoInfoDefault();
+      RustLib.instance.api.crateApiModelsVideoInfoDefault();
 
   @override
   int get hashCode =>

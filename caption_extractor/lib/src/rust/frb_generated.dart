@@ -3,7 +3,8 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
-import 'api/simple.dart';
+import 'api/gstreamer.dart';
+import 'api/models.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
@@ -55,7 +56,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 
   @override
   Future<void> executeRustInitializers() async {
-    await api.crateApiSimpleInitApp();
+    await api.crateApiGstreamerInitApp();
   }
 
   @override
@@ -66,7 +67,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 259349631;
+  int get rustContentHash => -1594498884;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -77,51 +78,53 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  Future<void> crateApiSimpleNativePlayerPause({required NativePlayer that});
+  Future<void> crateApiGstreamerNativePlayerPause({required NativePlayer that});
 
-  Future<void> crateApiSimpleNativePlayerResume({required NativePlayer that});
+  Future<void> crateApiGstreamerNativePlayerResume({
+    required NativePlayer that,
+  });
 
-  Future<void> crateApiSimpleNativePlayerSeek({
+  Future<void> crateApiGstreamerNativePlayerSeek({
     required NativePlayer that,
     required BigInt timeMs,
   });
 
-  Future<void> crateApiSimpleNativePlayerSetRoi({
+  Future<void> crateApiGstreamerNativePlayerSetRoi({
     required NativePlayer that,
     Roi? roi,
   });
 
-  Stream<VideoFrame> crateApiSimpleNativePlayerStart({
+  Stream<VideoFrame> crateApiGstreamerNativePlayerStart({
     required NativePlayer that,
     Roi? roi,
     BigInt? startTimeMs,
   });
 
-  Future<void> crateApiSimpleNativePlayerStop({required NativePlayer that});
+  Future<void> crateApiGstreamerNativePlayerStop({required NativePlayer that});
 
-  Future<NativePlayer> crateApiSimpleCreatePlayer({required String path});
+  Future<NativePlayer> crateApiGstreamerCreatePlayer({required String path});
 
-  Future<VideoFrame> crateApiSimpleGetFrame({
+  Future<VideoFrame> crateApiGstreamerGetFrame({
     required String path,
     Roi? roi,
     BigInt? timeMs,
   });
 
-  String crateApiSimpleGetGstreamerVersion();
+  String crateApiGstreamerGetGstreamerVersion();
 
-  Future<VideoInfo> crateApiSimpleGetVideoInfo({required String path});
+  Future<VideoInfo> crateApiGstreamerGetVideoInfo({required String path});
 
-  String crateApiSimpleGreet({required String name});
+  String crateApiGstreamerGreet({required String name});
 
-  Future<void> crateApiSimpleInitApp();
+  Future<void> crateApiGstreamerInitApp();
 
-  Future<void> crateApiSimplePlayVideo({required String path});
+  Future<void> crateApiGstreamerInitGstreamer();
 
-  Future<Roi> crateApiSimpleRoiDefault();
+  Future<Roi> crateApiModelsRoiDefault();
 
-  Future<VideoFrame> crateApiSimpleVideoFrameDefault();
+  Future<VideoFrame> crateApiModelsVideoFrameDefault();
 
-  Future<VideoInfo> crateApiSimpleVideoInfoDefault();
+  Future<VideoInfo> crateApiModelsVideoInfoDefault();
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_NativePlayer;
@@ -141,7 +144,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  Future<void> crateApiSimpleNativePlayerPause({required NativePlayer that}) {
+  Future<void> crateApiGstreamerNativePlayerPause({
+    required NativePlayer that,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -161,18 +166,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_AnyhowException,
         ),
-        constMeta: kCrateApiSimpleNativePlayerPauseConstMeta,
+        constMeta: kCrateApiGstreamerNativePlayerPauseConstMeta,
         argValues: [that],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleNativePlayerPauseConstMeta =>
+  TaskConstMeta get kCrateApiGstreamerNativePlayerPauseConstMeta =>
       const TaskConstMeta(debugName: "NativePlayer_pause", argNames: ["that"]);
 
   @override
-  Future<void> crateApiSimpleNativePlayerResume({required NativePlayer that}) {
+  Future<void> crateApiGstreamerNativePlayerResume({
+    required NativePlayer that,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -192,18 +199,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_AnyhowException,
         ),
-        constMeta: kCrateApiSimpleNativePlayerResumeConstMeta,
+        constMeta: kCrateApiGstreamerNativePlayerResumeConstMeta,
         argValues: [that],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleNativePlayerResumeConstMeta =>
+  TaskConstMeta get kCrateApiGstreamerNativePlayerResumeConstMeta =>
       const TaskConstMeta(debugName: "NativePlayer_resume", argNames: ["that"]);
 
   @override
-  Future<void> crateApiSimpleNativePlayerSeek({
+  Future<void> crateApiGstreamerNativePlayerSeek({
     required NativePlayer that,
     required BigInt timeMs,
   }) {
@@ -227,21 +234,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_AnyhowException,
         ),
-        constMeta: kCrateApiSimpleNativePlayerSeekConstMeta,
+        constMeta: kCrateApiGstreamerNativePlayerSeekConstMeta,
         argValues: [that, timeMs],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleNativePlayerSeekConstMeta =>
+  TaskConstMeta get kCrateApiGstreamerNativePlayerSeekConstMeta =>
       const TaskConstMeta(
         debugName: "NativePlayer_seek",
         argNames: ["that", "timeMs"],
       );
 
   @override
-  Future<void> crateApiSimpleNativePlayerSetRoi({
+  Future<void> crateApiGstreamerNativePlayerSetRoi({
     required NativePlayer that,
     Roi? roi,
   }) {
@@ -265,21 +272,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiSimpleNativePlayerSetRoiConstMeta,
+        constMeta: kCrateApiGstreamerNativePlayerSetRoiConstMeta,
         argValues: [that, roi],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleNativePlayerSetRoiConstMeta =>
+  TaskConstMeta get kCrateApiGstreamerNativePlayerSetRoiConstMeta =>
       const TaskConstMeta(
         debugName: "NativePlayer_set_roi",
         argNames: ["that", "roi"],
       );
 
   @override
-  Stream<VideoFrame> crateApiSimpleNativePlayerStart({
+  Stream<VideoFrame> crateApiGstreamerNativePlayerStart({
     required NativePlayer that,
     Roi? roi,
     BigInt? startTimeMs,
@@ -308,7 +315,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             decodeSuccessData: sse_decode_unit,
             decodeErrorData: sse_decode_AnyhowException,
           ),
-          constMeta: kCrateApiSimpleNativePlayerStartConstMeta,
+          constMeta: kCrateApiGstreamerNativePlayerStartConstMeta,
           argValues: [that, roi, startTimeMs, sink],
           apiImpl: this,
         ),
@@ -317,14 +324,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return sink.stream;
   }
 
-  TaskConstMeta get kCrateApiSimpleNativePlayerStartConstMeta =>
+  TaskConstMeta get kCrateApiGstreamerNativePlayerStartConstMeta =>
       const TaskConstMeta(
         debugName: "NativePlayer_start",
         argNames: ["that", "roi", "startTimeMs", "sink"],
       );
 
   @override
-  Future<void> crateApiSimpleNativePlayerStop({required NativePlayer that}) {
+  Future<void> crateApiGstreamerNativePlayerStop({required NativePlayer that}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -344,18 +351,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_AnyhowException,
         ),
-        constMeta: kCrateApiSimpleNativePlayerStopConstMeta,
+        constMeta: kCrateApiGstreamerNativePlayerStopConstMeta,
         argValues: [that],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleNativePlayerStopConstMeta =>
+  TaskConstMeta get kCrateApiGstreamerNativePlayerStopConstMeta =>
       const TaskConstMeta(debugName: "NativePlayer_stop", argNames: ["that"]);
 
   @override
-  Future<NativePlayer> crateApiSimpleCreatePlayer({required String path}) {
+  Future<NativePlayer> crateApiGstreamerCreatePlayer({required String path}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -373,18 +380,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
               sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer,
           decodeErrorData: sse_decode_AnyhowException,
         ),
-        constMeta: kCrateApiSimpleCreatePlayerConstMeta,
+        constMeta: kCrateApiGstreamerCreatePlayerConstMeta,
         argValues: [path],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleCreatePlayerConstMeta =>
+  TaskConstMeta get kCrateApiGstreamerCreatePlayerConstMeta =>
       const TaskConstMeta(debugName: "create_player", argNames: ["path"]);
 
   @override
-  Future<VideoFrame> crateApiSimpleGetFrame({
+  Future<VideoFrame> crateApiGstreamerGetFrame({
     required String path,
     Roi? roi,
     BigInt? timeMs,
@@ -407,20 +414,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_video_frame,
           decodeErrorData: sse_decode_AnyhowException,
         ),
-        constMeta: kCrateApiSimpleGetFrameConstMeta,
+        constMeta: kCrateApiGstreamerGetFrameConstMeta,
         argValues: [path, roi, timeMs],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleGetFrameConstMeta => const TaskConstMeta(
+  TaskConstMeta get kCrateApiGstreamerGetFrameConstMeta => const TaskConstMeta(
     debugName: "get_frame",
     argNames: ["path", "roi", "timeMs"],
   );
 
   @override
-  String crateApiSimpleGetGstreamerVersion() {
+  String crateApiGstreamerGetGstreamerVersion() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
@@ -431,18 +438,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_String,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiSimpleGetGstreamerVersionConstMeta,
+        constMeta: kCrateApiGstreamerGetGstreamerVersionConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleGetGstreamerVersionConstMeta =>
+  TaskConstMeta get kCrateApiGstreamerGetGstreamerVersionConstMeta =>
       const TaskConstMeta(debugName: "get_gstreamer_version", argNames: []);
 
   @override
-  Future<VideoInfo> crateApiSimpleGetVideoInfo({required String path}) {
+  Future<VideoInfo> crateApiGstreamerGetVideoInfo({required String path}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -459,18 +466,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_video_info,
           decodeErrorData: sse_decode_AnyhowException,
         ),
-        constMeta: kCrateApiSimpleGetVideoInfoConstMeta,
+        constMeta: kCrateApiGstreamerGetVideoInfoConstMeta,
         argValues: [path],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleGetVideoInfoConstMeta =>
+  TaskConstMeta get kCrateApiGstreamerGetVideoInfoConstMeta =>
       const TaskConstMeta(debugName: "get_video_info", argNames: ["path"]);
 
   @override
-  String crateApiSimpleGreet({required String name}) {
+  String crateApiGstreamerGreet({required String name}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
@@ -482,18 +489,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_String,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiSimpleGreetConstMeta,
+        constMeta: kCrateApiGstreamerGreetConstMeta,
         argValues: [name],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleGreetConstMeta =>
+  TaskConstMeta get kCrateApiGstreamerGreetConstMeta =>
       const TaskConstMeta(debugName: "greet", argNames: ["name"]);
 
   @override
-  Future<void> crateApiSimpleInitApp() {
+  Future<void> crateApiGstreamerInitApp() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -509,23 +516,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiSimpleInitAppConstMeta,
+        constMeta: kCrateApiGstreamerInitAppConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleInitAppConstMeta =>
+  TaskConstMeta get kCrateApiGstreamerInitAppConstMeta =>
       const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
-  Future<void> crateApiSimplePlayVideo({required String path}) {
+  Future<void> crateApiGstreamerInitGstreamer() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(path, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -537,18 +543,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_AnyhowException,
         ),
-        constMeta: kCrateApiSimplePlayVideoConstMeta,
-        argValues: [path],
+        constMeta: kCrateApiGstreamerInitGstreamerConstMeta,
+        argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimplePlayVideoConstMeta =>
-      const TaskConstMeta(debugName: "play_video", argNames: ["path"]);
+  TaskConstMeta get kCrateApiGstreamerInitGstreamerConstMeta =>
+      const TaskConstMeta(debugName: "init_gstreamer", argNames: []);
 
   @override
-  Future<Roi> crateApiSimpleRoiDefault() {
+  Future<Roi> crateApiModelsRoiDefault() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -564,18 +570,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_roi,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiSimpleRoiDefaultConstMeta,
+        constMeta: kCrateApiModelsRoiDefaultConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleRoiDefaultConstMeta =>
+  TaskConstMeta get kCrateApiModelsRoiDefaultConstMeta =>
       const TaskConstMeta(debugName: "roi_default", argNames: []);
 
   @override
-  Future<VideoFrame> crateApiSimpleVideoFrameDefault() {
+  Future<VideoFrame> crateApiModelsVideoFrameDefault() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -591,18 +597,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_video_frame,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiSimpleVideoFrameDefaultConstMeta,
+        constMeta: kCrateApiModelsVideoFrameDefaultConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleVideoFrameDefaultConstMeta =>
+  TaskConstMeta get kCrateApiModelsVideoFrameDefaultConstMeta =>
       const TaskConstMeta(debugName: "video_frame_default", argNames: []);
 
   @override
-  Future<VideoInfo> crateApiSimpleVideoInfoDefault() {
+  Future<VideoInfo> crateApiModelsVideoInfoDefault() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -618,14 +624,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_video_info,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiSimpleVideoInfoDefaultConstMeta,
+        constMeta: kCrateApiModelsVideoInfoDefaultConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSimpleVideoInfoDefaultConstMeta =>
+  TaskConstMeta get kCrateApiModelsVideoInfoDefaultConstMeta =>
       const TaskConstMeta(debugName: "video_info_default", argNames: []);
 
   RustArcIncrementStrongCountFnType
@@ -1200,24 +1206,24 @@ class NativePlayerImpl extends RustOpaque implements NativePlayer {
   );
 
   Future<void> pause() =>
-      RustLib.instance.api.crateApiSimpleNativePlayerPause(that: this);
+      RustLib.instance.api.crateApiGstreamerNativePlayerPause(that: this);
 
   Future<void> resume() =>
-      RustLib.instance.api.crateApiSimpleNativePlayerResume(that: this);
+      RustLib.instance.api.crateApiGstreamerNativePlayerResume(that: this);
 
   Future<void> seek({required BigInt timeMs}) => RustLib.instance.api
-      .crateApiSimpleNativePlayerSeek(that: this, timeMs: timeMs);
+      .crateApiGstreamerNativePlayerSeek(that: this, timeMs: timeMs);
 
   Future<void> setRoi({Roi? roi}) => RustLib.instance.api
-      .crateApiSimpleNativePlayerSetRoi(that: this, roi: roi);
+      .crateApiGstreamerNativePlayerSetRoi(that: this, roi: roi);
 
   Stream<VideoFrame> start({Roi? roi, BigInt? startTimeMs}) =>
-      RustLib.instance.api.crateApiSimpleNativePlayerStart(
+      RustLib.instance.api.crateApiGstreamerNativePlayerStart(
         that: this,
         roi: roi,
         startTimeMs: startTimeMs,
       );
 
   Future<void> stop() =>
-      RustLib.instance.api.crateApiSimpleNativePlayerStop(that: this);
+      RustLib.instance.api.crateApiGstreamerNativePlayerStop(that: this);
 }

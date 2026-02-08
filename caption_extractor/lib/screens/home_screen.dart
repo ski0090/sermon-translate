@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:caption_extractor/src/rust/api/simple.dart';
+import 'package:caption_extractor/src/rust/api/gstreamer.dart';
+import 'package:caption_extractor/src/rust/api/models.dart';
 import '../widgets/video_info_card.dart';
 import '../widgets/video_player_view.dart';
 

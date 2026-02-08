@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:caption_extractor/src/rust/api/simple.dart';
+import 'package:caption_extractor/src/rust/api/models.dart';
 
 class RoiSelector extends StatefulWidget {
   final Size videoSize;
@@ -316,14 +316,14 @@ class _RoiSelectorState extends State<RoiSelector> {
 
   BigInt _parseMs(String text) {
     if (text.isEmpty) return BigInt.zero;
-    
+
     final parts = text.split(':');
     if (parts.length == 2) {
       final minutes = int.tryParse(parts[0]) ?? 0;
       final seconds = int.tryParse(parts[1]) ?? 0;
       return BigInt.from((minutes * 60 + seconds) * 1000);
     }
-    
+
     // 포맷이 맞지 않으면 숫자로만 파싱 시도 (기존 호환성)
     return BigInt.tryParse(text) ?? BigInt.zero;
   }

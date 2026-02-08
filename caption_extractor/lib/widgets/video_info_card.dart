@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:caption_extractor/src/rust/api/simple.dart';
+import 'package:caption_extractor/src/rust/api/models.dart';
 
 class VideoInfoCard extends StatelessWidget {
   final String fileName;
