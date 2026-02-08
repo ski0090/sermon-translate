@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:caption_extractor/src/rust/api/gstreamer.dart';
 import 'package:caption_extractor/src/rust/api/models.dart';
-import 'roi_selector.dart';
 import 'roi_player.dart';
+import 'video/video_sidebar.dart';
+import 'video/video_screen.dart';
+import 'video/video_controls_bar.dart';
 
 class VideoPlayerView extends StatefulWidget {
   final String path;
@@ -269,6 +271,74 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     });
   }
 
+  void _onRoiModeToggle() {
+    setState(() {
+      _isRoiMode = !_isRoiMode;
+      if (_isRoiMode) {
+        _player?.pause();
+        _isPlaying = false;
+        _loadThumbnail(roi: null, timeMs: _currentPositionMs);
+
+        // 클릭한 시점을 ROI 시작 시간으로 설정
+        if (_selectedRoi == null) {
+          _selectedRoi = Roi(
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            startTimeMs: BigInt.from(_currentPositionMs),
+            endTimeMs: BigInt.zero,
+          );
+        } else {
+          final old = _selectedRoi!;
+          _selectedRoi = Roi(
+            x: old.x,
+            y: old.y,
+            width: old.width,
+            height: old.height,
+            startTimeMs: BigInt.from(_currentPositionMs),
+            endTimeMs: old.endTimeMs,
+          );
+        }
+
+        _loadRoiThumbnail();
+      } else {
+        _player?.setRoi(roi: _selectedRoi);
+        _loadRoiThumbnail();
+      }
+    });
+  }
+
+  void _onResetRoi() {
+    setState(() {
+      _selectedRoi = null;
+      _videoStream = null;
+      _roiStream = null;
+    });
+    _loadThumbnail();
+  }
+
+  void _onIntervalChanged(int value) {
+    setState(() {
+      _selectedIntervalMs = value;
+    });
+  }
+
+  void _onRoiChanged(Roi? roi) {
+    if (roi == null) return;
+    setState(() {
+      _selectedRoi = roi;
+    });
+    _player?.setRoi(roi: roi);
+
+    // 일시정지 상태라면 현재 위치로 seek하여 프리뷰 스트림 갱신 유도
+    if (!_isPlaying && _player != null) {
+      _player?.seek(timeMs: BigInt.from(_currentPositionMs));
+    }
+
+    _loadRoiThumbnail();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -278,93 +348,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         children: [
           Expanded(
             flex: 1,
-            child: Column(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _isRoiMode = !_isRoiMode;
-                      if (_isRoiMode) {
-                        _player?.pause();
-                        _isPlaying = false;
-                        _loadThumbnail(roi: null, timeMs: _currentPositionMs);
-
-                        // 클릭한 시점을 ROI 시작 시간으로 설정
-                        if (_selectedRoi == null) {
-                          _selectedRoi = Roi(
-                            x: 0,
-                            y: 0,
-                            width: 0,
-                            height: 0,
-                            startTimeMs: BigInt.from(_currentPositionMs),
-                            endTimeMs: BigInt.zero,
-                          );
-                        } else {
-                          final old = _selectedRoi!;
-                          _selectedRoi = Roi(
-                            x: old.x,
-                            y: old.y,
-                            width: old.width,
-                            height: old.height,
-                            startTimeMs: BigInt.from(_currentPositionMs),
-                            endTimeMs: old.endTimeMs,
-                          );
-                        }
-
-                        _loadRoiThumbnail();
-                      } else {
-                        _player?.setRoi(roi: _selectedRoi);
-                        _loadRoiThumbnail();
-                      }
-                    });
-                  },
-                  icon: Icon(_isRoiMode ? Icons.check : Icons.crop),
-                  label: const Text('영역 선택', overflow: TextOverflow.ellipsis),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _isRoiMode ? Colors.green : null,
-                    foregroundColor: _isRoiMode ? Colors.white : null,
-                    minimumSize: const Size(double.infinity, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                  ),
-                ),
-                if (_selectedRoi != null) ...[
-                  const SizedBox(height: 12),
-                  TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _selectedRoi = null;
-                        _videoStream = null;
-                        _roiStream = null;
-                      });
-                      _loadThumbnail();
-                    },
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('초기화', overflow: TextOverflow.ellipsis),
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                const Divider(),
-                const SizedBox(height: 12),
-                const Text(
-                  '이동 단위',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      _buildIntervalOption('1프레임', -1),
-                      _buildIntervalOption('1초', 1000),
-                      _buildIntervalOption('5초', 5000),
-                      _buildIntervalOption('10초', 10000),
-                    ],
-                  ),
-                ),
-              ],
+            child: VideoPlayerSidebar(
+              isRoiMode: _isRoiMode,
+              selectedRoi: _selectedRoi,
+              selectedIntervalMs: _selectedIntervalMs,
+              onRoiModeToggle: _onRoiModeToggle,
+              onResetRoi: _onResetRoi,
+              onIntervalChanged: _onIntervalChanged,
             ),
           ),
           const SizedBox(width: 16),
@@ -372,229 +362,34 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             flex: 5,
             child: Column(
               children: [
-                _buildVideoArea(),
-                const SizedBox(height: 8),
-                _buildPlayerControls(),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            flex: 2,
-            child: RoiPlayer(roiStream: _roiStream, staticImage: _roiThumbnail),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVideoArea() {
-    final double aspectRatio = widget.videoInfo.width / widget.videoInfo.height;
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 500),
-      child: AspectRatio(
-        aspectRatio: aspectRatio,
-        child: _buildVideoContainer(
-          Stack(
-            fit: StackFit.expand,
-            children: [
-              if (_videoStream != null)
-                GestureDetector(
+                VideoPlayerScreen(
+                  videoStream: _videoStream,
+                  thumbnail: _thumbnail,
+                  isLoadingThumbnail: _isLoadingThumbnail,
+                  isRoiMode: _isRoiMode,
+                  selectedRoi: _selectedRoi,
+                  videoInfo: widget.videoInfo,
+                  isSeeking: _isSeeking,
+                  lastWidgetSize: _lastWidgetSize,
+                  onRoiChanged: _onRoiChanged,
+                  onSizeLayout: (size) {
+                    setState(() {
+                      _lastWidgetSize = size;
+                    });
+                  },
                   onTap: () {
                     if (!_isRoiMode) {
                       _togglePlayPause();
                     }
                   },
-                  child: StreamBuilder<ui.Image>(
-                    stream: _videoStream,
-                    builder: (context, snapshot) {
-                      if (snapshot.hasData) {
-                        return RawImage(
-                          image: snapshot.data!,
-                          fit: BoxFit.fill,
-                        );
-                      }
-                      if (snapshot.hasError) {
-                        return _buildErrorWidget(snapshot.error.toString());
-                      }
-                      return _buildLoadingWidget('스트리밍 대기 중...');
-                    },
-                  ),
-                )
-              else if (_thumbnail != null)
-                GestureDetector(
-                  onTap: () {
-                    if (!_isRoiMode) {
-                      _startStreaming(roi: _selectedRoi);
-                    }
-                  },
-                  child: Stack(
-                    alignment: Alignment.center,
-                    fit: StackFit.expand,
-                    children: [
-                      RawImage(image: _thumbnail!, fit: BoxFit.fill),
-                      if (!_isRoiMode)
-                        Center(
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: const BoxDecoration(
-                              color: Colors.black45,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.play_arrow,
-                              size: 48,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                )
-              else if (_isLoadingThumbnail)
-                _buildLoadingWidget('썸네일 로드 중...')
-              else
-                _buildErrorWidget('비디오를 로드할 수 없습니다.'),
-              if (_isRoiMode)
-                Positioned.fill(
-                  child: RoiSelector(
-                    videoSize: Size(
-                      widget.videoInfo.width.toDouble(),
-                      widget.videoInfo.height.toDouble(),
-                    ),
-                    initialRoi: _selectedRoi,
-                    onRoiChanged: (roi) {
-                      setState(() {
-                        _selectedRoi = roi;
-                      });
-                      _player?.setRoi(roi: roi);
-
-                      // 일시정지 상태라면 현재 위치로 seek하여 프리뷰 스트림 갱신 유도
-                      if (!_isPlaying && _player != null) {
-                        _player?.seek(timeMs: BigInt.from(_currentPositionMs));
-                      }
-
-                      _loadRoiThumbnail();
-                    },
-                  ),
-                )
-              else if (_selectedRoi != null)
-                Positioned(
-                  left:
-                      (_selectedRoi!.x / widget.videoInfo.width) *
-                      _lastWidgetSize.width,
-                  top:
-                      (_selectedRoi!.y / widget.videoInfo.height) *
-                      _lastWidgetSize.height,
-                  width:
-                      (_selectedRoi!.width / widget.videoInfo.width) *
-                      _lastWidgetSize.width,
-                  height:
-                      (_selectedRoi!.height / widget.videoInfo.height) *
-                      _lastWidgetSize.height,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.red, width: 2),
-                      color: Colors.red.withAlpha(100),
-                    ),
-                  ),
                 ),
-              if (_isSeeking)
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.black45,
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const CircularProgressIndicator(color: Colors.white),
-                          const SizedBox(height: 16),
-                          const Text(
-                            '이동 중...',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          onSizeLayout: (size) {
-            _lastWidgetSize = size;
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVideoContainer(Widget child, {Function(Size)? onSizeLayout}) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (onSizeLayout != null) {
-            final box = context.findRenderObject() as RenderBox?;
-            if (box != null && box.hasSize) {
-              onSizeLayout(box.size);
-            }
-          }
-        });
-
-        return Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.blue.withAlpha(100), width: 2),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(100),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: child,
-        );
-      },
-    );
-  }
-
-  Widget _buildPlayerControls() {
-    final duration = widget.videoInfo.durationMs.toInt();
-    if (duration <= 0) return const SizedBox.shrink();
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            IconButton(
-              onPressed: _togglePlayPause,
-              icon: Icon(_isPlaying ? Icons.pause_circle : Icons.play_circle),
-              iconSize: 36,
-              color: Colors.blue,
-            ),
-            Expanded(
-              child: SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 4,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 6,
-                  ),
-                  overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 14,
-                  ),
-                ),
-                child: Slider(
-                  value: _currentPositionMs.toDouble().clamp(
-                    0,
-                    duration.toDouble(),
-                  ),
-                  max: duration.toDouble(),
-                  onChanged: (value) {
+                const SizedBox(height: 8),
+                VideoPlayerControlsBar(
+                  isPlaying: _isPlaying,
+                  currentPositionMs: _currentPositionMs,
+                  durationMs: widget.videoInfo.durationMs.toInt(),
+                  onTogglePlayPause: _togglePlayPause,
+                  onSeek: (value) {
                     setState(() {
                       _isDragging = true;
                       _currentPositionMs = value.toInt();
@@ -603,7 +398,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                       _player?.seek(timeMs: BigInt.from(value.toInt()));
                     }
                   },
-                  onChangeEnd: (value) async {
+                  onSeekEnd: (value) async {
                     setState(() {
                       _isSeeking = true;
                       _isDragging = true;
@@ -634,97 +429,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                     });
                   },
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const SizedBox(width: 48), // 재생 버튼 공간 보정
-              Text(
-                _formatDuration(_currentPositionMs),
-                style: const TextStyle(
-                  fontFeatures: [ui.FontFeature.tabularFigures()],
-                ),
-              ),
-              Text(
-                _formatDuration(duration),
-                style: const TextStyle(
-                  fontFeatures: [ui.FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
           ),
-        ),
-      ],
-    );
-  }
-
-  String _formatDuration(int ms) {
-    final totalSeconds = ms ~/ 1000;
-    final minutes = totalSeconds ~/ 60;
-    final seconds = totalSeconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-
-  Widget _buildLoadingWidget(String message) {
-    return Container(
-      height: 200,
-      width: double.infinity,
-      alignment: Alignment.center,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CircularProgressIndicator(),
-          const SizedBox(height: 16),
-          Text(message),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorWidget(String error) {
-    return Container(
-      height: 200,
-      width: double.infinity,
-      alignment: Alignment.center,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, color: Colors.red, size: 40),
-          const SizedBox(height: 10),
-          Text('오류: $error', textAlign: TextAlign.center),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIntervalOption(String label, int value) {
-    final isSelected = _selectedIntervalMs == value;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: OutlinedButton(
-        onPressed: () {
-          setState(() {
-            _selectedIntervalMs = value;
-          });
-        },
-        style: OutlinedButton.styleFrom(
-          backgroundColor: isSelected ? Colors.blue.shade50 : null,
-          side: BorderSide(
-            color: isSelected ? Colors.blue : Colors.grey.shade300,
-            width: isSelected ? 2 : 1,
+          const SizedBox(width: 16),
+          Expanded(
+            flex: 2,
+            child: RoiPlayer(roiStream: _roiStream, staticImage: _roiThumbnail),
           ),
-          foregroundColor: isSelected
-              ? Colors.blue.shade700
-              : Colors.grey.shade700,
-          minimumSize: const Size(double.infinity, 40),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: Text(label),
+        ],
       ),
     );
   }
