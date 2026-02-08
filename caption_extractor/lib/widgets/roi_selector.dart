@@ -48,8 +48,8 @@ class _RoiSelectorState extends State<RoiSelector> {
       final roi = widget.initialRoi!;
       _startTimeMs = roi.startTimeMs;
       _endTimeMs = roi.endTimeMs;
-      _startController.text = _startTimeMs.toString();
-      _endController.text = _endTimeMs.toString();
+      _startController.text = _formatMs(_startTimeMs);
+      _endController.text = _formatMs(_endTimeMs);
     }
   }
 
@@ -293,18 +293,39 @@ class _RoiSelectorState extends State<RoiSelector> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildTimeField('시작(ms)', _startController, (val) {
-            setState(() => _startTimeMs = BigInt.tryParse(val) ?? BigInt.zero);
+          _buildTimeField('시작', _startController, (val) {
+            setState(() => _startTimeMs = _parseMs(val));
             _notifyChanged(containerSize);
           }),
           const SizedBox(height: 4),
-          _buildTimeField('종료(ms)', _endController, (val) {
-            setState(() => _endTimeMs = BigInt.tryParse(val) ?? BigInt.zero);
+          _buildTimeField('종료', _endController, (val) {
+            setState(() => _endTimeMs = _parseMs(val));
             _notifyChanged(containerSize);
           }),
         ],
       ),
     );
+  }
+
+  String _formatMs(BigInt ms) {
+    final totalSeconds = ms.toInt() ~/ 1000;
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  BigInt _parseMs(String text) {
+    if (text.isEmpty) return BigInt.zero;
+    
+    final parts = text.split(':');
+    if (parts.length == 2) {
+      final minutes = int.tryParse(parts[0]) ?? 0;
+      final seconds = int.tryParse(parts[1]) ?? 0;
+      return BigInt.from((minutes * 60 + seconds) * 1000);
+    }
+    
+    // 포맷이 맞지 않으면 숫자로만 파싱 시도 (기존 호환성)
+    return BigInt.tryParse(text) ?? BigInt.zero;
   }
 
   Widget _buildTimeField(

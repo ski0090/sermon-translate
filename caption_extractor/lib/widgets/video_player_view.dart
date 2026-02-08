@@ -182,6 +182,29 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                         _player?.pause();
                         _isPlaying = false;
                         _loadThumbnail(roi: null, timeMs: _currentPositionMs);
+
+                        // 클릭한 시점을 ROI 시작 시간으로 설정
+                        if (_selectedRoi == null) {
+                          _selectedRoi = Roi(
+                            x: 0,
+                            y: 0,
+                            width: 0,
+                            height: 0,
+                            startTimeMs: BigInt.from(_currentPositionMs),
+                            endTimeMs: BigInt.zero,
+                          );
+                        } else {
+                          final old = _selectedRoi!;
+                          _selectedRoi = Roi(
+                            x: old.x,
+                            y: old.y,
+                            width: old.width,
+                            height: old.height,
+                            startTimeMs: BigInt.from(_currentPositionMs),
+                            endTimeMs: old.endTimeMs,
+                          );
+                        }
+
                         _loadRoiThumbnail();
                       } else {
                         _player?.setRoi(roi: _selectedRoi);
@@ -463,10 +486,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   String _formatDuration(int ms) {
-    final duration = Duration(milliseconds: ms);
-    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
+    final totalSeconds = ms ~/ 1000;
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
   Widget _buildLoadingWidget(String message) {
