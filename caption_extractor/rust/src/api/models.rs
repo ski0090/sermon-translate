@@ -25,3 +25,16 @@ pub struct VideoInfo {
     pub format: String,
     pub fps: f64,
 }
+
+#[derive(Debug, Clone, Default)]
+pub struct CaptionResult {
+    pub text: String,
+    pub confidence: f32,
+    pub timestamp_ms: u64,
+}
+
+#[derive(Debug, Clone)]
+pub enum PlayerEvent {
+    Video(VideoFrame),
+    Caption(CaptionResult),
+}

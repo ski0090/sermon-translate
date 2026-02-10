@@ -1,3 +1,4 @@
 pub mod api;
-mod frb_generated;
 pub mod gstreamer;
+pub mod ocr;
+pub mod frb_generated;

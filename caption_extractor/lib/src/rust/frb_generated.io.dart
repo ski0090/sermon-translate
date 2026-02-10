@@ -45,7 +45,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<VideoFrame> dco_decode_StreamSink_video_frame_Sse(dynamic raw);
+  RustStreamSink<PlayerEvent> dco_decode_StreamSink_player_event_Sse(
+    dynamic raw,
+  );
 
   @protected
   String dco_decode_String(dynamic raw);
@@ -54,10 +56,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
+  CaptionResult dco_decode_box_autoadd_caption_result(dynamic raw);
+
+  @protected
   Roi dco_decode_box_autoadd_roi(dynamic raw);
 
   @protected
   BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+
+  @protected
+  VideoFrame dco_decode_box_autoadd_video_frame(dynamic raw);
+
+  @protected
+  CaptionResult dco_decode_caption_result(dynamic raw);
+
+  @protected
+  double dco_decode_f_32(dynamic raw);
 
   @protected
   double dco_decode_f_64(dynamic raw);
@@ -73,6 +87,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
+
+  @protected
+  PlayerEvent dco_decode_player_event(dynamic raw);
 
   @protected
   Roi dco_decode_roi(dynamic raw);
@@ -117,7 +134,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  RustStreamSink<VideoFrame> sse_decode_StreamSink_video_frame_Sse(
+  RustStreamSink<PlayerEvent> sse_decode_StreamSink_player_event_Sse(
     SseDeserializer deserializer,
   );
 
@@ -128,10 +145,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
+  CaptionResult sse_decode_box_autoadd_caption_result(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   Roi sse_decode_box_autoadd_roi(SseDeserializer deserializer);
 
   @protected
   BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
+  VideoFrame sse_decode_box_autoadd_video_frame(SseDeserializer deserializer);
+
+  @protected
+  CaptionResult sse_decode_caption_result(SseDeserializer deserializer);
+
+  @protected
+  double sse_decode_f_32(SseDeserializer deserializer);
 
   @protected
   double sse_decode_f_64(SseDeserializer deserializer);
@@ -147,6 +178,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
+  PlayerEvent sse_decode_player_event(SseDeserializer deserializer);
 
   @protected
   Roi sse_decode_roi(SseDeserializer deserializer);
@@ -197,8 +231,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_StreamSink_video_frame_Sse(
-    RustStreamSink<VideoFrame> self,
+  void sse_encode_StreamSink_player_event_Sse(
+    RustStreamSink<PlayerEvent> self,
     SseSerializer serializer,
   );
 
@@ -209,10 +243,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_caption_result(
+    CaptionResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_roi(Roi self, SseSerializer serializer);
 
   @protected
   void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_video_frame(
+    VideoFrame self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_caption_result(CaptionResult self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_f_32(double self, SseSerializer serializer);
 
   @protected
   void sse_encode_f_64(double self, SseSerializer serializer);
@@ -231,6 +283,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_player_event(PlayerEvent self, SseSerializer serializer);
 
   @protected
   void sse_encode_roi(Roi self, SseSerializer serializer);

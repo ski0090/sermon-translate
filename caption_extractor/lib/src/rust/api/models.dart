@@ -5,8 +5,46 @@
 
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
+part 'models.freezed.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+
+class CaptionResult {
+  final String text;
+  final double confidence;
+  final BigInt timestampMs;
+
+  const CaptionResult({
+    required this.text,
+    required this.confidence,
+    required this.timestampMs,
+  });
+
+  static Future<CaptionResult> default_() =>
+      RustLib.instance.api.crateApiModelsCaptionResultDefault();
+
+  @override
+  int get hashCode =>
+      text.hashCode ^ confidence.hashCode ^ timestampMs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CaptionResult &&
+          runtimeType == other.runtimeType &&
+          text == other.text &&
+          confidence == other.confidence &&
+          timestampMs == other.timestampMs;
+}
+
+@freezed
+sealed class PlayerEvent with _$PlayerEvent {
+  const PlayerEvent._();
+
+  const factory PlayerEvent.video(VideoFrame field0) = PlayerEvent_Video;
+  const factory PlayerEvent.caption(CaptionResult field0) = PlayerEvent_Caption;
+}
 
 class Roi {
   final int x;

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:caption_extractor/src/rust/api/gstreamer.dart';
 import 'package:caption_extractor/src/rust/api/models.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'roi_player.dart';
 import 'video/video_sidebar.dart';
 import 'video/video_screen.dart';
@@ -38,6 +39,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   final FocusNode _focusNode = FocusNode();
   bool _isSeeking = false;
   int _selectedIntervalMs = 5000; // 기본 5초
+  CaptionResult? _currentCaption;
+  final List<CaptionResult> _captionHistory = [];
 
   @override
   void initState() {
@@ -238,7 +241,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       }
     }
 
-    final baseStream = _player!
+    // start()가 이제 Stream<PlayerEvent>를 직접 반환합니다.
+    final eventStream = _player!
         .start(
           roi: roi,
           startTimeMs: startTimeMs != null ? BigInt.from(startTimeMs) : null,
@@ -247,7 +251,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
     setState(() {
       _isPlaying = true;
-      _videoStream = baseStream
+      _videoStream = eventStream
+          .where((event) => event is PlayerEvent_Video)
+          .map((event) => (event as PlayerEvent_Video).field0)
           .where((frame) => !frame.isCropped)
           .map((frame) {
             if (mounted) {
@@ -265,9 +271,26 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           })
           .asyncMap(_convertFrameToImage);
 
-      _roiStream = baseStream
+      _roiStream = eventStream
+          .where((event) => event is PlayerEvent_Video)
+          .map((event) => (event as PlayerEvent_Video).field0)
           .where((frame) => frame.isCropped)
           .asyncMap(_convertFrameToImage);
+    });
+
+    eventStream.listen((event) {
+      if (event is PlayerEvent_Caption) {
+        final caption = event.field0;
+        if (mounted) {
+          setState(() {
+            _currentCaption = caption;
+            if (_captionHistory.isEmpty ||
+                _captionHistory.last.text != caption.text) {
+              _captionHistory.add(caption);
+            }
+          });
+        }
+      }
     });
   }
 
@@ -429,6 +452,53 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                     });
                   },
                 ),
+                if (_currentCaption != null) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.blueAccent.withOpacity(0.5),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              '추출된 자막',
+                              style: TextStyle(
+                                color: Colors.blueAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '확신도: ${(_currentCaption!.confidence * 100).toStringAsFixed(1)}%',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.5),
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _currentCaption!.text,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

@@ -41,7 +41,7 @@ abstract class NativePlayer implements RustOpaqueInterface {
 
   Future<void> setRoi({Roi? roi});
 
-  Stream<VideoFrame> start({Roi? roi, BigInt? startTimeMs});
+  Stream<PlayerEvent> start({Roi? roi, BigInt? startTimeMs});
 
   Future<void> stop();
 }

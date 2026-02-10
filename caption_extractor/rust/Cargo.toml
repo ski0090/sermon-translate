@@ -12,6 +12,8 @@ gstreamer = "0.21"
 gstreamer-app = "0.21"
 gstreamer-video = "0.21"
 gstreamer-pbutils = "0.21"
+image = "0.24"
+leptess = "0.14"
 anyhow = "1.0"
 
 [lints.rust]

@@ -1,13 +1,17 @@
-use crate::api::models::{Roi, VideoFrame, VideoInfo};
+use crate::api::models::{CaptionResult, PlayerEvent, Roi, VideoFrame, VideoInfo};
 use crate::frb_generated::StreamSink;
 use crate::gstreamer::utils;
+use crate::ocr::OcrEngine;
 use anyhow::Result;
 use gstreamer::prelude::*;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 pub struct NativePlayer {
     pipeline: gstreamer::Pipeline,
     roi: Arc<Mutex<Option<Roi>>>,
+    ocr_engine: Arc<Mutex<OcrEngine>>,
+    last_ocr_time: Arc<Mutex<Instant>>,
 }
 
 #[flutter_rust_bridge::frb(sync)]
@@ -43,6 +47,8 @@ pub fn create_player(path: String) -> Result<NativePlayer> {
     Ok(NativePlayer {
         pipeline,
         roi: Arc::new(Mutex::new(None)),
+        ocr_engine: Arc::new(Mutex::new(OcrEngine::new("kor+eng")?)),
+        last_ocr_time: Arc::new(Mutex::new(Instant::now())),
     })
 }
 
@@ -127,7 +133,7 @@ impl NativePlayer {
         &self,
         roi: Option<Roi>,
         start_time_ms: Option<u64>,
-        sink: StreamSink<VideoFrame>,
+        sink: StreamSink<PlayerEvent>,
     ) -> Result<()> {
         let orig_sink = self
             .pipeline
@@ -162,13 +168,13 @@ impl NativePlayer {
                             .pull_sample()
                             .map_err(|_| gstreamer::FlowError::Error)?;
                         let (pixels, width, height, pts) = process_sample_no_roi(&sample)?;
-                        let _ = sink_clone.add(VideoFrame {
+                        let _ = sink_clone.add(PlayerEvent::Video(VideoFrame {
                             pixels,
                             width,
                             height,
                             is_cropped: false,
                             timestamp_ms: pts,
-                        });
+                        }));
                         Ok(gstreamer::FlowSuccess::Ok)
                     })
                     .new_preroll(move |appsink| {
@@ -176,13 +182,13 @@ impl NativePlayer {
                             .pull_preroll()
                             .map_err(|_| gstreamer::FlowError::Error)?;
                         let (pixels, width, height, pts) = process_sample_no_roi(&sample)?;
-                        let _ = sink_clone_preroll.add(VideoFrame {
+                        let _ = sink_clone_preroll.add(PlayerEvent::Video(VideoFrame {
                             pixels,
                             width,
                             height,
                             is_cropped: false,
                             timestamp_ms: pts,
-                        });
+                        }));
                         Ok(gstreamer::FlowSuccess::Ok)
                     })
                     .build(),
@@ -195,6 +201,10 @@ impl NativePlayer {
             let sink_clone_preroll = sink_arc.clone();
             let roi_clone = roi_arc.clone();
             let roi_clone_preroll = roi_arc.clone();
+            
+            let ocr_engine_clone = self.ocr_engine.clone();
+            let last_ocr_time_clone = self.last_ocr_time.clone();
+
             roi_sink.set_callbacks(
                 gstreamer_app::AppSinkCallbacks::builder()
                     .new_sample(move |appsink| {
@@ -202,13 +212,31 @@ impl NativePlayer {
                             .pull_sample()
                             .map_err(|_| gstreamer::FlowError::Error)?;
                         let (pixels, width, height, pts) = process_sample(&sample, &roi_clone)?;
-                        let _ = sink_clone.add(VideoFrame {
-                            pixels,
+                        
+                        let _ = sink_clone.add(PlayerEvent::Video(VideoFrame {
+                            pixels: pixels.clone(),
                             width,
                             height,
                             is_cropped: true,
                             timestamp_ms: pts,
-                        });
+                        }));
+
+                        // OCR 처리 (500ms 간격)
+                        let mut last_time = last_ocr_time_clone.lock().unwrap();
+                        if last_time.elapsed() >= Duration::from_millis(500) {
+                            let mut ocr = ocr_engine_clone.lock().unwrap();
+                            if let Ok((text, conf)) = ocr.extract_text(&pixels, width, height) {
+                                if !text.is_empty() {
+                                    let _ = sink_clone.add(PlayerEvent::Caption(CaptionResult {
+                                        text,
+                                        confidence: conf,
+                                        timestamp_ms: pts,
+                                    }));
+                                }
+                            }
+                            *last_time = Instant::now();
+                        }
+
                         Ok(gstreamer::FlowSuccess::Ok)
                     })
                     .new_preroll(move |appsink| {
@@ -217,13 +245,13 @@ impl NativePlayer {
                             .map_err(|_| gstreamer::FlowError::Error)?;
                         let (pixels, width, height, pts) =
                             process_sample(&sample, &roi_clone_preroll)?;
-                        let _ = sink_clone_preroll.add(VideoFrame {
+                        let _ = sink_clone_preroll.add(PlayerEvent::Video(VideoFrame {
                             pixels,
                             width,
                             height,
                             is_cropped: true,
                             timestamp_ms: pts,
-                        });
+                        }));
                         Ok(gstreamer::FlowSuccess::Ok)
                     })
                     .build(),
