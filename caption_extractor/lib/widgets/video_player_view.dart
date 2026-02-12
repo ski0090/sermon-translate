@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:caption_extractor/src/rust/api/gstreamer.dart';
 import 'package:caption_extractor/src/rust/api/models.dart';
-import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'roi_player.dart';
 import 'video/video_sidebar.dart';
 import 'video/video_screen.dart';
@@ -461,7 +460,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                       color: Colors.black87,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: Colors.blueAccent.withOpacity(0.5),
+                        color: Colors.blueAccent.withValues(alpha: 0.5),
                       ),
                     ),
                     child: Column(
@@ -481,7 +480,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                             Text(
                               '확신도: ${(_currentCaption!.confidence * 100).toStringAsFixed(1)}%',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.5),
+                                color: Colors.white.withValues(alpha: 0.5),
                                 fontSize: 10,
                               ),
                             ),
