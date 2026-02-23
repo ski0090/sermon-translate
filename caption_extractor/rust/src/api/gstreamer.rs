@@ -12,6 +12,8 @@ pub struct NativePlayer {
     roi: Arc<Mutex<Option<Roi>>>,
     ocr_engine: Arc<Mutex<OcrEngine>>,
     last_ocr_time: Arc<Mutex<Instant>>,
+    auto_roi_tracking: Arc<Mutex<bool>>,
+    last_auto_roi_time: Arc<Mutex<Instant>>,
 }
 
 #[flutter_rust_bridge::frb(sync)]
@@ -49,6 +51,8 @@ pub fn create_player(path: String) -> Result<NativePlayer> {
         roi: Arc::new(Mutex::new(None)),
         ocr_engine: Arc::new(Mutex::new(OcrEngine::new("kor+eng")?)),
         last_ocr_time: Arc::new(Mutex::new(Instant::now())),
+        auto_roi_tracking: Arc::new(Mutex::new(false)),
+        last_auto_roi_time: Arc::new(Mutex::new(Instant::now())),
     })
 }
 
@@ -58,6 +62,12 @@ pub fn get_video_info(path: String) -> Result<VideoInfo> {
 
 pub fn get_frame(path: String, roi: Option<Roi>, time_ms: Option<u64>) -> Result<VideoFrame> {
     utils::get_frame(path, roi, time_ms)
+}
+
+pub fn auto_detect_roi_for_time(path: String, time_ms: Option<u64>) -> Result<Option<Roi>> {
+    let frame = utils::get_frame(path, None, time_ms)?;
+    let mut ocr = OcrEngine::new("kor+eng")?;
+    ocr.auto_detect_roi(&frame.pixels, frame.width, frame.height)
 }
 
 pub fn init_gstreamer() -> Result<()> {
@@ -129,6 +139,12 @@ fn process_sample_no_roi(
 }
 
 impl NativePlayer {
+    pub fn set_auto_tracking(&self, enabled: bool) -> Result<()> {
+        let mut tracking = self.auto_roi_tracking.lock().unwrap();
+        *tracking = enabled;
+        Ok(())
+    }
+
     pub fn start(
         &self,
         roi: Option<Roi>,
@@ -161,6 +177,12 @@ impl NativePlayer {
         {
             let sink_clone = sink_arc.clone();
             let sink_clone_preroll = sink_arc.clone();
+
+            let ocr_engine_for_auto = self.ocr_engine.clone();
+            let last_auto_time_clone = self.last_auto_roi_time.clone();
+            let auto_tracking_clone = self.auto_roi_tracking.clone();
+            let roi_arc_clone = self.roi.clone();
+
             orig_sink.set_callbacks(
                 gstreamer_app::AppSinkCallbacks::builder()
                     .new_sample(move |appsink| {
@@ -168,13 +190,46 @@ impl NativePlayer {
                             .pull_sample()
                             .map_err(|_| gstreamer::FlowError::Error)?;
                         let (pixels, width, height, pts) = process_sample_no_roi(&sample)?;
+
                         let _ = sink_clone.add(PlayerEvent::Video(VideoFrame {
-                            pixels,
+                            pixels: pixels.clone(),
                             width,
                             height,
                             is_cropped: false,
                             timestamp_ms: pts,
                         }));
+
+                        // 자동 ROI 추적(Tracking) 처리 (500ms 간격)
+                        let is_tracking = *auto_tracking_clone.lock().unwrap();
+                        if is_tracking {
+                            let mut last_time = last_auto_time_clone.lock().unwrap();
+                            if last_time.elapsed() >= Duration::from_millis(500) {
+                                println!("[Rust] Running continuous auto_detect_roi...");
+                                let mut ocr = ocr_engine_for_auto.lock().unwrap();
+                                match ocr.auto_detect_roi(&pixels, width, height) {
+                                    Ok(Some(detected_roi)) => {
+                                        println!("[Rust] Found auto ROI: {:?}", detected_roi);
+                                        // 내부 ROI 상태 즉시 업데이트
+                                        {
+                                            let mut r = roi_arc_clone.lock().unwrap();
+                                            *r = Some(detected_roi.clone());
+                                        }
+
+                                        // Flutter로 이벤트 전송
+                                        let _ = sink_clone
+                                            .add(PlayerEvent::AutoRoiUpdated(detected_roi));
+                                    }
+                                    Ok(None) => {
+                                        // println!("[Rust] auto_detect_roi returned None");
+                                    }
+                                    Err(e) => {
+                                        println!("[Rust] auto_detect_roi error: {:?}", e);
+                                    }
+                                }
+                                *last_time = Instant::now();
+                            }
+                        }
+
                         Ok(gstreamer::FlowSuccess::Ok)
                     })
                     .new_preroll(move |appsink| {
@@ -201,7 +256,7 @@ impl NativePlayer {
             let sink_clone_preroll = sink_arc.clone();
             let roi_clone = roi_arc.clone();
             let roi_clone_preroll = roi_arc.clone();
-            
+
             let ocr_engine_clone = self.ocr_engine.clone();
             let last_ocr_time_clone = self.last_ocr_time.clone();
 
@@ -212,7 +267,7 @@ impl NativePlayer {
                             .pull_sample()
                             .map_err(|_| gstreamer::FlowError::Error)?;
                         let (pixels, width, height, pts) = process_sample(&sample, &roi_clone)?;
-                        
+
                         let _ = sink_clone.add(PlayerEvent::Video(VideoFrame {
                             pixels: pixels.clone(),
                             width,

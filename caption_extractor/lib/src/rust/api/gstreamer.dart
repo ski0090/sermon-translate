@@ -28,6 +28,12 @@ Future<VideoFrame> getFrame({required String path, Roi? roi, BigInt? timeMs}) =>
       timeMs: timeMs,
     );
 
+Future<Roi?> autoDetectRoiForTime({required String path, BigInt? timeMs}) =>
+    RustLib.instance.api.crateApiGstreamerAutoDetectRoiForTime(
+      path: path,
+      timeMs: timeMs,
+    );
+
 Future<void> initGstreamer() =>
     RustLib.instance.api.crateApiGstreamerInitGstreamer();
 
@@ -38,6 +44,8 @@ abstract class NativePlayer implements RustOpaqueInterface {
   Future<void> resume();
 
   Future<void> seek({required BigInt timeMs});
+
+  Future<void> setAutoTracking({required bool enabled});
 
   Future<void> setRoi({Roi? roi});
 

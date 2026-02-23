@@ -37,4 +37,5 @@ pub struct CaptionResult {
 pub enum PlayerEvent {
     Video(VideoFrame),
     Caption(CaptionResult),
+    AutoRoiUpdated(Roi),
 }

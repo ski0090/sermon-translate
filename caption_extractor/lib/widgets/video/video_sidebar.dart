@@ -6,6 +6,9 @@ class VideoPlayerSidebar extends StatelessWidget {
   final Roi? selectedRoi;
   final int selectedIntervalMs;
   final VoidCallback onRoiModeToggle;
+  final VoidCallback onAutoRoiDetection;
+  final bool isAutoTracking;
+  final ValueChanged<bool> onAutoTrackingToggle;
   final VoidCallback onResetRoi;
   final ValueChanged<int> onIntervalChanged;
   final VoidCallback? onSaveJson;
@@ -15,6 +18,9 @@ class VideoPlayerSidebar extends StatelessWidget {
     required this.isRoiMode,
     required this.selectedRoi,
     required this.selectedIntervalMs,
+    required this.onAutoRoiDetection,
+    required this.isAutoTracking,
+    required this.onAutoTrackingToggle,
     required this.onRoiModeToggle,
     required this.onResetRoi,
     required this.onIntervalChanged,
@@ -36,7 +42,34 @@ class VideoPlayerSidebar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 4),
           ),
         ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SwitchListTile(
+            title: const Text(
+              '실시간 자막 추적',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+            value: isAutoTracking,
+            onChanged: onAutoTrackingToggle,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+            dense: true,
+          ),
+        ),
         if (selectedRoi != null) ...[
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: onAutoRoiDetection,
+            icon: const Icon(Icons.auto_awesome),
+            label: const Text('현재 영역 자동 감지', overflow: TextOverflow.ellipsis),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+            ),
+          ),
           const SizedBox(height: 12),
           TextButton.icon(
             onPressed: onResetRoi,
@@ -45,6 +78,7 @@ class VideoPlayerSidebar extends StatelessWidget {
             style: TextButton.styleFrom(
               minimumSize: const Size(double.infinity, 48),
               padding: const EdgeInsets.symmetric(horizontal: 4),
+              foregroundColor: Colors.red,
             ),
           ),
           if (onSaveJson != null) ...[
@@ -69,6 +103,7 @@ class VideoPlayerSidebar extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         _buildIntervalOption('1프레임', -1),
+        _buildIntervalOption('0.5초', 500),
         _buildIntervalOption('1초', 1000),
         _buildIntervalOption('5초', 5000),
         _buildIntervalOption('10초', 10000),

@@ -55,12 +55,13 @@ extension PlayerEventPatterns on PlayerEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PlayerEvent_Video value)?  video,TResult Function( PlayerEvent_Caption value)?  caption,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( PlayerEvent_Video value)?  video,TResult Function( PlayerEvent_Caption value)?  caption,TResult Function( PlayerEvent_AutoRoiUpdated value)?  autoRoiUpdated,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case PlayerEvent_Video() when video != null:
 return video(_that);case PlayerEvent_Caption() when caption != null:
-return caption(_that);case _:
+return caption(_that);case PlayerEvent_AutoRoiUpdated() when autoRoiUpdated != null:
+return autoRoiUpdated(_that);case _:
   return orElse();
 
 }
@@ -78,12 +79,13 @@ return caption(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PlayerEvent_Video value)  video,required TResult Function( PlayerEvent_Caption value)  caption,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( PlayerEvent_Video value)  video,required TResult Function( PlayerEvent_Caption value)  caption,required TResult Function( PlayerEvent_AutoRoiUpdated value)  autoRoiUpdated,}){
 final _that = this;
 switch (_that) {
 case PlayerEvent_Video():
 return video(_that);case PlayerEvent_Caption():
-return caption(_that);}
+return caption(_that);case PlayerEvent_AutoRoiUpdated():
+return autoRoiUpdated(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -97,12 +99,13 @@ return caption(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PlayerEvent_Video value)?  video,TResult? Function( PlayerEvent_Caption value)?  caption,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( PlayerEvent_Video value)?  video,TResult? Function( PlayerEvent_Caption value)?  caption,TResult? Function( PlayerEvent_AutoRoiUpdated value)?  autoRoiUpdated,}){
 final _that = this;
 switch (_that) {
 case PlayerEvent_Video() when video != null:
 return video(_that);case PlayerEvent_Caption() when caption != null:
-return caption(_that);case _:
+return caption(_that);case PlayerEvent_AutoRoiUpdated() when autoRoiUpdated != null:
+return autoRoiUpdated(_that);case _:
   return null;
 
 }
@@ -119,11 +122,12 @@ return caption(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( VideoFrame field0)?  video,TResult Function( CaptionResult field0)?  caption,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( VideoFrame field0)?  video,TResult Function( CaptionResult field0)?  caption,TResult Function( Roi field0)?  autoRoiUpdated,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case PlayerEvent_Video() when video != null:
 return video(_that.field0);case PlayerEvent_Caption() when caption != null:
-return caption(_that.field0);case _:
+return caption(_that.field0);case PlayerEvent_AutoRoiUpdated() when autoRoiUpdated != null:
+return autoRoiUpdated(_that.field0);case _:
   return orElse();
 
 }
@@ -141,11 +145,12 @@ return caption(_that.field0);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( VideoFrame field0)  video,required TResult Function( CaptionResult field0)  caption,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( VideoFrame field0)  video,required TResult Function( CaptionResult field0)  caption,required TResult Function( Roi field0)  autoRoiUpdated,}) {final _that = this;
 switch (_that) {
 case PlayerEvent_Video():
 return video(_that.field0);case PlayerEvent_Caption():
-return caption(_that.field0);}
+return caption(_that.field0);case PlayerEvent_AutoRoiUpdated():
+return autoRoiUpdated(_that.field0);}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -159,11 +164,12 @@ return caption(_that.field0);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( VideoFrame field0)?  video,TResult? Function( CaptionResult field0)?  caption,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( VideoFrame field0)?  video,TResult? Function( CaptionResult field0)?  caption,TResult? Function( Roi field0)?  autoRoiUpdated,}) {final _that = this;
 switch (_that) {
 case PlayerEvent_Video() when video != null:
 return video(_that.field0);case PlayerEvent_Caption() when caption != null:
-return caption(_that.field0);case _:
+return caption(_that.field0);case PlayerEvent_AutoRoiUpdated() when autoRoiUpdated != null:
+return autoRoiUpdated(_that.field0);case _:
   return null;
 
 }
@@ -297,6 +303,72 @@ class _$PlayerEvent_CaptionCopyWithImpl<$Res>
   return _then(PlayerEvent_Caption(
 null == field0 ? _self.field0 : field0 // ignore: cast_nullable_to_non_nullable
 as CaptionResult,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class PlayerEvent_AutoRoiUpdated extends PlayerEvent {
+  const PlayerEvent_AutoRoiUpdated(this.field0): super._();
+  
+
+@override final  Roi field0;
+
+/// Create a copy of PlayerEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PlayerEvent_AutoRoiUpdatedCopyWith<PlayerEvent_AutoRoiUpdated> get copyWith => _$PlayerEvent_AutoRoiUpdatedCopyWithImpl<PlayerEvent_AutoRoiUpdated>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PlayerEvent_AutoRoiUpdated&&(identical(other.field0, field0) || other.field0 == field0));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,field0);
+
+@override
+String toString() {
+  return 'PlayerEvent.autoRoiUpdated(field0: $field0)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PlayerEvent_AutoRoiUpdatedCopyWith<$Res> implements $PlayerEventCopyWith<$Res> {
+  factory $PlayerEvent_AutoRoiUpdatedCopyWith(PlayerEvent_AutoRoiUpdated value, $Res Function(PlayerEvent_AutoRoiUpdated) _then) = _$PlayerEvent_AutoRoiUpdatedCopyWithImpl;
+@useResult
+$Res call({
+ Roi field0
+});
+
+
+
+
+}
+/// @nodoc
+class _$PlayerEvent_AutoRoiUpdatedCopyWithImpl<$Res>
+    implements $PlayerEvent_AutoRoiUpdatedCopyWith<$Res> {
+  _$PlayerEvent_AutoRoiUpdatedCopyWithImpl(this._self, this._then);
+
+  final PlayerEvent_AutoRoiUpdated _self;
+  final $Res Function(PlayerEvent_AutoRoiUpdated) _then;
+
+/// Create a copy of PlayerEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? field0 = null,}) {
+  return _then(PlayerEvent_AutoRoiUpdated(
+null == field0 ? _self.field0 : field0 // ignore: cast_nullable_to_non_nullable
+as Roi,
   ));
 }
 

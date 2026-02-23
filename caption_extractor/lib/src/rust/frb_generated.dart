@@ -67,7 +67,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -278189438;
+  int get rustContentHash => -1579395333;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -89,6 +89,11 @@ abstract class RustLibApi extends BaseApi {
     required BigInt timeMs,
   });
 
+  Future<void> crateApiGstreamerNativePlayerSetAutoTracking({
+    required NativePlayer that,
+    required bool enabled,
+  });
+
   Future<void> crateApiGstreamerNativePlayerSetRoi({
     required NativePlayer that,
     Roi? roi,
@@ -101,6 +106,11 @@ abstract class RustLibApi extends BaseApi {
   });
 
   Future<void> crateApiGstreamerNativePlayerStop({required NativePlayer that});
+
+  Future<Roi?> crateApiGstreamerAutoDetectRoiForTime({
+    required String path,
+    BigInt? timeMs,
+  });
 
   Future<CaptionResult> crateApiModelsCaptionResultDefault();
 
@@ -250,6 +260,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiGstreamerNativePlayerSetAutoTracking({
+    required NativePlayer that,
+    required bool enabled,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+            that,
+            serializer,
+          );
+          sse_encode_bool(enabled, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGstreamerNativePlayerSetAutoTrackingConstMeta,
+        argValues: [that, enabled],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGstreamerNativePlayerSetAutoTrackingConstMeta =>
+      const TaskConstMeta(
+        debugName: "NativePlayer_set_auto_tracking",
+        argNames: ["that", "enabled"],
+      );
+
+  @override
   Future<void> crateApiGstreamerNativePlayerSetRoi({
     required NativePlayer that,
     Roi? roi,
@@ -266,7 +314,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 5,
             port: port_,
           );
         },
@@ -309,7 +357,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 5,
+              funcId: 6,
               port: port_,
             );
           },
@@ -345,7 +393,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 7,
             port: port_,
           );
         },
@@ -364,6 +412,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "NativePlayer_stop", argNames: ["that"]);
 
   @override
+  Future<Roi?> crateApiGstreamerAutoDetectRoiForTime({
+    required String path,
+    BigInt? timeMs,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          sse_encode_opt_box_autoadd_u_64(timeMs, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_roi,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGstreamerAutoDetectRoiForTimeConstMeta,
+        argValues: [path, timeMs],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGstreamerAutoDetectRoiForTimeConstMeta =>
+      const TaskConstMeta(
+        debugName: "auto_detect_roi_for_time",
+        argNames: ["path", "timeMs"],
+      );
+
+  @override
   Future<CaptionResult> crateApiModelsCaptionResultDefault() {
     return handler.executeNormal(
       NormalTask(
@@ -372,7 +455,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 9,
             port: port_,
           );
         },
@@ -400,7 +483,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 10,
             port: port_,
           );
         },
@@ -435,7 +518,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 11,
             port: port_,
           );
         },
@@ -461,7 +544,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -487,7 +570,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 13,
             port: port_,
           );
         },
@@ -512,7 +595,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -537,7 +620,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 15,
             port: port_,
           );
         },
@@ -564,7 +647,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 16,
             port: port_,
           );
         },
@@ -591,7 +674,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 17,
             port: port_,
           );
         },
@@ -618,7 +701,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 18,
             port: port_,
           );
         },
@@ -645,7 +728,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 19,
             port: port_,
           );
         },
@@ -807,6 +890,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         return PlayerEvent_Caption(
           dco_decode_box_autoadd_caption_result(raw[1]),
         );
+      case 2:
+        return PlayerEvent_AutoRoiUpdated(dco_decode_box_autoadd_roi(raw[1]));
       default:
         throw Exception("unreachable");
     }
@@ -1044,6 +1129,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 1:
         var var_field0 = sse_decode_box_autoadd_caption_result(deserializer);
         return PlayerEvent_Caption(var_field0);
+      case 2:
+        var var_field0 = sse_decode_box_autoadd_roi(deserializer);
+        return PlayerEvent_AutoRoiUpdated(var_field0);
       default:
         throw UnimplementedError('');
     }
@@ -1298,6 +1386,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case PlayerEvent_Caption(field0: final field0):
         sse_encode_i_32(1, serializer);
         sse_encode_box_autoadd_caption_result(field0, serializer);
+      case PlayerEvent_AutoRoiUpdated(field0: final field0):
+        sse_encode_i_32(2, serializer);
+        sse_encode_box_autoadd_roi(field0, serializer);
     }
   }
 
@@ -1383,6 +1474,12 @@ class NativePlayerImpl extends RustOpaque implements NativePlayer {
 
   Future<void> seek({required BigInt timeMs}) => RustLib.instance.api
       .crateApiGstreamerNativePlayerSeek(that: this, timeMs: timeMs);
+
+  Future<void> setAutoTracking({required bool enabled}) =>
+      RustLib.instance.api.crateApiGstreamerNativePlayerSetAutoTracking(
+        that: this,
+        enabled: enabled,
+      );
 
   Future<void> setRoi({Roi? roi}) => RustLib.instance.api
       .crateApiGstreamerNativePlayerSetRoi(that: this, roi: roi);

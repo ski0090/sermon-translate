@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -278189438;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1579395333;
 
 // Section: executor
 
@@ -197,6 +197,61 @@ fn wire__crate__api__gstreamer__NativePlayer_seek_impl(
                         let output_ok = crate::api::gstreamer::NativePlayer::seek(
                             &*api_that_guard,
                             api_time_ms,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__gstreamer__NativePlayer_set_auto_tracking_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "NativePlayer_set_auto_tracking",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<NativePlayer>,
+            >>::sse_decode(&mut deserializer);
+            let api_enabled = <bool>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let mut api_that_guard = None;
+                        let decode_indices_ =
+                            flutter_rust_bridge::for_generated::lockable_compute_decode_order(
+                                vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                    &api_that, 0, false,
+                                )],
+                            );
+                        for i in decode_indices_ {
+                            match i {
+                                0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                                _ => unreachable!(),
+                            }
+                        }
+                        let api_that_guard = api_that_guard.unwrap();
+                        let output_ok = crate::api::gstreamer::NativePlayer::set_auto_tracking(
+                            &*api_that_guard,
+                            api_enabled,
                         )?;
                         Ok(output_ok)
                     })(),
@@ -364,6 +419,43 @@ fn wire__crate__api__gstreamer__NativePlayer_stop_impl(
                         let api_that_guard = api_that_guard.unwrap();
                         let output_ok =
                             crate::api::gstreamer::NativePlayer::stop(&*api_that_guard)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__gstreamer__auto_detect_roi_for_time_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "auto_detect_roi_for_time",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            let api_time_ms = <Option<u64>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::gstreamer::auto_detect_roi_for_time(api_path, api_time_ms)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -880,6 +972,10 @@ impl SseDecode for crate::api::models::PlayerEvent {
                 let mut var_field0 = <crate::api::models::CaptionResult>::sse_decode(deserializer);
                 return crate::api::models::PlayerEvent::Caption(var_field0);
             }
+            2 => {
+                let mut var_field0 = <crate::api::models::Roi>::sse_decode(deserializer);
+                return crate::api::models::PlayerEvent::AutoRoiUpdated(var_field0);
+            }
             _ => {
                 unimplemented!("");
             }
@@ -985,27 +1081,39 @@ fn pde_ffi_dispatcher_primary_impl(
             wire__crate__api__gstreamer__NativePlayer_resume_impl(port, ptr, rust_vec_len, data_len)
         }
         3 => wire__crate__api__gstreamer__NativePlayer_seek_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__gstreamer__NativePlayer_set_roi_impl(
+        4 => wire__crate__api__gstreamer__NativePlayer_set_auto_tracking_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        5 => {
+        5 => wire__crate__api__gstreamer__NativePlayer_set_roi_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        6 => {
             wire__crate__api__gstreamer__NativePlayer_start_impl(port, ptr, rust_vec_len, data_len)
         }
-        6 => wire__crate__api__gstreamer__NativePlayer_stop_impl(port, ptr, rust_vec_len, data_len),
-        7 => {
+        7 => wire__crate__api__gstreamer__NativePlayer_stop_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__gstreamer__auto_detect_roi_for_time_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        9 => {
             wire__crate__api__models__caption_result_default_impl(port, ptr, rust_vec_len, data_len)
         }
-        8 => wire__crate__api__gstreamer__create_player_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__gstreamer__get_frame_impl(port, ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__gstreamer__get_video_info_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__gstreamer__init_app_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__gstreamer__init_gstreamer_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__models__roi_default_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__models__video_frame_default_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__models__video_info_default_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__gstreamer__create_player_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__gstreamer__get_frame_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__gstreamer__get_video_info_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__gstreamer__init_app_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__gstreamer__init_gstreamer_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__models__roi_default_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__models__video_frame_default_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__models__video_info_default_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1018,8 +1126,8 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        10 => wire__crate__api__gstreamer__get_gstreamer_version_impl(ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__gstreamer__greet_impl(ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__gstreamer__get_gstreamer_version_impl(ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__gstreamer__greet_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1072,6 +1180,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::models::PlayerEvent {
             }
             crate::api::models::PlayerEvent::Caption(field0) => {
                 [1.into_dart(), field0.into_into_dart().into_dart()].into_dart()
+            }
+            crate::api::models::PlayerEvent::AutoRoiUpdated(field0) => {
+                [2.into_dart(), field0.into_into_dart().into_dart()].into_dart()
             }
             _ => {
                 unimplemented!("");
@@ -1275,6 +1386,10 @@ impl SseEncode for crate::api::models::PlayerEvent {
             crate::api::models::PlayerEvent::Caption(field0) => {
                 <i32>::sse_encode(1, serializer);
                 <crate::api::models::CaptionResult>::sse_encode(field0, serializer);
+            }
+            crate::api::models::PlayerEvent::AutoRoiUpdated(field0) => {
+                <i32>::sse_encode(2, serializer);
+                <crate::api::models::Roi>::sse_encode(field0, serializer);
             }
             _ => {
                 unimplemented!("");

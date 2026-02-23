@@ -72,7 +72,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   Size _lastWidgetSize = Size.zero;
   final FocusNode _focusNode = FocusNode();
   bool _isSeeking = false;
-  int _selectedIntervalMs = 5000; // 기본 5초
+  bool _isAutoTracking = false;
+  int _selectedIntervalMs = 1000; // 기본 5초
   CaptionResult? _currentCaption;
   final List<CaptionEntry> _captionHistory = [];
 
@@ -275,6 +276,9 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       }
     }
 
+    // 플레이어가 처음 시작될 때 현재 UI 상태(_isAutoTracking)를 Rust 객체에 동기화
+    _player?.setAutoTracking(enabled: _isAutoTracking);
+
     // start()가 이제 Stream<PlayerEvent>를 직접 반환합니다.
     final eventStream = _player!
         .start(
@@ -313,7 +317,20 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     });
 
     eventStream.listen((event) {
-      if (event is PlayerEvent_Caption) {
+      if (event is PlayerEvent_AutoRoiUpdated) {
+        debugPrint('==== PlayerEvent_AutoRoiUpdated Received! ====');
+        if (mounted && _isAutoTracking) {
+          // UI 갱신은 부드러운 업데이트를 위해 한 번만 실행
+          setState(() {
+            _selectedRoi = event.field0;
+            if (_isRoiMode) _isRoiMode = false;
+          });
+
+          // 백엔드 GStreamer 파이프라인의 ROI 트리밍 필터도 함께 갱신
+          _player?.setRoi(roi: event.field0);
+          _loadRoiThumbnail();
+        }
+      } else if (event is PlayerEvent_Caption) {
         final caption = event.field0;
         if (mounted) {
           setState(() {
@@ -386,6 +403,70 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       _roiStream = null;
     });
     _loadThumbnail();
+  }
+
+  Future<void> _onAutoRoiDetection() async {
+    // 혹시 재생 중이라면 일시 정지
+    if (_isPlaying) {
+      _player?.pause();
+      setState(() {
+        _isPlaying = false;
+      });
+    }
+
+    // 로딩 등 사용자 피드백을 보여주는 것도 좋지만, 현재는 바로 호출
+    try {
+      final detectedRoi = await autoDetectRoiForTime(
+        path: widget.path,
+        timeMs: BigInt.from(_currentPositionMs),
+      );
+
+      if (detectedRoi != null) {
+        setState(() {
+          _selectedRoi = detectedRoi;
+          // 만약 현재 수동 영역 모드가 아니라면 해제
+          if (_isRoiMode) {
+            _isRoiMode = false;
+          }
+        });
+
+        _player?.setRoi(roi: detectedRoi);
+        _loadRoiThumbnail();
+
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('자막 영역을 자동으로 감지했습니다.')));
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('현재 화면에서 자막 영역을 찾지 못했습니다.')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Auto ROI detection error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('자동 영역 감지 중 오류가 발생했습니다: $e')));
+      }
+    }
+  }
+
+  void _onAutoTrackingToggle(bool value) {
+    debugPrint('==== Auto Tracking Toggle: $value ====');
+    setState(() {
+      _isAutoTracking = value;
+    });
+    _player?.setAutoTracking(enabled: value);
+
+    if (value && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('실시간 자막 영역 자동 추적을 시작합니다.')));
+    }
   }
 
   void _onIntervalChanged(int value) {
@@ -465,8 +546,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             flex: 1,
             child: VideoPlayerSidebar(
               isRoiMode: _isRoiMode,
+              isAutoTracking: _isAutoTracking,
               selectedRoi: _selectedRoi,
               selectedIntervalMs: _selectedIntervalMs,
+              onAutoRoiDetection: _onAutoRoiDetection,
+              onAutoTrackingToggle: _onAutoTrackingToggle,
               onRoiModeToggle: _onRoiModeToggle,
               onResetRoi: _onResetRoi,
               onIntervalChanged: _onIntervalChanged,

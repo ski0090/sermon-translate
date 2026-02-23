@@ -44,6 +44,8 @@ sealed class PlayerEvent with _$PlayerEvent {
 
   const factory PlayerEvent.video(VideoFrame field0) = PlayerEvent_Video;
   const factory PlayerEvent.caption(CaptionResult field0) = PlayerEvent_Caption;
+  const factory PlayerEvent.autoRoiUpdated(Roi field0) =
+      PlayerEvent_AutoRoiUpdated;
 }
 
 class Roi {
