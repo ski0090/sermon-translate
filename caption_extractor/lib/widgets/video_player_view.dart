@@ -1,12 +1,47 @@
 import 'dart:ui' as ui;
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
 import 'package:caption_extractor/src/rust/api/gstreamer.dart';
 import 'package:caption_extractor/src/rust/api/models.dart';
 import 'roi_player.dart';
 import 'video/video_sidebar.dart';
 import 'video/video_screen.dart';
 import 'video/video_controls_bar.dart';
+
+class CaptionEntry {
+  final int startTimeMs;
+  int endTimeMs;
+  final String text;
+  final double confidence;
+  final Roi? region;
+
+  CaptionEntry({
+    required this.startTimeMs,
+    required this.endTimeMs,
+    required this.text,
+    required this.confidence,
+    this.region,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'start_time_ms': startTimeMs,
+      'end_time_ms': endTimeMs,
+      'text': text,
+      'confidence': double.parse(confidence.toStringAsFixed(4)),
+      if (region != null)
+        'region': {
+          'x': region!.x,
+          'y': region!.y,
+          'width': region!.width,
+          'height': region!.height,
+        },
+    };
+  }
+}
 
 class VideoPlayerView extends StatefulWidget {
   final String path;
@@ -39,7 +74,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   bool _isSeeking = false;
   int _selectedIntervalMs = 5000; // 기본 5초
   CaptionResult? _currentCaption;
-  final List<CaptionResult> _captionHistory = [];
+  final List<CaptionEntry> _captionHistory = [];
 
   @override
   void initState() {
@@ -283,9 +318,22 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         if (mounted) {
           setState(() {
             _currentCaption = caption;
+
             if (_captionHistory.isEmpty ||
                 _captionHistory.last.text != caption.text) {
-              _captionHistory.add(caption);
+              _captionHistory.add(
+                CaptionEntry(
+                  startTimeMs: caption.timestampMs.toInt(),
+                  endTimeMs: caption.timestampMs.toInt() + 500, // 임시 표시 시간
+                  text: caption.text,
+                  confidence: caption.confidence,
+                  region: _selectedRoi,
+                ),
+              );
+            } else {
+              // 텍스트가 같다면 종료 시간만 연장
+              _captionHistory.last.endTimeMs =
+                  caption.timestampMs.toInt() + 500;
             }
           });
         }
@@ -361,6 +409,51 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     _loadRoiThumbnail();
   }
 
+  Future<void> _saveJson() async {
+    if (_captionHistory.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('저장할 자막 데이터가 없습니다.')));
+      }
+      return;
+    }
+
+    try {
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: '자막 저장',
+        fileName: 'captions.json',
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (outputFile != null) {
+        final List<Map<String, dynamic>> jsonList = _captionHistory
+            .map((e) => e.toJson())
+            .toList();
+        final String jsonString = const JsonEncoder.withIndent(
+          '  ',
+        ).convert(jsonList);
+
+        final file = File(outputFile);
+        await file.writeAsString(jsonString, encoding: utf8);
+
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('파일이 저장되었습니다: $outputFile')));
+        }
+      }
+    } catch (e) {
+      debugPrint('Error saving JSON: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('저장 중 오류가 발생했습니다: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -377,6 +470,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               onRoiModeToggle: _onRoiModeToggle,
               onResetRoi: _onResetRoi,
               onIntervalChanged: _onIntervalChanged,
+              onSaveJson: _captionHistory.isNotEmpty ? _saveJson : null,
             ),
           ),
           const SizedBox(width: 16),

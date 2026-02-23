@@ -8,6 +8,7 @@ class VideoPlayerSidebar extends StatelessWidget {
   final VoidCallback onRoiModeToggle;
   final VoidCallback onResetRoi;
   final ValueChanged<int> onIntervalChanged;
+  final VoidCallback? onSaveJson;
 
   const VideoPlayerSidebar({
     super.key,
@@ -17,6 +18,7 @@ class VideoPlayerSidebar extends StatelessWidget {
     required this.onRoiModeToggle,
     required this.onResetRoi,
     required this.onIntervalChanged,
+    this.onSaveJson,
   });
 
   @override
@@ -45,6 +47,18 @@ class VideoPlayerSidebar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 4),
             ),
           ),
+          if (onSaveJson != null) ...[
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: onSaveJson,
+              icon: const Icon(Icons.save),
+              label: const Text('JSON 저장', overflow: TextOverflow.ellipsis),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+              ),
+            ),
+          ],
         ],
         const SizedBox(height: 24),
         const Divider(),
