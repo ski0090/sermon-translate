@@ -1,10 +1,11 @@
-use crate::api::models::{CaptionResult, PlayerEvent, Roi, VideoFrame, VideoInfo};
+use crate::api::models::{CaptionResult, ExtractorEvent, PlayerEvent, Roi, VideoFrame, VideoInfo};
 use crate::frb_generated::StreamSink;
 use crate::gstreamer::utils;
 use crate::ocr::OcrEngine;
 use anyhow::Result;
 use gstreamer::prelude::*;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
 
 pub struct NativePlayer {
@@ -14,6 +15,10 @@ pub struct NativePlayer {
     last_ocr_time: Arc<Mutex<Instant>>,
     auto_roi_tracking: Arc<Mutex<bool>>,
     last_auto_roi_time: Arc<Mutex<Instant>>,
+}
+
+pub struct CaptionExtractor {
+    pipeline: gstreamer::Pipeline,
 }
 
 #[flutter_rust_bridge::frb(sync)]
@@ -54,6 +59,28 @@ pub fn create_player(path: String) -> Result<NativePlayer> {
         auto_roi_tracking: Arc::new(Mutex::new(false)),
         last_auto_roi_time: Arc::new(Mutex::new(Instant::now())),
     })
+}
+
+pub fn create_extractor(path: String) -> Result<CaptionExtractor> {
+    let uri = if path.starts_with("http") {
+        path
+    } else {
+        format!("file:///{}", path.replace("\\", "/"))
+    };
+
+    // sync=false, drop=false로 최대한 빠르게 처리
+    let pipeline_str = format!(
+        "uridecodebin uri=\"{}\" ! videoconvert ! videoscale ! videorate ! video/x-raw,framerate=2/1,format=RGBA ! appsink name=extractor_sink sync=false drop=false",
+        uri
+    );
+
+    let pipeline = gstreamer::parse_launch(&pipeline_str)?
+        .dynamic_cast::<gstreamer::Pipeline>()
+        .map_err(|el: gstreamer::Element| {
+            anyhow::anyhow!("Failed to cast to Pipeline. Type: {}", el.type_().name())
+        })?;
+
+    Ok(CaptionExtractor { pipeline })
 }
 
 pub fn get_video_info(path: String) -> Result<VideoInfo> {
@@ -364,6 +391,161 @@ impl NativePlayer {
     pub fn set_roi(&self, roi: Option<Roi>) {
         let mut r = self.roi.lock().unwrap();
         *r = roi;
+    }
+
+    pub fn stop(&self) -> Result<()> {
+        self.pipeline.set_state(gstreamer::State::Null)?;
+        Ok(())
+    }
+}
+
+impl CaptionExtractor {
+    pub fn start(
+        &self,
+        roi: Option<Roi>,
+        start_time_ms: Option<u64>,
+        end_time_ms: Option<u64>,
+        total_duration_ms: u64,
+        sink: StreamSink<ExtractorEvent>,
+    ) -> Result<()> {
+        let app_sink = self
+            .pipeline
+            .by_name("extractor_sink")
+            .ok_or_else(|| anyhow::anyhow!("extractor sink not found"))?
+            .dynamic_cast::<gstreamer_app::AppSink>()
+            .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
+
+        let sink_arc = Arc::new(sink);
+        let sink_clone = sink_arc.clone();
+
+        let mut ocr_engine = OcrEngine::new("kor+eng")?;
+
+        app_sink.set_callbacks(
+            gstreamer_app::AppSinkCallbacks::builder()
+                .new_sample(move |appsink| {
+                    let sample = match appsink.pull_sample() {
+                        Ok(s) => s,
+                        Err(_) => return Ok(gstreamer::FlowSuccess::Ok),
+                    };
+
+                    let buffer = match sample.buffer() {
+                        Some(b) => b,
+                        None => return Ok(gstreamer::FlowSuccess::Ok),
+                    };
+                    let caps = match sample.caps() {
+                        Some(c) => c,
+                        None => return Ok(gstreamer::FlowSuccess::Ok),
+                    };
+                    let info = match gstreamer_video::VideoInfo::from_caps(caps) {
+                        Ok(i) => i,
+                        Err(_) => return Ok(gstreamer::FlowSuccess::Ok),
+                    };
+                    let map = match buffer.map_readable() {
+                        Ok(m) => m,
+                        Err(_) => return Ok(gstreamer::FlowSuccess::Ok),
+                    };
+
+                    let mut pixels = map.to_vec();
+                    let mut width = info.width() as i32;
+                    let mut height = info.height() as i32;
+                    let pts = buffer.pts().map(|p| p.mseconds()).unwrap_or(0);
+
+                    // End time check (if passed)
+                    if let Some(end_ms) = end_time_ms {
+                        if pts > end_ms {
+                            let _ = sink_clone.add(ExtractorEvent::Finished);
+                            return Err(gstreamer::FlowError::Eos);
+                        }
+                    }
+
+                    // Dynamic ROI detection (run every ~1s assuming 2fps, or just unconditionally per frame since it's 2fps)
+                    // We'll run it every frame for maximum accuracy during high-speed extraction.
+                    let current_roi = match ocr_engine.auto_detect_roi(&pixels, width, height) {
+                        Ok(Some(detected_roi)) => {
+                            // Update the sink with the dynamic ROI so Flutter can optionally show it
+                            let _ =
+                                sink_clone.add(ExtractorEvent::DynamicRoi(detected_roi.clone()));
+                            Some(detected_roi)
+                        }
+                        _ => roi.clone(), // Fallback to initial roi if not found
+                    };
+
+                    if let Some(ref active_roi) = current_roi {
+                        let roi_x = active_roi.x.clamp(0, width);
+                        let roi_y = active_roi.y.clamp(0, height);
+                        let roi_w = active_roi.width.clamp(0, width - roi_x);
+                        let roi_h = active_roi.height.clamp(0, height - roi_y);
+
+                        if roi_w > 0 && roi_h > 0 {
+                            let mut cropped = Vec::with_capacity((roi_w * roi_h * 4) as usize);
+                            for y in 0..roi_h {
+                                let start = (((roi_y + y) * width + roi_x) * 4) as usize;
+                                let end = start + (roi_w * 4) as usize;
+                                cropped.extend_from_slice(&pixels[start..end]);
+                            }
+                            pixels = cropped;
+                            width = roi_w;
+                            height = roi_h;
+                        }
+                    }
+
+                    // OCR processing
+                    if let Ok((text, conf)) = ocr_engine.extract_text(&pixels, width, height) {
+                        if !text.is_empty() {
+                            let _ = sink_clone.add(ExtractorEvent::Caption(CaptionResult {
+                                text,
+                                confidence: conf,
+                                timestamp_ms: pts,
+                            }));
+                        }
+                    }
+
+                    let percentage = if total_duration_ms > 0 {
+                        (pts as f64 / total_duration_ms as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+                    let _ = sink_clone.add(ExtractorEvent::Progress(percentage, pts));
+                    Ok(gstreamer::FlowSuccess::Ok)
+                })
+                .build(),
+        );
+
+        if let Some(start_ms) = start_time_ms {
+            let _ = self.pipeline.set_state(gstreamer::State::Paused);
+            let _ = self
+                .pipeline
+                .state(Some(gstreamer::ClockTime::from_seconds(5)));
+            let _ = self.pipeline.seek_simple(
+                gstreamer::SeekFlags::FLUSH | gstreamer::SeekFlags::ACCURATE,
+                gstreamer::ClockTime::from_mseconds(start_ms),
+            );
+        }
+
+        self.pipeline.set_state(gstreamer::State::Playing)?;
+
+        let pipeline_clone = self.pipeline.clone();
+        let sink_clone_eos = sink_arc.clone();
+        thread::spawn(move || {
+            let bus = pipeline_clone.bus().unwrap();
+            for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
+                use gstreamer::MessageView;
+                match msg.view() {
+                    MessageView::Eos(..) => {
+                        let _ = sink_clone_eos.add(ExtractorEvent::Finished);
+                        break;
+                    }
+                    MessageView::Error(err) => {
+                        let _ = sink_clone_eos.add(ExtractorEvent::Error(err.error().to_string()));
+                        break;
+                    }
+                    _ => (),
+                }
+            }
+            let _ = pipeline_clone.set_state(gstreamer::State::Null);
+        });
+
+        Ok(())
     }
 
     pub fn stop(&self) -> Result<()> {

@@ -406,6 +406,143 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     _loadThumbnail();
   }
 
+  Future<void> _onStartBackgroundExtraction() async {
+    if (_selectedRoi == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('자막을 추출할 영역(ROI)을 먼저 선택해주세요.')),
+        );
+      }
+      return;
+    }
+
+    if (_isPlaying) {
+      _player?.pause();
+      setState(() {
+        _isPlaying = false;
+      });
+    }
+
+    setState(() {
+      _captionHistory.clear();
+      _currentCaption = null;
+    });
+
+    final durationMs = widget.videoInfo.durationMs.toInt();
+    double progress = 0.0;
+    String statusText = '초기화 중...';
+    bool isFinished = false;
+
+    late void Function(void Function()) updateDialog;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            updateDialog = setDialogState;
+            return AlertDialog(
+              title: const Text('자막 전체 고속 추출'),
+              content: SizedBox(
+                width: 300,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(statusText),
+                    const SizedBox(height: 16),
+                    LinearProgressIndicator(
+                      value: isFinished ? 1.0 : progress / 100.0,
+                      backgroundColor: Colors.grey.shade200,
+                    ),
+                    const SizedBox(height: 8),
+                    Text('${progress.toStringAsFixed(1)}% 완료'),
+                  ],
+                ),
+              ),
+              actions: [
+                if (isFinished)
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('닫기'),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    try {
+      final extractor = await createExtractor(path: widget.path);
+
+      final stream = extractor.start(
+        roi: _selectedRoi,
+        startTimeMs: null,
+        endTimeMs: null,
+        totalDurationMs: BigInt.from(durationMs),
+      );
+
+      await for (final event in stream) {
+        if (!mounted) break;
+
+        if (event is ExtractorEvent_Progress) {
+          updateDialog(() {
+            progress = event.field0;
+            statusText = '전체 영상에서 자막을 추출하고 있습니다...';
+          });
+        } else if (event is ExtractorEvent_DynamicRoi) {
+          if (mounted) {
+            setState(() {
+              _selectedRoi = event.field0;
+            });
+            _loadRoiThumbnail();
+          }
+        } else if (event is ExtractorEvent_Caption) {
+          final caption = event.field0;
+          setState(() {
+            _currentCaption = caption;
+
+            if (_captionHistory.isEmpty ||
+                _captionHistory.last.text != caption.text) {
+              _captionHistory.add(
+                CaptionEntry(
+                  startTimeMs: caption.timestampMs.toInt(),
+                  endTimeMs: caption.timestampMs.toInt() + 500,
+                  text: caption.text,
+                  confidence: caption.confidence,
+                  region: _selectedRoi,
+                ),
+              );
+            } else {
+              _captionHistory.last.endTimeMs =
+                  caption.timestampMs.toInt() + 500;
+            }
+          });
+        } else if (event is ExtractorEvent_Finished) {
+          updateDialog(() {
+            isFinished = true;
+            progress = 100.0;
+            statusText =
+                '추출이 완료되었습니다!\n총 ${_captionHistory.length}개의 자막을 찾았습니다.';
+          });
+          break;
+        } else if (event is ExtractorEvent_Error) {
+          updateDialog(() {
+            isFinished = true;
+            statusText = '오류 발생: ${event.field0}';
+          });
+          break;
+        }
+      }
+    } catch (e) {
+      updateDialog(() {
+        isFinished = true;
+        statusText = '예외 발생: $e';
+      });
+    }
+  }
+
   Future<void> _onAutoRoiDetection() async {
     // 혹시 재생 중이라면 일시 정지
     if (_isPlaying) {
@@ -556,6 +693,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
               onResetRoi: _onResetRoi,
               onIntervalChanged: _onIntervalChanged,
               onSaveJson: _captionHistory.isNotEmpty ? _saveJson : null,
+              onStartBackgroundExtraction: _onStartBackgroundExtraction,
             ),
           ),
           const SizedBox(width: 16),

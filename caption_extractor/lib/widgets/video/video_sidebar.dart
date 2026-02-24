@@ -12,6 +12,7 @@ class VideoPlayerSidebar extends StatelessWidget {
   final VoidCallback onResetRoi;
   final ValueChanged<int> onIntervalChanged;
   final VoidCallback? onSaveJson;
+  final VoidCallback? onStartBackgroundExtraction;
 
   const VideoPlayerSidebar({
     super.key,
@@ -25,6 +26,7 @@ class VideoPlayerSidebar extends StatelessWidget {
     required this.onResetRoi,
     required this.onIntervalChanged,
     this.onSaveJson,
+    this.onStartBackgroundExtraction,
   });
 
   @override
@@ -88,6 +90,20 @@ class VideoPlayerSidebar extends StatelessWidget {
               icon: const Icon(Icons.save),
               label: const Text('JSON 저장', overflow: TextOverflow.ellipsis),
               style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+              ),
+            ),
+          ],
+          if (onStartBackgroundExtraction != null) ...[
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: onStartBackgroundExtraction,
+              icon: const Icon(Icons.flash_on),
+              label: const Text('전체 자막 고속 추출', overflow: TextOverflow.ellipsis),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 48),
                 padding: const EdgeInsets.symmetric(horizontal: 4),
               ),

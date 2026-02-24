@@ -18,6 +18,9 @@ String getGstreamerVersion() =>
 Future<NativePlayer> createPlayer({required String path}) =>
     RustLib.instance.api.crateApiGstreamerCreatePlayer(path: path);
 
+Future<CaptionExtractor> createExtractor({required String path}) =>
+    RustLib.instance.api.crateApiGstreamerCreateExtractor(path: path);
+
 Future<VideoInfo> getVideoInfo({required String path}) =>
     RustLib.instance.api.crateApiGstreamerGetVideoInfo(path: path);
 
@@ -36,6 +39,18 @@ Future<Roi?> autoDetectRoiForTime({required String path, BigInt? timeMs}) =>
 
 Future<void> initGstreamer() =>
     RustLib.instance.api.crateApiGstreamerInitGstreamer();
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<CaptionExtractor>>
+abstract class CaptionExtractor implements RustOpaqueInterface {
+  Stream<ExtractorEvent> start({
+    Roi? roi,
+    BigInt? startTimeMs,
+    BigInt? endTimeMs,
+    required BigInt totalDurationMs,
+  });
+
+  Future<void> stop();
+}
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<NativePlayer>>
 abstract class NativePlayer implements RustOpaqueInterface {

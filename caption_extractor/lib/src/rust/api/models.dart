@@ -8,7 +8,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'models.freezed.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 class CaptionResult {
   final String text;
@@ -36,6 +36,20 @@ class CaptionResult {
           text == other.text &&
           confidence == other.confidence &&
           timestampMs == other.timestampMs;
+}
+
+@freezed
+sealed class ExtractorEvent with _$ExtractorEvent {
+  const ExtractorEvent._();
+
+  const factory ExtractorEvent.progress(double field0, BigInt field1) =
+      ExtractorEvent_Progress;
+  const factory ExtractorEvent.caption(CaptionResult field0) =
+      ExtractorEvent_Caption;
+  const factory ExtractorEvent.dynamicRoi(Roi field0) =
+      ExtractorEvent_DynamicRoi;
+  const factory ExtractorEvent.finished() = ExtractorEvent_Finished;
+  const factory ExtractorEvent.error(String field0) = ExtractorEvent_Error;
 }
 
 @freezed

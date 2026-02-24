@@ -89,16 +89,22 @@ class _RoiSelectorState extends State<RoiSelector> {
 
     final rect = _currentRect!;
 
-    if ((pos - rect.topLeft).distance <= _hitAreaSize)
+    if ((pos - rect.topLeft).distance <= _hitAreaSize) {
       return _RoiAction.resizingTopLeft;
-    if ((pos - rect.topRight).distance <= _hitAreaSize)
+    }
+    if ((pos - rect.topRight).distance <= _hitAreaSize) {
       return _RoiAction.resizingTopRight;
-    if ((pos - rect.bottomLeft).distance <= _hitAreaSize)
+    }
+    if ((pos - rect.bottomLeft).distance <= _hitAreaSize) {
       return _RoiAction.resizingBottomLeft;
-    if ((pos - rect.bottomRight).distance <= _hitAreaSize)
+    }
+    if ((pos - rect.bottomRight).distance <= _hitAreaSize) {
       return _RoiAction.resizingBottomRight;
+    }
 
-    if (rect.contains(pos)) return _RoiAction.moving;
+    if (rect.contains(pos)) {
+      return _RoiAction.moving;
+    }
 
     return _RoiAction.creating;
   }
@@ -147,8 +153,9 @@ class _RoiSelectorState extends State<RoiSelector> {
               },
               onPanUpdate: (details) {
                 if (_lastPos == null ||
-                    (_currentRect == null && _action != _RoiAction.creating))
+                    (_currentRect == null && _action != _RoiAction.creating)) {
                   return;
+                }
                 final delta = details.localPosition - _lastPos!;
 
                 setState(() {
@@ -386,11 +393,13 @@ class _RoiSelectorState extends State<RoiSelector> {
 
     double dx = 0, dy = 0;
     if (newRect.left < 0) dx = -newRect.left;
-    if (newRect.right > containerSize.width)
+    if (newRect.right > containerSize.width) {
       dx = containerSize.width - newRect.right;
+    }
     if (newRect.top < 0) dy = -newRect.top;
-    if (newRect.bottom > containerSize.height)
+    if (newRect.bottom > containerSize.height) {
       dy = containerSize.height - newRect.bottom;
+    }
 
     _currentRect = newRect.shift(Offset(dx, dy));
   }

@@ -39,3 +39,12 @@ pub enum PlayerEvent {
     Caption(CaptionResult),
     AutoRoiUpdated(Roi),
 }
+
+#[derive(Debug, Clone)]
+pub enum ExtractorEvent {
+    Progress(f64, u64), // percentage, current_time_ms
+    Caption(CaptionResult),
+    DynamicRoi(Roi),
+    Finished,
+    Error(String),
+}

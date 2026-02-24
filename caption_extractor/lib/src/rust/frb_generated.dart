@@ -67,7 +67,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1579395333;
+  int get rustContentHash => -1769794912;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -78,6 +78,18 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Stream<ExtractorEvent> crateApiGstreamerCaptionExtractorStart({
+    required CaptionExtractor that,
+    Roi? roi,
+    BigInt? startTimeMs,
+    BigInt? endTimeMs,
+    required BigInt totalDurationMs,
+  });
+
+  Future<void> crateApiGstreamerCaptionExtractorStop({
+    required CaptionExtractor that,
+  });
+
   Future<void> crateApiGstreamerNativePlayerPause({required NativePlayer that});
 
   Future<void> crateApiGstreamerNativePlayerResume({
@@ -114,6 +126,10 @@ abstract class RustLibApi extends BaseApi {
 
   Future<CaptionResult> crateApiModelsCaptionResultDefault();
 
+  Future<CaptionExtractor> crateApiGstreamerCreateExtractor({
+    required String path,
+  });
+
   Future<NativePlayer> crateApiGstreamerCreatePlayer({required String path});
 
   Future<VideoFrame> crateApiGstreamerGetFrame({
@@ -139,6 +155,15 @@ abstract class RustLibApi extends BaseApi {
   Future<VideoInfo> crateApiModelsVideoInfoDefault();
 
   RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_CaptionExtractor;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_CaptionExtractor;
+
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_CaptionExtractorPtr;
+
+  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_NativePlayer;
 
   RustArcDecrementStrongCountFnType
@@ -156,6 +181,98 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  Stream<ExtractorEvent> crateApiGstreamerCaptionExtractorStart({
+    required CaptionExtractor that,
+    Roi? roi,
+    BigInt? startTimeMs,
+    BigInt? endTimeMs,
+    required BigInt totalDurationMs,
+  }) {
+    final sink = RustStreamSink<ExtractorEvent>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+              that,
+              serializer,
+            );
+            sse_encode_opt_box_autoadd_roi(roi, serializer);
+            sse_encode_opt_box_autoadd_u_64(startTimeMs, serializer);
+            sse_encode_opt_box_autoadd_u_64(endTimeMs, serializer);
+            sse_encode_u_64(totalDurationMs, serializer);
+            sse_encode_StreamSink_extractor_event_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 1,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: sse_decode_AnyhowException,
+          ),
+          constMeta: kCrateApiGstreamerCaptionExtractorStartConstMeta,
+          argValues: [that, roi, startTimeMs, endTimeMs, totalDurationMs, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiGstreamerCaptionExtractorStartConstMeta =>
+      const TaskConstMeta(
+        debugName: "CaptionExtractor_start",
+        argNames: [
+          "that",
+          "roi",
+          "startTimeMs",
+          "endTimeMs",
+          "totalDurationMs",
+          "sink",
+        ],
+      );
+
+  @override
+  Future<void> crateApiGstreamerCaptionExtractorStop({
+    required CaptionExtractor that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGstreamerCaptionExtractorStopConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGstreamerCaptionExtractorStopConstMeta =>
+      const TaskConstMeta(
+        debugName: "CaptionExtractor_stop",
+        argNames: ["that"],
+      );
+
+  @override
   Future<void> crateApiGstreamerNativePlayerPause({
     required NativePlayer that,
   }) {
@@ -170,7 +287,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 3,
             port: port_,
           );
         },
@@ -203,7 +320,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 4,
             port: port_,
           );
         },
@@ -238,7 +355,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 5,
             port: port_,
           );
         },
@@ -276,7 +393,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 6,
             port: port_,
           );
         },
@@ -314,7 +431,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 7,
             port: port_,
           );
         },
@@ -357,7 +474,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 6,
+              funcId: 8,
               port: port_,
             );
           },
@@ -393,7 +510,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 9,
             port: port_,
           );
         },
@@ -425,7 +542,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 10,
             port: port_,
           );
         },
@@ -455,7 +572,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 11,
             port: port_,
           );
         },
@@ -474,6 +591,37 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "caption_result_default", argNames: []);
 
   @override
+  Future<CaptionExtractor> crateApiGstreamerCreateExtractor({
+    required String path,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGstreamerCreateExtractorConstMeta,
+        argValues: [path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGstreamerCreateExtractorConstMeta =>
+      const TaskConstMeta(debugName: "create_extractor", argNames: ["path"]);
+
+  @override
   Future<NativePlayer> crateApiGstreamerCreatePlayer({required String path}) {
     return handler.executeNormal(
       NormalTask(
@@ -483,7 +631,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 13,
             port: port_,
           );
         },
@@ -518,7 +666,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 14,
             port: port_,
           );
         },
@@ -544,7 +692,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 15)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -570,7 +718,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 16,
             port: port_,
           );
         },
@@ -595,7 +743,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -620,7 +768,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 18,
             port: port_,
           );
         },
@@ -647,7 +795,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 19,
             port: port_,
           );
         },
@@ -674,7 +822,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 20,
             port: port_,
           );
         },
@@ -701,7 +849,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 21,
             port: port_,
           );
         },
@@ -728,7 +876,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 22,
             port: port_,
           );
         },
@@ -747,6 +895,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "video_info_default", argNames: []);
 
   RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_CaptionExtractor => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_CaptionExtractor => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor;
+
+  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_NativePlayer => wire
       .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer;
 
@@ -761,12 +917,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CaptionExtractor
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return CaptionExtractorImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
   NativePlayer
   dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return NativePlayerImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  CaptionExtractor
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return CaptionExtractorImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -779,12 +953,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CaptionExtractor
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return CaptionExtractorImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
   NativePlayer
   dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return NativePlayerImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  RustStreamSink<ExtractorEvent> dco_decode_StreamSink_extractor_event_Sse(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
   }
 
   @protected
@@ -842,6 +1033,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       confidence: dco_decode_f_32(arr[1]),
       timestampMs: dco_decode_u_64(arr[2]),
     );
+  }
+
+  @protected
+  ExtractorEvent dco_decode_extractor_event(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return ExtractorEvent_Progress(
+          dco_decode_f_64(raw[1]),
+          dco_decode_u_64(raw[2]),
+        );
+      case 1:
+        return ExtractorEvent_Caption(
+          dco_decode_box_autoadd_caption_result(raw[1]),
+        );
+      case 2:
+        return ExtractorEvent_DynamicRoi(dco_decode_box_autoadd_roi(raw[1]));
+      case 3:
+        return ExtractorEvent_Finished();
+      case 4:
+        return ExtractorEvent_Error(dco_decode_String(raw[1]));
+      default:
+        throw Exception("unreachable");
+    }
   }
 
   @protected
@@ -975,12 +1190,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CaptionExtractor
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return CaptionExtractorImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   NativePlayer
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return NativePlayerImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  CaptionExtractor
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return CaptionExtractorImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -999,6 +1238,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CaptionExtractor
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return CaptionExtractorImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   NativePlayer
   sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
     SseDeserializer deserializer,
@@ -1008,6 +1259,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
+  }
+
+  @protected
+  RustStreamSink<ExtractorEvent> sse_decode_StreamSink_extractor_event_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
   }
 
   @protected
@@ -1068,6 +1327,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       confidence: var_confidence,
       timestampMs: var_timestampMs,
     );
+  }
+
+  @protected
+  ExtractorEvent sse_decode_extractor_event(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_field0 = sse_decode_f_64(deserializer);
+        var var_field1 = sse_decode_u_64(deserializer);
+        return ExtractorEvent_Progress(var_field0, var_field1);
+      case 1:
+        var var_field0 = sse_decode_box_autoadd_caption_result(deserializer);
+        return ExtractorEvent_Caption(var_field0);
+      case 2:
+        var var_field0 = sse_decode_box_autoadd_roi(deserializer);
+        return ExtractorEvent_DynamicRoi(var_field0);
+      case 3:
+        return ExtractorEvent_Finished();
+      case 4:
+        var var_field0 = sse_decode_String(deserializer);
+        return ExtractorEvent_Error(var_field0);
+      default:
+        throw UnimplementedError('');
+    }
   }
 
   @protected
@@ -1224,6 +1509,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    CaptionExtractor self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as CaptionExtractorImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
     NativePlayer self,
     SseSerializer serializer,
@@ -1231,6 +1529,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as NativePlayerImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    CaptionExtractor self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as CaptionExtractorImpl).frbInternalSseEncode(move: false),
       serializer,
     );
   }
@@ -1250,6 +1561,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    CaptionExtractor self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as CaptionExtractorImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
     NativePlayer self,
     SseSerializer serializer,
@@ -1257,6 +1581,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as NativePlayerImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_StreamSink_extractor_event_Sse(
+    RustStreamSink<ExtractorEvent> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_extractor_event,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
       serializer,
     );
   }
@@ -1326,6 +1667,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.text, serializer);
     sse_encode_f_32(self.confidence, serializer);
     sse_encode_u_64(self.timestampMs, serializer);
+  }
+
+  @protected
+  void sse_encode_extractor_event(
+    ExtractorEvent self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case ExtractorEvent_Progress(field0: final field0, field1: final field1):
+        sse_encode_i_32(0, serializer);
+        sse_encode_f_64(field0, serializer);
+        sse_encode_u_64(field1, serializer);
+      case ExtractorEvent_Caption(field0: final field0):
+        sse_encode_i_32(1, serializer);
+        sse_encode_box_autoadd_caption_result(field0, serializer);
+      case ExtractorEvent_DynamicRoi(field0: final field0):
+        sse_encode_i_32(2, serializer);
+        sse_encode_box_autoadd_roi(field0, serializer);
+      case ExtractorEvent_Finished():
+        sse_encode_i_32(3, serializer);
+      case ExtractorEvent_Error(field0: final field0):
+        sse_encode_i_32(4, serializer);
+        sse_encode_String(field0, serializer);
+    }
   }
 
   @protected
@@ -1445,6 +1811,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.format, serializer);
     sse_encode_f_64(self.fps, serializer);
   }
+}
+
+@sealed
+class CaptionExtractorImpl extends RustOpaque implements CaptionExtractor {
+  // Not to be used by end users
+  CaptionExtractorImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  CaptionExtractorImpl.frbInternalSseDecode(
+    BigInt ptr,
+    int externalSizeOnNative,
+  ) : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        RustLib.instance.api.rust_arc_increment_strong_count_CaptionExtractor,
+    rustArcDecrementStrongCount:
+        RustLib.instance.api.rust_arc_decrement_strong_count_CaptionExtractor,
+    rustArcDecrementStrongCountPtr: RustLib
+        .instance
+        .api
+        .rust_arc_decrement_strong_count_CaptionExtractorPtr,
+  );
+
+  Stream<ExtractorEvent> start({
+    Roi? roi,
+    BigInt? startTimeMs,
+    BigInt? endTimeMs,
+    required BigInt totalDurationMs,
+  }) => RustLib.instance.api.crateApiGstreamerCaptionExtractorStart(
+    that: this,
+    roi: roi,
+    startTimeMs: startTimeMs,
+    endTimeMs: endTimeMs,
+    totalDurationMs: totalDurationMs,
+  );
+
+  Future<void> stop() =>
+      RustLib.instance.api.crateApiGstreamerCaptionExtractorStop(that: this);
 }
 
 @sealed

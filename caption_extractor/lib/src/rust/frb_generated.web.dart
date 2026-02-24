@@ -22,6 +22,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   });
 
   CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_CaptionExtractorPtr => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor;
+
+  CrossPlatformFinalizerArg
   get rust_arc_decrement_strong_count_NativePlayerPtr => wire
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer;
 
@@ -29,8 +33,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException dco_decode_AnyhowException(dynamic raw);
 
   @protected
+  CaptionExtractor
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    dynamic raw,
+  );
+
+  @protected
   NativePlayer
   dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    dynamic raw,
+  );
+
+  @protected
+  CaptionExtractor
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
     dynamic raw,
   );
 
@@ -41,8 +57,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  CaptionExtractor
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    dynamic raw,
+  );
+
+  @protected
   NativePlayer
   dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    dynamic raw,
+  );
+
+  @protected
+  RustStreamSink<ExtractorEvent> dco_decode_StreamSink_extractor_event_Sse(
     dynamic raw,
   );
 
@@ -71,6 +98,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CaptionResult dco_decode_caption_result(dynamic raw);
+
+  @protected
+  ExtractorEvent dco_decode_extractor_event(dynamic raw);
 
   @protected
   double dco_decode_f_32(dynamic raw);
@@ -118,8 +148,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
+  CaptionExtractor
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   NativePlayer
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  CaptionExtractor
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
     SseDeserializer deserializer,
   );
 
@@ -130,8 +172,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  CaptionExtractor
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   NativePlayer
   sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RustStreamSink<ExtractorEvent> sse_decode_StreamSink_extractor_event_Sse(
     SseDeserializer deserializer,
   );
 
@@ -162,6 +215,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CaptionResult sse_decode_caption_result(SseDeserializer deserializer);
+
+  @protected
+  ExtractorEvent sse_decode_extractor_event(SseDeserializer deserializer);
 
   @protected
   double sse_decode_f_32(SseDeserializer deserializer);
@@ -213,8 +269,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    CaptionExtractor self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
     NativePlayer self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    CaptionExtractor self,
     SseSerializer serializer,
   );
 
@@ -227,8 +297,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    CaptionExtractor self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
   sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
     NativePlayer self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_extractor_event_Sse(
+    RustStreamSink<ExtractorEvent> self,
     SseSerializer serializer,
   );
 
@@ -264,6 +347,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_caption_result(CaptionResult self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_extractor_event(
+    ExtractorEvent self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_f_32(double self, SseSerializer serializer);
@@ -317,6 +406,22 @@ class RustLibWire implements BaseWire {
   RustLibWire.fromExternalLibrary(ExternalLibrary lib);
 
   void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    int ptr,
+  ) => wasmModule
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+        ptr,
+      );
+
+  void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    int ptr,
+  ) => wasmModule
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+        ptr,
+      );
+
+  void
   rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
     int ptr,
   ) => wasmModule
@@ -339,6 +444,16 @@ external RustLibWasmModule get wasmModule;
 @JS()
 @anonymous
 extension type RustLibWasmModule._(JSObject _) implements JSObject {
+  external void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    int ptr,
+  );
+
+  external void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCaptionExtractor(
+    int ptr,
+  );
+
   external void
   rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerNativePlayer(
     int ptr,
