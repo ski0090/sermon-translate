@@ -95,20 +95,21 @@ class VideoPlayerSidebar extends StatelessWidget {
               ),
             ),
           ],
-          if (onStartBackgroundExtraction != null) ...[
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: onStartBackgroundExtraction,
-              icon: const Icon(Icons.flash_on),
-              label: const Text('전체 자막 고속 추출', overflow: TextOverflow.ellipsis),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-              ),
+        ],
+        // 추출 버튼은 ROI 없어도 항상 표시 (하단 30% 자동 크롭)
+        if (onStartBackgroundExtraction != null) ...[
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: onStartBackgroundExtraction,
+            icon: const Icon(Icons.flash_on),
+            label: const Text('전체 자막 고속 추출', overflow: TextOverflow.ellipsis),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
             ),
-          ],
+          ),
         ],
         const SizedBox(height: 24),
         const Divider(),

@@ -43,7 +43,7 @@ pub fn get_frame(path: String, roi: Option<Roi>, time_ms: Option<u64>) -> Result
         uri
     );
 
-    let pipeline = gstreamer::parse_launch(&pipeline_str)?
+    let pipeline = gstreamer::parse::launch(&pipeline_str)?
         .dynamic_cast::<gstreamer::Pipeline>()
         .map_err(|el| anyhow::anyhow!("Failed to cast to Pipeline. Type: {}", el.type_().name()))?;
 

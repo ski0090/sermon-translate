@@ -333,6 +333,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         }
       } else if (event is PlayerEvent_Caption) {
         final caption = event.field0;
+        debugPrint('==== PlayerEvent_Caption Received: ${caption.text} ====');
         if (mounted) {
           setState(() {
             _currentCaption = caption;
@@ -407,15 +408,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   }
 
   Future<void> _onStartBackgroundExtraction() async {
-    if (_selectedRoi == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('자막을 추출할 영역(ROI)을 먼저 선택해주세요.')),
-        );
-      }
-      return;
-    }
-
+    // ROI가 없어도 하단 30% 영역으로 자동 추출하므로 계속 진행
     if (_isPlaying) {
       _player?.pause();
       setState(() {

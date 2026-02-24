@@ -38,14 +38,15 @@ pub fn create_player(path: String) -> Result<NativePlayer> {
         format!("file:///{}", path.replace("\\", "/"))
     };
 
+    // d3d11 요소를 활용한 Windows 하드웨어 가속 파이프라인 구성
     let pipeline_str = format!(
-        "uridecodebin uri=\"{}\" ! videoconvert ! tee name=t \
+        "uridecodebin uri=\"{}\" ! d3d11download ! videoconvert ! tee name=t \
          t. ! queue ! videoscale ! video/x-raw,format=RGBA ! appsink name=orig_sink sync=true \
          t. ! queue ! videoscale ! video/x-raw,format=RGBA ! appsink name=roi_sink sync=true",
         uri
     );
 
-    let pipeline = gstreamer::parse_launch(&pipeline_str)?
+    let pipeline = gstreamer::parse::launch(&pipeline_str)?
         .dynamic_cast::<gstreamer::Pipeline>()
         .map_err(|el: gstreamer::Element| {
             anyhow::anyhow!("Failed to cast to Pipeline. Type: {}", el.type_().name())
@@ -68,13 +69,13 @@ pub fn create_extractor(path: String) -> Result<CaptionExtractor> {
         format!("file:///{}", path.replace("\\", "/"))
     };
 
-    // sync=false, drop=false로 최대한 빠르게 처리
+    // d3d11download를 통해 GPU 메모리에서 CPU 메모리로 빠르게 내리기 + videorate로 2fps 강제
     let pipeline_str = format!(
-        "uridecodebin uri=\"{}\" ! videoconvert ! videoscale ! videorate ! video/x-raw,framerate=2/1,format=RGBA ! appsink name=extractor_sink sync=false drop=false",
+        "uridecodebin uri=\"{}\" ! d3d11download ! videoconvert ! videoscale ! videorate ! video/x-raw,framerate=2/1,format=RGBA ! appsink name=extractor_sink sync=false drop=false",
         uri
     );
 
-    let pipeline = gstreamer::parse_launch(&pipeline_str)?
+    let pipeline = gstreamer::parse::launch(&pipeline_str)?
         .dynamic_cast::<gstreamer::Pipeline>()
         .map_err(|el: gstreamer::Element| {
             anyhow::anyhow!("Failed to cast to Pipeline. Type: {}", el.type_().name())
@@ -419,6 +420,7 @@ impl CaptionExtractor {
         let sink_clone = sink_arc.clone();
 
         let mut ocr_engine = OcrEngine::new("kor+eng")?;
+        let initial_roi = roi.clone();
 
         app_sink.set_callbacks(
             gstreamer_app::AppSinkCallbacks::builder()
@@ -450,7 +452,7 @@ impl CaptionExtractor {
                     let mut height = info.height() as i32;
                     let pts = buffer.pts().map(|p| p.mseconds()).unwrap_or(0);
 
-                    // End time check (if passed)
+                    // End time check
                     if let Some(end_ms) = end_time_ms {
                         if pts > end_ms {
                             let _ = sink_clone.add(ExtractorEvent::Finished);
@@ -458,45 +460,53 @@ impl CaptionExtractor {
                         }
                     }
 
-                    // Dynamic ROI detection (run every ~1s assuming 2fps, or just unconditionally per frame since it's 2fps)
-                    // We'll run it every frame for maximum accuracy during high-speed extraction.
-                    let current_roi = match ocr_engine.auto_detect_roi(&pixels, width, height) {
-                        Ok(Some(detected_roi)) => {
-                            // Update the sink with the dynamic ROI so Flutter can optionally show it
-                            let _ =
-                                sink_clone.add(ExtractorEvent::DynamicRoi(detected_roi.clone()));
-                            Some(detected_roi)
-                        }
-                        _ => roi.clone(), // Fallback to initial roi if not found
-                    };
+                    // ROI 결정 로직:
+                    // - 수동 ROI 설정 시 → 해당 영역으로 크롭
+                    // - ROI 없음 → 자막이 주로 나오는 하단 30% 영역으로 크롭 (전체보다 3배 빠름)
+                    {
+                        let (crop_x, crop_y, crop_w, crop_h) = if let Some(ref r) = initial_roi {
+                            let rx = r.x.clamp(0, width);
+                            let ry = r.y.clamp(0, height);
+                            let rw = r.width.clamp(0, width - rx);
+                            let rh = r.height.clamp(0, height - ry);
+                            (rx, ry, rw, rh)
+                        } else {
+                            // 하단 30%
+                            let crop_y = (height as f32 * 0.70) as i32;
+                            let crop_h = height - crop_y;
+                            (0, crop_y, width, crop_h)
+                        };
 
-                    if let Some(ref active_roi) = current_roi {
-                        let roi_x = active_roi.x.clamp(0, width);
-                        let roi_y = active_roi.y.clamp(0, height);
-                        let roi_w = active_roi.width.clamp(0, width - roi_x);
-                        let roi_h = active_roi.height.clamp(0, height - roi_y);
-
-                        if roi_w > 0 && roi_h > 0 {
-                            let mut cropped = Vec::with_capacity((roi_w * roi_h * 4) as usize);
-                            for y in 0..roi_h {
-                                let start = (((roi_y + y) * width + roi_x) * 4) as usize;
-                                let end = start + (roi_w * 4) as usize;
-                                cropped.extend_from_slice(&pixels[start..end]);
+                        if crop_w > 0 && crop_h > 0 {
+                            let mut cropped = Vec::with_capacity((crop_w * crop_h * 4) as usize);
+                            for y in 0..crop_h {
+                                let start = (((crop_y + y) * width + crop_x) * 4) as usize;
+                                let end = start + (crop_w * 4) as usize;
+                                if end <= pixels.len() {
+                                    cropped.extend_from_slice(&pixels[start..end]);
+                                }
                             }
                             pixels = cropped;
-                            width = roi_w;
-                            height = roi_h;
+                            width = crop_w;
+                            height = crop_h;
                         }
                     }
 
-                    // OCR processing
-                    if let Ok((text, conf)) = ocr_engine.extract_text(&pixels, width, height) {
-                        if !text.is_empty() {
-                            let _ = sink_clone.add(ExtractorEvent::Caption(CaptionResult {
-                                text,
-                                confidence: conf,
-                                timestamp_ms: pts,
-                            }));
+                    // OCR 처리 (한 프레임당 1번만 호출)
+                    match ocr_engine.extract_text(&pixels, width, height) {
+                        Ok((text, conf)) => {
+                            println!("[OCR] ts={}ms text={:?} conf={:.2}", pts, text, conf);
+                            if !text.is_empty() {
+                                let result = ExtractorEvent::Caption(CaptionResult {
+                                    text,
+                                    confidence: conf,
+                                    timestamp_ms: pts,
+                                });
+                                let _ = sink_clone.add(result);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[OCR ERROR] {}", e);
                         }
                     }
 
