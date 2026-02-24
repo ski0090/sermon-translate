@@ -10,6 +10,7 @@ import 'roi_player.dart';
 import 'video/video_sidebar.dart';
 import 'video/video_screen.dart';
 import 'video/video_controls_bar.dart';
+import 'video/caption_timeline.dart';
 
 class CaptionEntry {
   final int startTimeMs;
@@ -682,7 +683,90 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           const SizedBox(width: 16),
           Expanded(
             flex: 2,
-            child: RoiPlayer(roiStream: _roiStream, staticImage: _roiThumbnail),
+            child: Column(
+              children: [
+                const SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    '크롭된 화면 (ROI)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: RoiPlayer(
+                    roiStream: _roiStream,
+                    staticImage: _roiThumbnail,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    '추출된 자막 타임라인',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const SizedBox(height: 8),
+                Container(
+                  height: 350,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: CaptionTimeline(
+                    captions: _captionHistory,
+                    onSeekTo: (timeMs) {
+                      setState(() {
+                        _isDragging = true;
+                        _currentPositionMs = timeMs;
+                      });
+                      if (_videoStream != null) {
+                        _player?.seek(timeMs: BigInt.from(timeMs));
+                      }
+
+                      // SeekEnd 유사 루틴 (안전 장치 포함)
+                      Future.delayed(const Duration(milliseconds: 300)).then((
+                        _,
+                      ) async {
+                        if (!mounted) return;
+
+                        setState(() {
+                          _isSeeking = true;
+                          _isDragging = true;
+                        });
+
+                        if (_videoStream == null) {
+                          await _startStreaming(
+                            roi: _selectedRoi,
+                            startTimeMs: timeMs,
+                          );
+                        } else {
+                          await _player?.seek(timeMs: BigInt.from(timeMs));
+                        }
+                        await _player?.pause();
+                        if (mounted) {
+                          setState(() {
+                            _isPlaying = false;
+                          });
+                        }
+
+                        Future.delayed(const Duration(seconds: 2)).then((_) {
+                          if (mounted && _isSeeking) {
+                            setState(() {
+                              _isSeeking = false;
+                              _isDragging = false;
+                            });
+                          }
+                        });
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
