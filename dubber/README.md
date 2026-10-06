@@ -11,32 +11,17 @@
 4. 음성: Supertonic(CPU, ONNX)으로 문장마다 한국어 음성을 만듭니다. 목소리 F1~F5, M1~M5.
 5. 내보내기: 잘라내기 구간을 뺀 영상에 음성을 입힙니다. 영상(mp4), 오디오(mp3), 자막(srt), 텍스트(txt).
 
-## 필요한 것
+## 설치와 실행
 
-- Windows, Python 3.13 (`python` 명령), ffmpeg/ffprobe (PATH)
-- Claude Code CLI (`claude`) 로그인 상태. 설정에서 `codex`로 바꿀 수 있습니다.
-- Python 패키지: `pip install pillow numpy onnxruntime supertonic`
-  첫 실행 때 Supertonic 모델(약 300MB)을 내려받습니다.
-- GPU는 필요 없습니다. 음성 합성은 CPU에서 문장당 약 5초가 걸립니다(설교 한 편 700문장에 약 1시간, 설정의 "빠름" 품질은 약 절반).
-  자막 읽기는 25장 묶음당 약 30초이고 4묶음을 동시에 보내므로 1,000장에 약 6분입니다.
+설치, 실행, 화면 사용 순서는 저장소 루트의 [README.md](../README.md)에 있습니다.
+프로젝트는 `dubber/projects/<영상 이름>/`에 저장되고, 결과 파일은 그 아래 `out/`에 만들어집니다.
 
-## 실행
+## 소요 시간 (GPU 없는 노트북 기준)
 
-```bash
-python dubber/server.py
-```
-
-브라우저에서 http://127.0.0.1:8765 가 열립니다. 프로젝트는 `dubber/projects/<영상 이름>/`에 저장되고, 결과 파일은 그 아래 `out/`에 만들어집니다.
-
-## 명령줄로 단계 실행
-
-```bash
-python dubber/project.py new "<영상 경로>"
-python dubber/project.py scan "<프로젝트 폴더>"
-python dubber/project.py read "<프로젝트 폴더>"
-python dubber/project.py sentences "<프로젝트 폴더>"
-python dubber/project.py correct "<프로젝트 폴더>"
-```
+- 자막 바뀜 찾기: 1시간 영상에 약 30초
+- AI 자막 읽기: 25장 묶음당 약 30초, 4묶음 동시 호출로 1,000장에 약 6분
+- 음성 합성: 문장당 약 5초, 700문장에 약 1시간 (설정의 "빠름" 품질은 약 절반)
+- 내보내기: 1시간 영상에 약 5분
 
 ## 모듈
 
