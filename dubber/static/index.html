@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설교 영상 한국어 더빙</title>
+<style>
+:root{--bg:#f4f5f7;--panel:#fff;--line:#dcdfe4;--text:#1f2328;--muted:#6b7280;--accent:#2457d6;--accent2:#e9effd;--warn:#b45309;--warnbg:#fff4e0;--bad:#b91c1c;--badbg:#fde8e8;--ok:#047857;--okbg:#e3f6ee;--cut:#d6455d;--gap:#9aa3af;--lyric:#e4b400}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+button{font:inherit;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;color:var(--text)}
+button:hover{background:#f0f2f5}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.primary:hover{background:#1b46b3}
+button.small{padding:2px 8px;font-size:12px}
+button:disabled{opacity:.5;cursor:default}
+input,select,textarea{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--text)}
+header{display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;white-space:nowrap}
+.steps{display:flex;gap:4px;flex:1}
+.steps button{border-radius:999px;padding:5px 14px;background:transparent;border-color:transparent;color:var(--muted)}
+.steps button.done{color:var(--text)}
+.steps button.active{background:var(--accent2);color:var(--accent);border-color:var(--accent2);font-weight:600}
+.steps button:disabled{opacity:.45}
+#start{max-width:760px;margin:40px auto;padding:0 16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.plist{list-style:none;margin:12px 0 0;padding:0}
+.plist li{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-top:1px solid var(--line);cursor:pointer}
+.plist li:hover{background:#f7f8fa}
+.muted{color:var(--muted);font-size:12px}
+#work{display:none;grid-template-columns:minmax(360px,42%) 1fr;grid-template-rows:1fr auto;height:calc(100vh - 53px)}
+#left{padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0;overflow:auto}
+#left video{width:100%;background:#000;border-radius:8px}
+#right{padding:12px 12px 12px 0;overflow:auto;min-width:0}
+#bottom{grid-column:1/3;background:var(--panel);border-top:1px solid var(--line);padding:8px 12px}
+#timeline{width:100%;height:84px;display:block;cursor:crosshair;border-radius:6px;background:#eceef2}
+.tlbar{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.legend span{display:inline-block;margin-right:12px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+.job{background:var(--accent2);border:1px solid #c8d6f7;border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
+.job .bar{flex:1;height:8px;background:#fff;border-radius:4px;overflow:hidden}
+.job .bar i{display:block;height:100%;background:var(--accent);transition:width .3s}
+.err{background:var(--badbg);color:var(--bad);border:1px solid #f3b4b4;border-radius:8px;padding:8px 12px;margin-bottom:10px}
+.panel h2{font-size:15px;margin:0 0 10px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.stat{display:inline-block;background:#fff;border:1px solid var(--line);border-radius:6px;padding:4px 10px;margin-right:6px}
+.sent{display:grid;grid-template-columns:200px 1fr;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px}
+.sent.cur{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent2)}
+.sent .crops img{width:100%;display:block;border-radius:3px;margin-bottom:3px;cursor:pointer}
+.sent .crops .cap{position:relative}
+.sent .crops .cap button{position:absolute;right:2px;top:2px;font-size:11px;padding:0 6px;display:none}
+.sent .crops .cap:hover button{display:block}
+.sent textarea{width:100%;min-height:38px;resize:vertical}
+.sent .tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:#eef0f3;color:var(--muted)}
+.badge.warn{background:var(--warnbg);color:var(--warn)}
+.badge.bad{background:var(--badbg);color:var(--bad)}
+.badge.ok{background:var(--okbg);color:var(--ok)}
+.diff mark{background:#ffe08a;padding:0 1px}
+.time{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px}
+.reading{font-size:12px;color:var(--muted);margin-top:4px}
+.reading input{width:100%;font-size:12px}
+#roiimg{width:100%;border-radius:6px;display:block}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:20}
+.modal .card{width:520px;max-height:90vh;overflow:auto}
+.modal label{display:block;margin:8px 0 2px;font-size:12px;color:var(--muted)}
+.files li{margin:4px 0}
+.files a{color:var(--accent);cursor:pointer}
+.sel{color:var(--warn)}
+kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">설교 영상 한국어 더빙</h1>
+  <nav class="steps" id="steps"></nav>
+  <button id="btnHome" class="small">프로젝트 목록</button>
+  <button id="btnSettings" class="small">설정</button>
+</header>
+
+<section id="start">
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div><strong>새 프로젝트</strong><div class="muted">화면 아래쪽에 한국어 자막이 있는 설교 영상 파일을 고르세요.</div></div>
+      <button class="primary" id="btnNew">영상 파일 선택</button>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <strong>최근 프로젝트</strong>
+    <ul class="plist" id="plist"></ul>
+  </div>
+</section>
+
+<section id="work">
+  <div id="left">
+    <video id="video" controls preload="metadata"></video>
+    <div class="row"><span class="time" id="vtime">0:00</span><span class="muted">문장을 누르면 그 시점으로 이동합니다. <kbd>Space</kbd> 재생/멈춤</span></div>
+    <div id="leftExtra"></div>
+  </div>
+  <div id="right">
+    <div id="jobbox"></div>
+    <div id="errbox"></div>
+    <div id="panel" class="panel"></div>
+  </div>
+  <div id="bottom">
+    <canvas id="timeline"></canvas>
+    <div class="tlbar">
+      <span class="legend"><span><i style="background:#5b8def"></i>문장</span><span><i style="background:var(--cut)"></i>잘라내기</span><span><i style="background:var(--gap)"></i>자막 없음</span><span><i style="background:var(--lyric)"></i>찬양 후보</span><span><i style="background:#f59e0b"></i>선택</span></span>
+      <span id="selinfo" class="muted">타임라인을 끌어서 구간을 선택하세요.</span>
+      <button class="small" id="btnCutSel" disabled>선택 구간 잘라내기</button>
+      <button class="small" id="btnCutCands">자막 없음 · 찬양 후보 모두 잘라내기</button>
+      <span id="cutlist"></span>
+    </div>
+  </div>
+</section>
+
+<div class="modal" id="settings">
+  <div class="card">
+    <h2 style="margin-top:0">설정</h2>
+    <label>AI 도구</label>
+    <select id="sTool"><option value="claude">claude</option><option value="codex">codex</option></select>
+    <label>한 묶음에 넣는 자막 수 (20~30)</label><input id="sPer" type="number" min="5" max="40">
+    <label>동시에 읽는 묶음 수</label><input id="sWorkers" type="number" min="1" max="8">
+    <label>자막 없음 기준 시간(초)</label><input id="sGap" type="number" min="5" max="120">
+    <label><input id="sCorrect" type="checkbox"> 자막 읽기 뒤 AI 글자 교정 실행 (묶음당 수 분이 걸릴 수 있음)</label>
+    <label>음성 합성 품질</label>
+    <select id="sSteps"><option value="8">표준 (문장당 약 5초)</option><option value="4">빠름 (품질 조금 낮음, 약 2배 빠름)</option></select>
+    <div class="muted">품질을 바꾸면 모든 문장의 음성을 다시 만듭니다.</div>
+    <label>읽기 사전 (한 줄에 하나, 보이는 글=읽는 글)</label>
+    <textarea id="sDict" rows="6" placeholder="할렐루야=할렐루우야"></textarea>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button id="sCancel">닫기</button><button class="primary" id="sSave">저장</button></div>
+  </div>
+</div>
+
+<audio id="aud"></audio>
+
+<script>
+const $=s=>document.querySelector(s);
+const STEPS=[["load","영상 불러오기"],["scan","자막 읽기"],["review","정리와 검수"],["tts","음성"],["export","내보내기"]];
+const S={pid:null,d:null,plan:[],step:"scan",filter:"all",sel:null,preview:false,poll:null,cur:null,exportFiles:null};
+
+async function api(path,method="GET",body){
+  const r=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){throw new Error(j.error||("오류 "+r.status));}
+  return j;
+}
+const fmt=t=>{t=Math.max(0,t||0);const m=Math.floor(t/60),s=Math.floor(t%60);return `${m}:${String(s).padStart(2,"0")}`;};
+const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ---------- 시작 화면 ---------- */
+async function showStart(){
+  stopPoll();S.pid=null;S.d=null;
+  $("#start").style.display="block";$("#work").style.display="none";$("#steps").innerHTML="";$("#title").textContent="설교 영상 한국어 더빙";
+  const list=await api("/api/projects");
+  $("#plist").innerHTML=list.length?list.map(p=>`<li data-id="${esc(p.dir)}"><div><div>${esc(p.name)}</div><div class="muted">${esc(p.video||"")}</div></div><div class="muted">${p.duration?fmt(p.duration):""} · ${stepName(p.step)} · ${new Date(p.updated*1000).toLocaleString("ko-KR")}</div></li>`).join(""):`<li class="muted">아직 프로젝트가 없습니다.</li>`;
+  document.querySelectorAll("#plist li[data-id]").forEach(li=>li.onclick=()=>openProject(li.dataset.id));
+}
+const stepName=s=>(STEPS.find(x=>x[0]===s)||["","영상 불러오기"])[1];
+$("#btnNew").onclick=async()=>{
+  $("#btnNew").disabled=true;
+  try{const {path}=await api("/api/pick-video","POST",{});if(!path)return;const {id}=await api("/api/projects","POST",{video:path});await openProject(id,true);}
+  catch(e){alert(e.message);}finally{$("#btnNew").disabled=false;}
+};
+$("#btnHome").onclick=showStart;
+
+/* ---------- 프로젝트 ---------- */
+async function openProject(pid,fresh){
+  S.pid=pid;S.sel=null;S.exportFiles=null;
+  await reload();
+  $("#start").style.display="none";$("#work").style.display="grid";
+  const v=$("#video");v.src=`/api/p/${encodeURIComponent(pid)}/video`;
+  const first=(S.d.sentences[0]||S.d.captions[0]||{}).start||0;
+  v.onloadedmetadata=()=>{if(v.currentTime<0.1)v.currentTime=first;};
+  S.cur=first;
+  S.step=fresh?"scan":(S.d.step==="load"?"scan":S.d.step);
+  render();
+  if(S.d.job&&S.d.job.running)startPoll();
+}
+async function reload(){
+  S.d=await api(`/api/p/${encodeURIComponent(S.pid)}`);
+  S.plan=S.d.sentences.some(s=>s.tts)?await api(`/api/p/${encodeURIComponent(S.pid)}/plan`):[];
+  $("#title").textContent=S.d.name;
+}
+const P=path=>`/api/p/${encodeURIComponent(S.pid)}${path}`;
+function render(){renderSteps();renderJob();renderPanel();drawTimeline();renderCuts();}
+function renderSteps(){
+  const furthest=STEPS.findIndex(x=>x[0]===S.d.step);
+  $("#steps").innerHTML=STEPS.slice(1).map(([k,n],i)=>{const idx=i+1;const avail=idx<=Math.max(furthest,1)||(k==="review"&&S.d.sentences.length)||(k==="tts"&&S.d.sentences.length)||(k==="export"&&S.d.sentences.some(s=>s.tts));return `<button data-step="${k}" class="${k===S.step?"active":""} ${idx<=furthest?"done":""}" ${avail?"":"disabled"}>${idx}. ${n}</button>`;}).join("");
+  document.querySelectorAll("#steps button").forEach(b=>b.onclick=()=>{S.step=b.dataset.step;S.preview=false;$("#video").muted=false;if(S.step==="tts"&&S.filter==="ai")S.filter="all";render();});
+}
+
+/* ---------- 작업 진행 ---------- */
+function renderJob(){
+  const j=S.d.job;const box=$("#jobbox");
+  if(!j||(j.done&&!j.error)){box.innerHTML="";}
+  else if(j.error){box.innerHTML="";$("#errbox").innerHTML=`<div class="err">작업 실패: ${esc(j.error)}</div>`;return;}
+  else box.innerHTML=`<div class="job"><span>${esc(j.msg||"작업 중")}</span><div class="bar"><i style="width:${Math.round(j.progress*100)}%"></i></div><span class="time">${Math.round(j.progress*100)}%</span><button class="small" id="btnCancel">중단</button></div>`;
+  if(!j||!j.error)$("#errbox").innerHTML="";
+  const c=$("#btnCancel");if(c)c.onclick=()=>api(P("/job/cancel"),"POST",{});
+}
+async function startJob(kind,params={}){
+  try{await api(P("/job"),"POST",Object.assign({kind},params));}catch(e){$("#errbox").innerHTML=`<div class="err">${esc(e.message)}</div>`;return;}
+  await reload();render();startPoll();
+}
+function startPoll(){stopPoll();S.poll=setInterval(async()=>{
+  const j=await api(P("/job"));if(!S.d)return;S.d.job=j;renderJob();
+  if(j&&j.done){stopPoll();await reload();onJobDone(j);render();}
+},1000);}
+function stopPoll(){if(S.poll){clearInterval(S.poll);S.poll=null;}}
+function onJobDone(j){
+  if(j.error||j.cancelled)return;
+  if(j.kind==="scan"){startJob("read");}
+  else if(j.kind==="read"){S.step="review";}
+  else if(j.kind==="tts"){S.step="tts";}
+  else if(j.kind==="export"){S.exportFiles=j.result&&j.result.files;}
+}
+
+/* ---------- 단계 패널 ---------- */
+function renderPanel(){
+  const el=$("#panel");$("#leftExtra").innerHTML="";
+  if(S.step==="scan")return renderScan(el);
+  if(S.step==="review")return renderReview(el);
+  if(S.step==="tts")return renderTts(el);
+  if(S.step==="export")return renderExport(el);
+}
+function renderScan(el){
+  const d=S.d,roi=d.roi,n=d.captions.length,running=d.job&&d.job.running;
+  el.innerHTML=`<h2>자막 읽기</h2>
+  <p class="muted">자막이 바뀌는 순간을 PC 안에서 찾은 뒤, 자막 그림을 ${d.settings.per_strip}장씩 묶어 AI(${esc(d.settings.tool)})에 읽힙니다. 영상 자체는 전송하지 않습니다.</p>
+  <div class="card"><strong>자막 영역</strong> <span class="muted">빨간 상자가 자막을 모두 덮고 성경 구절 상자는 피하도록 맞추세요.</span>
+    <img id="roiimg" src="${P("/frame?roi=1&t="+(S.cur||(d.captions[0]?d.captions[Math.floor(d.captions.length/2)].start:300)))}" alt="자막 영역 미리보기" style="margin:8px 0">
+    <div class="row">
+      <label>x <input id="rx" type="number" style="width:70px" value="${roi?roi.x:0}"></label>
+      <label>y <input id="ry" type="number" style="width:70px" value="${roi?roi.y:Math.round(d.info.height*0.7)}"></label>
+      <label>너비 <input id="rw" type="number" style="width:70px" value="${roi?roi.w:d.info.width}"></label>
+      <label>높이 <input id="rh" type="number" style="width:70px" value="${roi?roi.h:Math.round(d.info.height*0.3)}"></label>
+      <button id="btnRoiApply" class="small">적용</button><button id="btnRoiAuto" class="small">자동 감지</button>
+      <button id="btnRoiRefresh" class="small">현재 장면으로 미리보기</button>
+    </div></div>
+  <div class="row" style="margin-top:12px">
+    <button class="primary" id="btnScan" ${running?"disabled":""}>${n?"자막 다시 읽기":"자막 읽기 시작"}</button>
+    <span class="muted">${n?`자막 ${n}장 읽음 · 글이 비어 있는 자막 ${d.captions.filter(c=>!c.text).length}장`:"영상 전체를 훑고 AI 읽기까지 이어서 진행합니다."}</span>
+  </div>
+  ${n?`<div class="row"><span class="stat">자막 없음 구간 ${d.ranges.gaps.length}개</span><span class="stat">찬양 후보 구간 ${d.ranges.lyrics.length}개</span><span class="stat">잘라내기 ${d.cuts.length}개</span><span class="muted">아래 타임라인에서 확인하고 잘라낼 구간을 정하세요.</span></div>
+  <div class="row"><button class="primary" id="btnToReview" ${d.sentences.length?"":"disabled"}>정리와 검수로</button></div>`:""}`;
+  $("#btnRoiApply").onclick=async()=>{await api(P("/roi"),"POST",{x:+$("#rx").value,y:+$("#ry").value,w:+$("#rw").value,h:+$("#rh").value});await reload();render();};
+  $("#btnRoiAuto").onclick=async()=>{$("#btnRoiAuto").disabled=true;await api(P("/roi"),"POST",{auto:true});await reload();render();};
+  $("#btnRoiRefresh").onclick=()=>{$("#roiimg").src=P("/frame?roi=1&t="+($("#video").currentTime||0)+"&_="+Date.now());};
+  $("#btnScan").onclick=()=>{if(n&&!confirm("자막을 다시 읽으면 지금까지 정리한 문장이 초기화됩니다. 계속할까요?"))return;startJob("scan",{auto_roi:!roi});};
+  const tr=$("#btnToReview");if(tr)tr.onclick=()=>{S.step="review";render();};
+}
+
+/* ----- 정리와 검수 ----- */
+function badges(s,pl){
+  const b=[];
+  if(s.check)b.push(`<span class="badge warn">확인 필요</span>`);
+  if(s.ai&&s.ai!==s.raw)b.push(`<span class="badge">자동 수정됨</span>`);
+  if(pl&&pl.fixed_overflow)b.push(`<span class="badge bad">고정 지점 초과</span>`);else if(pl&&pl.overflow)b.push(`<span class="badge warn">길이 초과</span>`);
+  if(pl&&pl.tempo>1.001)b.push(`<span class="badge">${pl.tempo.toFixed(2)}배속</span>`);
+  return b.join(" ");
+}
+function diffHtml(a,b){
+  // 글자 단위 LCS로 바뀐 부분 표시
+  const n=a.length,m=b.length;if(n*m>40000)return esc(b);
+  const dp=Array.from({length:n+1},()=>new Uint16Array(m+1));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)dp[i][j]=a[i]===b[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
+  let i=0,j=0,out="";while(i<n&&j<m){if(a[i]===b[j]){out+=esc(b[j]);i++;j++;}else if(dp[i+1][j]>=dp[i][j+1]){i++;}else{out+=`<mark>${esc(b[j])}</mark>`;j++;}}
+  while(j<m){out+=`<mark>${esc(b[j++])}</mark>`;}return out;
+}
+function filtered(){
+  const pm=Object.fromEntries(S.plan.map(p=>[p.sid,p]));
+  return S.d.sentences.filter(s=>{const p=pm[s.id];
+    if(S.filter==="check")return s.check;if(S.filter==="ai")return s.ai&&s.ai!==s.raw;if(S.filter==="over")return p&&(p.overflow||p.fixed_overflow);return true;});
+}
+function renderReview(el){
+  const d=S.d,pm=Object.fromEntries(S.plan.map(p=>[p.sid,p]));
+  const counts={check:d.sentences.filter(s=>s.check).length,ai:d.sentences.filter(s=>s.ai&&s.ai!==s.raw).length,over:S.plan.filter(p=>p.overflow||p.fixed_overflow).length};
+  const list=filtered();
+  el.innerHTML=`<h2>정리와 검수</h2>
+  <div class="row"><select id="filter"><option value="all">전체 (${d.sentences.length})</option><option value="check">확인 필요 (${counts.check})</option><option value="ai">자동 수정됨 (${counts.ai})</option><option value="over">길이 초과 (${counts.over})</option></select>
+  <button class="small" id="btnCorrect" ${d.job&&d.job.running?"disabled":""}>AI 글자 교정 실행</button>
+  <span class="muted">글을 고치면 그 문장의 음성은 다시 만듭니다. 그림 위의 <kbd>여기서 나누기</kbd>로 문장을 나눕니다.</span>
+  <span style="flex:1"></span><button class="primary" id="btnToTts">음성 만들기로</button></div>
+  <div id="slist">${list.map(s=>sentHtml(s,pm[s.id])).join("")||'<p class="muted">해당하는 문장이 없습니다.</p>'}</div>`;
+  $("#filter").value=S.filter;$("#filter").onchange=e=>{S.filter=e.target.value;renderReview(el);};
+  $("#btnCorrect").onclick=()=>startJob("correct");
+  $("#btnToTts").onclick=()=>{S.step="tts";render();};
+  bindSentences();
+}
+function sentHtml(s,pl){
+  const caps=s.caps.map((cid,i)=>{const c=S.d.captions[cid];return `<div class="cap"><img loading="lazy" src="${P("/crop/"+c.crop)}" data-t="${c.start}" title="${fmt(c.start)}">${i>0?`<button class="small" data-split="${s.id}:${cid}">여기서 나누기</button>`:""}</div>`;}).join("");
+  const diff=s.ai&&s.ai!==s.raw?`<div class="diff muted" style="font-size:12px">읽은 글: ${diffHtml(s.ai,s.raw)} <button class="small" data-revert="${s.id}">되돌리기</button></div>`:"";
+  return `<div class="sent" data-sid="${s.id}" id="s${s.id}"><div class="crops">${caps}</div><div>
+    <div class="row" style="margin:0 0 4px"><span class="time">${fmt(s.start)} – ${fmt(s.end)}</span>${badges(s,pl)}<span style="flex:1"></span>
+      <button class="small" data-play="${s.start}">▶ 영상</button>${s.tts?`<button class="small" data-tts="${s.tts}">♪ 음성</button>`:""}</div>
+    <textarea data-text="${s.id}">${esc(s.text)}</textarea>${diff}
+    <div class="reading">읽는 글: <input data-reading="${s.id}" value="${esc(s.reading||"")}" placeholder="${esc(readingPreview(s))}"></div>
+    <div class="tools"><button class="small" data-merge="${s.id}">다음 문장과 합치기</button><button class="small" data-del="${s.id}">삭제</button>
+      ${S.step==="tts"?`<label class="muted">속도 <input type="number" step="0.05" min="0.8" max="1.5" style="width:70px" data-speed="${s.id}" value="${s.speed||""}" placeholder="${S.d.settings.speed}"></label>
+      <label class="muted">앞 쉼(초) <input type="number" step="0.1" min="0" max="5" style="width:64px" data-pause="${s.id}" value="${s.pause||0}"></label>
+      <button class="small" data-regen="${s.id}">음성 다시 만들기</button>`:""}
+    </div></div></div>`;
+}
+function readingPreview(s){return s.reading_auto||s.text.replace(/[\"'“”‘’]/g,"");}
+function bindSentences(){
+  const root=$("#panel");
+  root.querySelectorAll("[data-play]").forEach(b=>b.onclick=()=>seek(+b.dataset.play));
+  root.querySelectorAll(".crops img").forEach(i=>i.onclick=()=>seek(+i.dataset.t));
+  root.querySelectorAll("[data-tts]").forEach(b=>b.onclick=()=>{const a=$("#aud");a.src=P("/tts/"+b.dataset.tts);a.play();});
+  root.querySelectorAll("textarea[data-text]").forEach(t=>t.onchange=async()=>{await api(P("/sentence/"+t.dataset.text),"POST",{text:t.value.trim()});await softReload();});
+  root.querySelectorAll("input[data-reading]").forEach(t=>t.onchange=async()=>{await api(P("/sentence/"+t.dataset.reading),"POST",{reading:t.value.trim()||null});await softReload();});
+  root.querySelectorAll("input[data-speed]").forEach(t=>t.onchange=async()=>{await api(P("/sentence/"+t.dataset.speed),"POST",{speed:t.value?+t.value:null});await softReload();});
+  root.querySelectorAll("input[data-pause]").forEach(t=>t.onchange=async()=>{await api(P("/sentence/"+t.dataset.pause),"POST",{pause:+t.value||0});await softReload();});
+  root.querySelectorAll("[data-split]").forEach(b=>b.onclick=async()=>{const [sid,cid]=b.dataset.split.split(":");await api(P(`/sentence/${sid}/split`),"POST",{cap:+cid});await softReload();});
+  root.querySelectorAll("[data-merge]").forEach(b=>b.onclick=async()=>{await api(P(`/sentence/${b.dataset.merge}/merge`),"POST",{});await softReload();});
+  root.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(!confirm("이 문장을 지울까요? 음성도 만들지 않습니다."))return;await api(P(`/sentence/${b.dataset.del}`),"DELETE");await softReload();});
+  root.querySelectorAll("[data-revert]").forEach(b=>b.onclick=async()=>{const s=S.d.sentences.find(x=>x.id==b.dataset.revert);await api(P("/sentence/"+s.id),"POST",{text:s.raw});await softReload();});
+  root.querySelectorAll("[data-regen]").forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent="만드는 중…";try{await api(P(`/sentence/${b.dataset.regen}/tts`),"POST",{});}catch(e){alert(e.message);}await softReload();});
+}
+async function softReload(){const y=$("#right").scrollTop;await reload();render();$("#right").scrollTop=y;}
+
+/* ----- 음성 ----- */
+function renderTts(el){
+  const d=S.d,pm=Object.fromEntries(S.plan.map(p=>[p.sid,p]));
+  const done=d.sentences.filter(s=>s.tts).length,total=d.sentences.length,running=d.job&&d.job.running;
+  const over=S.plan.filter(p=>p.overflow||p.fixed_overflow).length;
+  el.innerHTML=`<h2>음성</h2>
+  <div class="card"><div class="row"><label>목소리 <select id="voice">${["F1","F2","F3","F4","F5","M1","M2","M3","M4","M5"].map(v=>`<option ${v===d.settings.voice?"selected":""}>${v}</option>`).join("")}</select></label>
+    <button class="small" id="btnSample">들어 보기</button>
+    <label>기본 속도 <input id="speed" type="number" step="0.05" min="0.8" max="1.5" style="width:80px" value="${d.settings.speed}"></label>
+    <span class="muted">F는 여성, M은 남성 목소리입니다. 바꾸면 모든 문장의 음성을 다시 만듭니다.</span></div>
+  <div class="row"><button class="primary" id="btnTts" ${running?"disabled":""}>${done<total?`음성 만들기 (${total-done}문장 남음)`:"음성 모두 만들어짐 · 다시 만들기"}</button>
+    <span class="stat">${done}/${total} 문장</span>${over?`<span class="badge warn">길이 초과 ${over}문장</span>`:""}
+    <button class="small" id="btnPreview">${S.preview?"미리 듣기 끄기":"영상과 함께 미리 듣기"}</button>
+    <span style="flex:1"></span><button class="primary" id="btnToExport" ${done?"":"disabled"}>내보내기로</button></div></div>
+  <div class="row"><select id="filter"><option value="all">전체</option><option value="over">길이 초과만</option><option value="check">확인 필요만</option></select><span class="muted">문장별로 들어 보고 속도나 앞 쉼을 바꾸거나 다시 만들 수 있습니다.</span></div>
+  <div id="slist">${filtered().map(s=>sentHtml(s,pm[s.id])).join("")}</div>`;
+  $("#filter").value=S.filter==="ai"?"all":S.filter;$("#filter").onchange=e=>{S.filter=e.target.value;renderTts(el);};
+  $("#voice").onchange=async e=>{if(done&&!confirm("목소리를 바꾸면 모든 문장의 음성을 다시 만듭니다. 계속할까요?")){e.target.value=d.settings.voice;return;}await api(P("/settings"),"POST",{voice:e.target.value});await softReload();};
+  $("#speed").onchange=async e=>{await api(P("/settings"),"POST",{speed:+e.target.value});await softReload();};
+  $("#btnSample").onclick=()=>{const a=$("#aud");$("#btnSample").textContent="준비 중…";a.src="/api/voice-sample/"+$("#voice").value;a.oncanplay=()=>{$("#btnSample").textContent="들어 보기";};a.play();};
+  $("#btnTts").onclick=()=>startJob("tts",{force:done>=total});
+  $("#btnPreview").onclick=()=>{S.preview=!S.preview;$("#video").muted=S.preview;if(!S.preview){$("#aud").pause();}renderTts(el);};
+  $("#btnToExport").onclick=()=>{S.step="export";S.preview=false;$("#video").muted=false;render();};
+  bindSentences();
+}
+
+/* ----- 내보내기 ----- */
+function renderExport(el){
+  const d=S.d,running=d.job&&d.job.running;const files=S.exportFiles||d.last_export||[];
+  const total=d.info.duration-d.cuts.reduce((a,c)=>a+(c.end-c.start),0);
+  el.innerHTML=`<h2>내보내기</h2>
+  <div class="card">
+    <div class="row"><label><input type="checkbox" id="wVideo" checked> 한국어 음성이 입혀진 영상</label><label><input type="checkbox" id="wAudio"> 한국어 음성만 담은 오디오 파일</label></div>
+    <div class="row"><label><input type="checkbox" id="wSrt" checked> 한국어 자막 파일 (srt)</label><label><input type="checkbox" id="wTxt" checked> 자막 텍스트 파일</label></div>
+    <div class="row"><span>원음 처리</span><label><input type="radio" name="oa" value="remove" ${d.settings.orig_audio!=="duck"?"checked":""}> 원음 제거</label><label><input type="radio" name="oa" value="duck" ${d.settings.orig_audio==="duck"?"checked":""}> 원음 낮춰서 깔기</label></div>
+    <div class="muted">잘라내기 ${d.cuts.length}개 구간을 빼면 결과 영상 길이는 약 ${fmt(total)}입니다. 음성이 없는 문장 ${d.sentences.filter(s=>!s.tts).length}개는 빠집니다.</div>
+    <div class="row"><span class="muted">저장 위치: ${esc(d.settings.out_dir||"프로젝트 폴더 안 out")}</span><button class="small" id="btnPickOut">바꾸기</button>${d.settings.out_dir?`<button class="small" id="btnResetOut">기본으로</button>`:""}</div>
+    <div class="row" style="margin-top:8px"><button class="primary" id="btnExport" ${running?"disabled":""}>내보내기</button><button id="btnOpenOut">폴더 열기</button></div>
+  </div>
+  ${files.length?`<div class="card" style="margin-top:12px"><strong>만들어진 파일</strong><ul class="files">${files.map(f=>`<li><a data-open="${esc(f)}">${esc(f.split(/[\\/]/).pop())}</a></li>`).join("")}</ul></div>`:""}`;
+  $("#btnExport").onclick=()=>{const want=[];if($("#wVideo").checked)want.push("video");if($("#wAudio").checked)want.push("audio");if($("#wSrt").checked)want.push("srt");if($("#wTxt").checked)want.push("txt");
+    const oa=document.querySelector("input[name=oa]:checked").value;api(P("/settings"),"POST",{orig_audio:oa});startJob("export",{want,orig_audio:oa});};
+  $("#btnOpenOut").onclick=()=>api(P("/open-out"),"POST",{});
+  $("#btnPickOut").onclick=async()=>{const {path}=await api("/api/pick-folder","POST",{});if(path){await api(P("/settings"),"POST",{out_dir:path});await softReload();}};
+  const ro=$("#btnResetOut");if(ro)ro.onclick=async()=>{await api(P("/settings"),"POST",{out_dir:null});await softReload();};
+  el.querySelectorAll("[data-open]").forEach(a=>a.onclick=()=>api(P("/open-file"),"POST",{path:a.dataset.open}));
+}
+
+/* ---------- 영상 / 미리 듣기 ---------- */
+const video=$("#video");
+function seek(t){video.currentTime=t;video.play().catch(()=>{});}
+video.addEventListener("timeupdate",()=>{
+  const t=video.currentTime;$("#vtime").textContent=fmt(t)+" / "+fmt(S.d?S.d.info.duration:0);S.cur=t;drawTimeline();
+  if(!S.d)return;
+  // 잘라내기 구간은 건너뛴다
+  const cut=S.d.cuts.find(c=>t>=c.start&&t<c.end-0.05);if(cut&&S.preview){video.currentTime=cut.end;return;}
+  const s=S.d.sentences.find(x=>t>=x.start&&t<x.end);
+  if(s&&S.cursent!==s.id){S.cursent=s.id;document.querySelectorAll(".sent.cur").forEach(e=>e.classList.remove("cur"));const el=$("#s"+s.id);if(el){el.classList.add("cur");if(S.filter!=="over"&&!userScrolling)el.scrollIntoView({block:"nearest"});}
+    if(S.preview&&s.tts){const a=$("#aud");a.src=P("/tts/"+s.tts);a.playbackRate=1;a.play().catch(()=>{});}}
+});
+let userScrolling=false,scrollTimer;$("#right").addEventListener("wheel",()=>{userScrolling=true;clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>userScrolling=false,4000);});
+document.addEventListener("keydown",e=>{if(e.code==="Space"&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)&&S.pid){e.preventDefault();video.paused?video.play():video.pause();}});
+
+/* ---------- 타임라인 ---------- */
+const tl=$("#timeline");
+function drawTimeline(){
+  if(!S.d)return;const W=tl.clientWidth||800,H=84;if(tl.width!==W*devicePixelRatio){tl.width=W*devicePixelRatio;tl.height=H*devicePixelRatio;}
+  const ctx=tl.getContext("2d");ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);ctx.clearRect(0,0,W,H);
+  const D=S.d.info.duration,x=t=>t/D*W;
+  ctx.fillStyle="#eceef2";ctx.fillRect(0,0,W,H);
+  S.d.ranges.gaps.forEach(g=>{ctx.fillStyle="#c3c8d0";ctx.fillRect(x(g.start),0,Math.max(1,x(g.end)-x(g.start)),H);});
+  S.d.ranges.lyrics.forEach(g=>{ctx.fillStyle="rgba(228,180,0,.55)";ctx.fillRect(x(g.start),0,Math.max(1,x(g.end)-x(g.start)),H);});
+  S.d.sentences.forEach(s=>{ctx.fillStyle=s.tts?"#5b8def":"#9db6f2";ctx.fillRect(x(s.start),26,Math.max(1,x(s.end)-x(s.start)-0.5),32);});
+  const pm=Object.fromEntries(S.plan.map(p=>[p.sid,p]));S.d.sentences.forEach(s=>{const p=pm[s.id];if(p&&(p.overflow||p.fixed_overflow)){ctx.fillStyle=p.fixed_overflow?"#b91c1c":"#f59e0b";ctx.fillRect(x(s.start),22,Math.max(2,x(s.end)-x(s.start)),3);}});
+  S.d.cuts.forEach(c=>{ctx.fillStyle="rgba(214,69,93,.45)";ctx.fillRect(x(c.start),0,Math.max(1,x(c.end)-x(c.start)),H);ctx.strokeStyle="#d6455d";ctx.strokeRect(x(c.start)+.5,.5,Math.max(1,x(c.end)-x(c.start))-1,H-1);});
+  if(S.sel){ctx.fillStyle="rgba(245,158,11,.35)";ctx.fillRect(x(S.sel[0]),0,Math.max(1,x(S.sel[1])-x(S.sel[0])),H);}
+  ctx.fillStyle="#6b7280";ctx.font="11px sans-serif";for(let m=0;m<D;m+=300){ctx.fillRect(x(m),H-14,1,14);ctx.fillText(fmt(m),x(m)+3,H-3);}
+  ctx.fillStyle="#111";ctx.fillRect(x(S.cur||0)-1,0,2,H);
+}
+let dragStart=null,dragMoved=false;
+tl.addEventListener("mousedown",e=>{dragStart=e.offsetX;dragMoved=false;});
+tl.addEventListener("mousemove",e=>{if(dragStart===null||!S.d)return;const D=S.d.info.duration,W=tl.clientWidth;if(Math.abs(e.offsetX-dragStart)>3)dragMoved=true;if(!dragMoved)return;const a=Math.min(dragStart,e.offsetX)/W*D,b=Math.max(dragStart,e.offsetX)/W*D;S.sel=[Math.max(0,a),Math.min(D,b)];updateSel();drawTimeline();});
+window.addEventListener("mouseup",()=>{if(dragStart===null||!S.d)return;const D=S.d.info.duration,W=tl.clientWidth;if(!dragMoved){S.sel=null;updateSel();seek(dragStart/W*D);}dragStart=null;drawTimeline();});
+function updateSel(){$("#btnCutSel").disabled=!S.sel;$("#selinfo").textContent=S.sel?`선택: ${fmt(S.sel[0])} – ${fmt(S.sel[1])} (${Math.round(S.sel[1]-S.sel[0])}초)`:"타임라인을 끌어서 구간을 선택하세요.";}
+$("#btnCutSel").onclick=async()=>{if(!S.sel)return;const cuts=S.d.cuts.concat([{start:S.sel[0],end:S.sel[1],label:"잘라내기"}]);S.sel=null;updateSel();await api(P("/cuts"),"POST",{cuts});await softReload();};
+$("#btnCutCands").onclick=async()=>{const cands=S.d.ranges.gaps.map(g=>({...g,label:"자막 없음"})).concat(S.d.ranges.lyrics.map(g=>({...g,label:"찬양"})));if(!cands.length){alert("잘라낼 후보 구간이 없습니다.");return;}if(!confirm(`자막 없음 ${S.d.ranges.gaps.length}개, 찬양 후보 ${S.d.ranges.lyrics.length}개 구간을 잘라내기로 지정할까요?`))return;await api(P("/cuts"),"POST",{cuts:S.d.cuts.concat(cands)});await softReload();};
+function renderCuts(){
+  $("#cutlist").innerHTML=S.d.cuts.map((c,i)=>`<span class="badge" style="margin-left:6px">${esc(c.label||"잘라내기")} ${fmt(c.start)}–${fmt(c.end)} <a data-uncut="${i}" style="cursor:pointer;color:var(--bad)">✕</a></span>`).join("");
+  document.querySelectorAll("[data-uncut]").forEach(a=>a.onclick=async()=>{const cuts=S.d.cuts.slice();cuts.splice(+a.dataset.uncut,1);await api(P("/cuts"),"POST",{cuts});await softReload();});
+}
+window.addEventListener("resize",drawTimeline);
+
+/* ---------- 설정 ---------- */
+$("#btnSettings").onclick=()=>{if(!S.d){alert("프로젝트를 먼저 여세요.");return;}const s=S.d.settings;$("#sTool").value=s.tool;$("#sPer").value=s.per_strip;$("#sWorkers").value=s.workers;$("#sGap").value=s.min_gap;$("#sCorrect").checked=!!s.ai_correct;$("#sSteps").value=String(s.tts_steps||8);$("#sDict").value=Object.entries(s.dictionary||{}).map(([k,v])=>k+"="+v).join("\n");$("#settings").style.display="flex";};
+$("#sCancel").onclick=()=>$("#settings").style.display="none";
+$("#sSave").onclick=async()=>{const dict={};$("#sDict").value.split("\n").forEach(l=>{const i=l.indexOf("=");if(i>0)dict[l.slice(0,i).trim()]=l.slice(i+1).trim();});
+  const body={tool:$("#sTool").value,per_strip:+$("#sPer").value,workers:+$("#sWorkers").value,min_gap:+$("#sGap").value,ai_correct:$("#sCorrect").checked,dictionary:dict};
+  if(String(S.d.settings.tts_steps||8)!==$("#sSteps").value){if(!confirm("음성 합성 품질을 바꾸면 모든 문장의 음성을 다시 만듭니다. 계속할까요?"))return;body.tts_steps=+$("#sSteps").value;}
+  await api(P("/settings"),"POST",body);$("#settings").style.display="none";await softReload();};
+
+showStart();
+</script>
+</body>
+</html>

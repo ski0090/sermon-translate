@@ -1,3 +1,5 @@
+> **참고:** 이 폴더는 이전 구현(Flutter + Rust + PaddleOCR)입니다. 현재 구현은 `dubber/`에 있으며 OCR과 CUDA 설치가 필요 없습니다. 아래 설치 안내는 더 이상 유효하지 않습니다.
+
 # caption_extractor
 
 OCR 기술을 이용한 동영상 자막 추출 프로그램입니다.  
