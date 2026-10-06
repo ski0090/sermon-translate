@@ -60,7 +60,12 @@ header h1{font-size:16px;margin:0;white-space:nowrap}
 .time{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px}
 .reading{font-size:12px;color:var(--muted);margin-top:4px}
 .reading input{width:100%;font-size:12px}
-#roiimg{width:100%;border-radius:6px;display:block}
+#roiwrap{position:relative;user-select:none;margin:8px 0;overflow:hidden;border-radius:6px;cursor:crosshair;touch-action:none}
+#roiimg{width:100%;display:block;pointer-events:none}
+#roibox{position:absolute;border:2px solid #e5484d;box-sizing:border-box;box-shadow:0 0 0 4000px rgba(0,0,0,.28);cursor:move}
+#roibox i{position:absolute;width:10px;height:10px;background:#fff;border:2px solid #e5484d;border-radius:2px;pointer-events:none}
+#roibox i.nw{left:-6px;top:-6px}#roibox i.ne{right:-6px;top:-6px}#roibox i.sw{left:-6px;bottom:-6px}#roibox i.se{right:-6px;bottom:-6px}
+#roibox i.n{left:calc(50% - 5px);top:-6px}#roibox i.s{left:calc(50% - 5px);bottom:-6px}#roibox i.w{left:-6px;top:calc(50% - 5px)}#roibox i.e{right:-6px;top:calc(50% - 5px)}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:20}
 .modal .card{width:520px;max-height:90vh;overflow:auto}
 .modal label{display:block;margin:8px 0 2px;font-size:12px;color:var(--muted)}
@@ -235,7 +240,8 @@ function renderScan(el){
   ${n?`<div class="row"><span class="stat">자막 없음 구간 ${d.ranges.gaps.length}개</span><span class="stat">찬양 후보 구간 ${d.ranges.lyrics.length}개</span><span class="stat">잘라내기 ${d.cuts.length}개</span><span class="muted">아래 타임라인에서 확인하고 잘라낼 구간을 정하세요.</span></div>
   <div class="row" style="margin-bottom:12px"><button class="primary" id="btnToReview" ${d.sentences.length?"":"disabled"}>정리와 검수로</button></div>`:""}
   <div class="card"><strong>자막 영역</strong> <span class="muted">읽기 전에 빨간 상자가 자막을 모두 덮고 성경 구절 상자는 피하는지 확인하세요.</span>
-    <img id="roiimg" src="${P("/frame?roi=1&t="+(S.cur||(d.captions[0]?d.captions[Math.floor(d.captions.length/2)].start:300)))}" alt="자막 영역 미리보기" style="margin:8px 0">
+    <div id="roiwrap"><img id="roiimg" src="${P("/frame?t="+(S.cur||(d.captions[0]?d.captions[Math.floor(d.captions.length/2)].start:300)))}" alt="자막 영역 미리보기" draggable="false"><div id="roibox"><i class="nw"></i><i class="ne"></i><i class="sw"></i><i class="se"></i><i class="n"></i><i class="s"></i><i class="w"></i><i class="e"></i></div></div>
+    <div class="muted" style="margin-bottom:6px">상자 안을 끌면 옮기고, 가장자리나 모서리를 끌면 크기가 바뀝니다. 상자 밖에서 끌면 새로 그립니다. 놓는 순간 저장됩니다.</div>
     <div class="row">
       <label>x <input id="rx" type="number" style="width:70px" value="${roi?roi.x:0}"></label>
       <label>y <input id="ry" type="number" style="width:70px" value="${roi?roi.y:Math.round(d.info.height*0.7)}"></label>
@@ -244,11 +250,45 @@ function renderScan(el){
       <button id="btnRoiApply" class="small">적용</button><button id="btnRoiAuto" class="small">자동 감지</button>
       <button id="btnRoiRefresh" class="small">현재 장면으로 미리보기</button>
     </div></div>`;
-  $("#btnRoiApply").onclick=async()=>{await api(P("/roi"),"POST",{x:+$("#rx").value,y:+$("#ry").value,w:+$("#rw").value,h:+$("#rh").value});await reload();render();};
-  $("#btnRoiAuto").onclick=async()=>{$("#btnRoiAuto").disabled=true;await api(P("/roi"),"POST",{auto:true});await reload();render();};
-  $("#btnRoiRefresh").onclick=()=>{$("#roiimg").src=P("/frame?roi=1&t="+($("#video").currentTime||0)+"&_="+Date.now());};
+  $("#btnRoiApply").onclick=async()=>{await saveRoi({x:+$("#rx").value,y:+$("#ry").value,w:+$("#rw").value,h:+$("#rh").value});};
+  $("#btnRoiAuto").onclick=async()=>{$("#btnRoiAuto").disabled=true;const roi=await api(P("/roi"),"POST",{auto:true});S.d.roi=roi;$("#btnRoiAuto").disabled=false;syncRoiInputs();layoutRoiBox();};
+  $("#btnRoiRefresh").onclick=()=>{$("#roiimg").src=P("/frame?t="+($("#video").currentTime||0)+"&_="+Date.now());};
+  setupRoiEditor();
   $("#btnScan").onclick=()=>{if(n&&!confirm("자막을 다시 읽으면 지금까지 정리한 문장이 초기화됩니다. 계속할까요?"))return;startJob("scan",{auto_roi:!roi});};
   const tr=$("#btnToReview");if(tr)tr.onclick=()=>{S.step="review";render();};
+}
+
+/* ----- 자막 영역 상자 편집 ----- */
+function curRoi(){const d=S.d;return d.roi||{x:0,y:Math.round(d.info.height*0.7),w:d.info.width,h:d.info.height-Math.round(d.info.height*0.7)};}
+function syncRoiInputs(){const r=curRoi();if($("#rx")){$("#rx").value=r.x;$("#ry").value=r.y;$("#rw").value=r.w;$("#rh").value=r.h;}}
+function layoutRoiBox(r){
+  const wrap=$("#roiwrap"),box=$("#roibox"),img=$("#roiimg");if(!wrap||!box||!img.clientWidth)return;
+  r=r||curRoi();const k=img.clientWidth/S.d.info.width;
+  box.style.left=(r.x*k)+"px";box.style.top=(r.y*k)+"px";box.style.width=(r.w*k)+"px";box.style.height=(r.h*k)+"px";
+}
+async function saveRoi(r){const roi=await api(P("/roi"),"POST",r);S.d.roi=roi;syncRoiInputs();layoutRoiBox();}
+function setupRoiEditor(){
+  const wrap=$("#roiwrap"),img=$("#roiimg");if(!wrap)return;
+  img.onload=()=>layoutRoiBox();if(img.complete)layoutRoiBox();
+  const W=S.d.info.width,H=S.d.info.height,EDGE=8;
+  let drag=null;
+  const pos=e=>{const b=wrap.getBoundingClientRect(),k=img.clientWidth/W;return {x:(e.clientX-b.left)/k,y:(e.clientY-b.top)/k,k};};
+  const zone=(p,r)=>{const k=p.k,ex=EDGE/k;const inX=p.x>=r.x-ex&&p.x<=r.x+r.w+ex,inY=p.y>=r.y-ex&&p.y<=r.y+r.h+ex;if(!inX||!inY)return null;
+    const l=Math.abs(p.x-r.x)<=ex,rt=Math.abs(p.x-(r.x+r.w))<=ex,t=Math.abs(p.y-r.y)<=ex,b=Math.abs(p.y-(r.y+r.h))<=ex;
+    return (t?"n":b?"s":"")+(l?"w":rt?"e":"")||"move";};
+  const cursors={n:"ns-resize",s:"ns-resize",e:"ew-resize",w:"ew-resize",ne:"nesw-resize",sw:"nesw-resize",nw:"nwse-resize",se:"nwse-resize",move:"move"};
+  wrap.onmousemove=e=>{if(drag)return;const z=zone(pos(e),curRoi());wrap.style.cursor=z?cursors[z]:"crosshair";};
+  wrap.onmousedown=e=>{e.preventDefault();const p=pos(e),r=curRoi();const z=zone(p,r);drag={z:z||"new",p0:p,r0:{...r},r:{...r}};if(!z)drag.r={x:p.x,y:p.y,w:0,h:0};};
+  const onMove=e=>{if(!drag)return;const p=pos(e),dx=p.x-drag.p0.x,dy=p.y-drag.p0.y,r0=drag.r0;let r;
+    if(drag.z==="new"){const x1=Math.min(drag.p0.x,p.x),y1=Math.min(drag.p0.y,p.y);r={x:x1,y:y1,w:Math.abs(dx),h:Math.abs(dy)};}
+    else if(drag.z==="move"){r={x:r0.x+dx,y:r0.y+dy,w:r0.w,h:r0.h};}
+    else{let x1=r0.x,y1=r0.y,x2=r0.x+r0.w,y2=r0.y+r0.h;if(drag.z.includes("w"))x1+=dx;if(drag.z.includes("e"))x2+=dx;if(drag.z.includes("n"))y1+=dy;if(drag.z.includes("s"))y2+=dy;r={x:Math.min(x1,x2),y:Math.min(y1,y2),w:Math.abs(x2-x1),h:Math.abs(y2-y1)};}
+    r.x=Math.max(0,Math.min(r.x,W-4));r.y=Math.max(0,Math.min(r.y,H-4));r.w=Math.max(4,Math.min(r.w,W-r.x));r.h=Math.max(4,Math.min(r.h,H-r.y));
+    drag.r=r;layoutRoiBox(r);};
+  const onUp=async()=>{if(!drag)return;const r=drag.r;drag=null;if(r.w<8||r.h<8){layoutRoiBox();return;}
+    await saveRoi({x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.w),h:Math.round(r.h)});};
+  window.addEventListener("mousemove",onMove);window.addEventListener("mouseup",onUp);
+  window.addEventListener("resize",()=>layoutRoiBox());
 }
 
 /* ----- 정리와 검수 ----- */
