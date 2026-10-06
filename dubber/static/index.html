@@ -27,6 +27,9 @@ header h1{font-size:16px;margin:0;white-space:nowrap}
 .plist{list-style:none;margin:12px 0 0;padding:0}
 .plist li{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-top:1px solid var(--line);cursor:pointer}
 .plist li:hover{background:#f7f8fa}
+.pjob{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--accent);justify-content:flex-end}
+.pjob .bar{width:160px;height:6px;background:#e5e9f2;border-radius:3px;overflow:hidden}
+.pjob .bar i{display:block;height:100%;background:var(--accent)}
 .muted{color:var(--muted);font-size:12px}
 #work{display:none;grid-template-columns:minmax(360px,42%) 1fr;grid-template-rows:1fr auto;height:calc(100vh - 53px)}
 #left{padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0;overflow:auto}
@@ -157,8 +160,29 @@ const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"
 async function showStart(){
   stopPoll();S.pid=null;S.d=null;
   $("#start").style.display="block";$("#work").style.display="none";$("#steps").innerHTML="";$("#title").textContent="설교 영상 한국어 더빙";
+  await renderList();
+  if(S.listPoll)clearInterval(S.listPoll);
+  S.listPoll=setInterval(async()=>{if(S.pid){clearInterval(S.listPoll);S.listPoll=null;return;}await renderList();},2000);
+}
+function progressText(p){
+  const parts=[];
+  if(p.captions)parts.push(`자막 ${p.read}/${p.captions}장`);
+  if(p.sentences)parts.push(`문장 ${p.sentences}개`);
+  if(p.sentences)parts.push(`음성 ${p.tts}/${p.sentences}`);
+  if(p.cuts)parts.push(`잘라내기 ${p.cuts}개`);
+  if(p.exported)parts.push("내보내기 완료");
+  return parts.join(" · ")||"아직 자막을 읽지 않음";
+}
+async function renderList(){
   const list=await api("/api/projects");
-  $("#plist").innerHTML=list.length?list.map(p=>`<li data-id="${esc(p.dir)}"><div><div>${esc(p.name)}</div><div class="muted">${esc(p.video||"")}</div></div><div class="muted">${p.duration?fmt(p.duration):""} · ${stepName(p.step)} · ${new Date(p.updated*1000).toLocaleString("ko-KR")}</div></li>`).join(""):`<li class="muted">아직 프로젝트가 없습니다.</li>`;
+  const html=list.length?list.map(p=>{
+    const j=p.job;
+    const right=j?`<div class="pjob"><span>${esc(j.msg||"작업 중")}</span><div class="bar"><i style="width:${Math.round(j.progress*100)}%"></i></div><span class="time">${Math.round(j.progress*100)}%</span></div>`
+      :`<div class="muted" style="text-align:right">${progressText(p)}</div>`;
+    return `<li data-id="${esc(p.dir)}"><div style="min-width:0"><div>${esc(p.name)} <span class="badge ${j?"ok":""}">${j?"진행 중 · ":""}${stepName(p.step)}</span></div><div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.video||"")}</div></div>
+      <div style="flex:0 0 auto;margin-left:12px">${right}<div class="muted" style="text-align:right">${p.duration?fmt(p.duration):""} · ${new Date(p.updated*1000).toLocaleString("ko-KR")}</div></div></li>`;}).join("")
+    :`<li class="muted">아직 프로젝트가 없습니다.</li>`;
+  if($("#plist").innerHTML!==html)$("#plist").innerHTML=html;
   document.querySelectorAll("#plist li[data-id]").forEach(li=>li.onclick=()=>openProject(li.dataset.id));
 }
 const stepName=s=>(STEPS.find(x=>x[0]===s)||["","영상 불러오기"])[1];

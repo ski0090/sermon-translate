@@ -297,7 +297,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._file(os.path.join(STATIC, os.path.basename(path)), cache=False)
         if path == "/api/projects":
             if method == "GET":
-                return self._json(prj.list_projects())
+                items = prj.list_projects()
+                for it in items:
+                    j = _jobs.get(it["dir"])
+                    it["job"] = j.status() if j and not j.done else None
+                return self._json(items)
             video = self._body().get("video")
             if not video or not os.path.isfile(video):
                 return self._json({"error": "영상 파일을 찾을 수 없습니다"}, 400)

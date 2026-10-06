@@ -31,8 +31,13 @@ def list_projects():
             try:
                 with open(p, encoding="utf-8") as f:
                     j = json.load(f)
+                caps = j.get("captions", [])
+                sents = j.get("sentences", [])
                 out.append({"dir": d, "name": j.get("name", d), "video": j.get("video"), "step": j.get("step"),
-                            "updated": os.path.getmtime(p), "duration": j.get("info", {}).get("duration")})
+                            "updated": os.path.getmtime(p), "duration": j.get("info", {}).get("duration"),
+                            "captions": len(caps), "read": sum(1 for c in caps if c.get("text")),
+                            "sentences": len(sents), "tts": sum(1 for s in sents if s.get("tts")),
+                            "cuts": len(j.get("cuts", [])), "exported": bool(j.get("last_export"))})
             except Exception:
                 pass
     out.sort(key=lambda x: -x["updated"])
