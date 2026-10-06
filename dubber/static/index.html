@@ -227,8 +227,14 @@ function renderPanel(){
 function renderScan(el){
   const d=S.d,roi=d.roi,n=d.captions.length,running=d.job&&d.job.running;
   el.innerHTML=`<h2>자막 읽기</h2>
-  <p class="muted">자막이 바뀌는 순간을 PC 안에서 찾은 뒤, 자막 그림을 ${d.settings.per_strip}장씩 묶어 AI(${esc(d.settings.tool)})에 읽힙니다. 영상 자체는 전송하지 않습니다.</p>
-  <div class="card"><strong>자막 영역</strong> <span class="muted">빨간 상자가 자막을 모두 덮고 성경 구절 상자는 피하도록 맞추세요.</span>
+  <p class="muted">자막이 바뀌는 순간을 PC 안에서 찾은 뒤, 자막 그림을 ${d.settings.per_strip}장씩 묶어 AI(${esc(d.settings.tool)})에 읽힙니다. 영상 자체는 전송하지 않습니다. 영상을 재생할 필요는 없습니다.</p>
+  <div class="row" style="margin:0 0 12px">
+    <button class="primary" id="btnScan" ${running?"disabled":""}>${n?"자막 다시 읽기":"자막 읽기 시작"}</button>
+    <span class="muted">${n?`자막 ${n}장 읽음 · 글이 비어 있는 자막 ${d.captions.filter(c=>!c.text).length}장`:"영상 전체를 훑고 AI 읽기까지 이어서 진행합니다."}</span>
+  </div>
+  ${n?`<div class="row"><span class="stat">자막 없음 구간 ${d.ranges.gaps.length}개</span><span class="stat">찬양 후보 구간 ${d.ranges.lyrics.length}개</span><span class="stat">잘라내기 ${d.cuts.length}개</span><span class="muted">아래 타임라인에서 확인하고 잘라낼 구간을 정하세요.</span></div>
+  <div class="row" style="margin-bottom:12px"><button class="primary" id="btnToReview" ${d.sentences.length?"":"disabled"}>정리와 검수로</button></div>`:""}
+  <div class="card"><strong>자막 영역</strong> <span class="muted">읽기 전에 빨간 상자가 자막을 모두 덮고 성경 구절 상자는 피하는지 확인하세요.</span>
     <img id="roiimg" src="${P("/frame?roi=1&t="+(S.cur||(d.captions[0]?d.captions[Math.floor(d.captions.length/2)].start:300)))}" alt="자막 영역 미리보기" style="margin:8px 0">
     <div class="row">
       <label>x <input id="rx" type="number" style="width:70px" value="${roi?roi.x:0}"></label>
@@ -237,13 +243,7 @@ function renderScan(el){
       <label>높이 <input id="rh" type="number" style="width:70px" value="${roi?roi.h:Math.round(d.info.height*0.3)}"></label>
       <button id="btnRoiApply" class="small">적용</button><button id="btnRoiAuto" class="small">자동 감지</button>
       <button id="btnRoiRefresh" class="small">현재 장면으로 미리보기</button>
-    </div></div>
-  <div class="row" style="margin-top:12px">
-    <button class="primary" id="btnScan" ${running?"disabled":""}>${n?"자막 다시 읽기":"자막 읽기 시작"}</button>
-    <span class="muted">${n?`자막 ${n}장 읽음 · 글이 비어 있는 자막 ${d.captions.filter(c=>!c.text).length}장`:"영상 전체를 훑고 AI 읽기까지 이어서 진행합니다."}</span>
-  </div>
-  ${n?`<div class="row"><span class="stat">자막 없음 구간 ${d.ranges.gaps.length}개</span><span class="stat">찬양 후보 구간 ${d.ranges.lyrics.length}개</span><span class="stat">잘라내기 ${d.cuts.length}개</span><span class="muted">아래 타임라인에서 확인하고 잘라낼 구간을 정하세요.</span></div>
-  <div class="row"><button class="primary" id="btnToReview" ${d.sentences.length?"":"disabled"}>정리와 검수로</button></div>`:""}`;
+    </div></div>`;
   $("#btnRoiApply").onclick=async()=>{await api(P("/roi"),"POST",{x:+$("#rx").value,y:+$("#ry").value,w:+$("#rw").value,h:+$("#rh").value});await reload();render();};
   $("#btnRoiAuto").onclick=async()=>{$("#btnRoiAuto").disabled=true;await api(P("/roi"),"POST",{auto:true});await reload();render();};
   $("#btnRoiRefresh").onclick=()=>{$("#roiimg").src=P("/frame?roi=1&t="+($("#video").currentTime||0)+"&_="+Date.now());};
