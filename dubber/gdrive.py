@@ -1,8 +1,9 @@
-"""구글 드라이브에서 영상을 둘러보고 내려받는다. rclone 명령줄 도구와 `rclone config`로 만든 리모트(기본 이름 gdrive)를 쓴다.
+"""구글 드라이브에서 영상을 둘러보고 내려받고, 결과물을 올린다. rclone 명령줄 도구와 `rclone config`로 만든 리모트(기본 이름 gdrive)를 쓴다.
 리모트 이름은 환경 변수 DUBBER_GDRIVE로 바꾼다."""
 import glob
 import json
 import os
+import posixpath
 import shutil
 import subprocess
 
@@ -60,15 +61,10 @@ def _local_path(dest_dir, name, size):
     return local
 
 
-def download(path, dest_dir, size, shared=False, progress=None, cancel=None):
-    """드라이브의 영상 하나를 dest_dir에 받고 로컬 경로를 돌려준다. 중단하면 None.
-    progress(받은 바이트, 전체 바이트, 초당 바이트)"""
-    os.makedirs(dest_dir, exist_ok=True)
-    local = _local_path(dest_dir, os.path.basename(path.rstrip("/")), size)
-    if os.path.isfile(local):
-        return local
-    proc = subprocess.Popen(["rclone", "copyto", REMOTE + path.strip("/"), local, "--stats", "1s",
-                             "--stats-log-level", "NOTICE", "--use-json-log", *_flags(shared)],
+def _copy(src, dst, shared, progress, cancel):
+    """rclone copyto 한 번. 끝나면 True, 중단하면 False. progress(보낸 바이트, 전체 바이트, 초당 바이트)"""
+    proc = subprocess.Popen(["rclone", "copyto", src, dst, "--stats", "1s", "--stats-log-level", "NOTICE",
+                             "--use-json-log", *_flags(shared)],
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding="utf-8",
                             errors="replace")
     last_err = ""
@@ -88,10 +84,43 @@ def download(path, dest_dir, size, shared=False, progress=None, cancel=None):
             last_err = (j.get("msg") or "").strip()
     proc.wait()
     if cancel and cancel():
+        return False
+    if proc.returncode:
+        raise RuntimeError(last_err or f"rclone 종료 코드 {proc.returncode}")
+    return True
+
+
+def download(path, dest_dir, size, shared=False, progress=None, cancel=None):
+    """드라이브의 영상 하나를 dest_dir에 받고 로컬 경로를 돌려준다. 중단하면 None."""
+    os.makedirs(dest_dir, exist_ok=True)
+    local = _local_path(dest_dir, os.path.basename(path.rstrip("/")), size)
+    if os.path.isfile(local):
+        return local
+    try:
+        ok = _copy(REMOTE + path.strip("/"), local, shared, progress, cancel)
+    except RuntimeError as e:
+        raise RuntimeError(f"구글 드라이브에서 내려받지 못했습니다: {e}")
+    if not ok:
         for f in [local] + glob.glob(glob.escape(local) + ".*partial"):
             if os.path.exists(f):
                 os.remove(f)
         return None
-    if proc.returncode or not os.path.isfile(local):
-        raise RuntimeError("구글 드라이브에서 내려받지 못했습니다: " + (last_err or f"rclone 종료 코드 {proc.returncode}"))
     return local
+
+
+def upload(files, folder, shared=False, progress=None, cancel=None):
+    """로컬 파일들을 드라이브 폴더(folder)에 올린다. 같은 이름은 덮어쓴다. 중단하면 False.
+    progress(올린 바이트, 전체 바이트, 초당 바이트, 파일 번호, 파일 수)"""
+    sizes = [os.path.getsize(f) for f in files]
+    total, done = max(sum(sizes), 1), 0
+    for i, (f, size) in enumerate(zip(files, sizes)):
+        dst = REMOTE + posixpath.join(folder.strip("/"), os.path.basename(f))
+        prog = (lambda b, _t, sp, i=i, base=done: progress(base + b, total, sp, i + 1, len(files))) if progress else None
+        try:
+            ok = _copy(f, dst, shared, prog, cancel)
+        except RuntimeError as e:
+            raise RuntimeError(f"구글 드라이브에 올리지 못했습니다: {e}")
+        if not ok:
+            return False
+        done += size
+    return True

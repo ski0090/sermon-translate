@@ -63,8 +63,8 @@ class Project:
         while os.path.exists(d):
             d = os.path.join(ROOT, f"{_slug(name)}_{n}")
             n += 1
+        info = captions.probe(video)  # 영상이 아니면 여기서 실패하므로 빈 폴더를 남기지 않도록 먼저 읽는다
         os.makedirs(d)
-        info = captions.probe(video)
         data = {"name": name, "video": video, "info": info, "roi": None, "step": "load", "captions": [],
                 "sentences": [], "cuts": [], "ranges": {"gaps": [], "lyrics": []}, "settings": dict(DEFAULT_SETTINGS),
                 "next_id": 1, "created": time.time()}

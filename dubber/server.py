@@ -3,7 +3,9 @@
 import json
 import mimetypes
 import os
+import posixpath
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -22,6 +24,9 @@ STATIC = os.path.join(HERE, "static")
 DRIVE_DIR = os.path.join(prj.ROOT, "_drive")  # 구글 드라이브에서 받은 영상
 DRIVE_JOB = "_drive"
 PORT = int(os.environ.get("DUBBER_PORT", "8765"))
+# --lan이면 같은 네트워크의 다른 PC에서도 접속을 받는다
+HOST = os.environ.get("DUBBER_HOST") or ("0.0.0.0" if "--lan" in sys.argv else "127.0.0.1")
+OUT_SUFFIX = " 한국어 더빙"  # 결과 폴더: 원본 영상과 같은 드라이브 폴더 아래 "<영상 이름> 한국어 더빙"
 
 _projects = {}
 _locks = {}
@@ -84,42 +89,6 @@ def start_job(pid, kind, fn):
     return job
 
 
-def _zenity(args):
-    r = subprocess.run(["zenity", "--file-selection", *args], capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=600)
-    return r.stdout.strip() or None
-
-
-def open_path(path):
-    if os.name == "nt":
-        os.startfile(path)
-    else:
-        subprocess.Popen(["xdg-open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
-def pick_video():
-    if os.name != "nt":
-        return _zenity(["--title=설교 영상 선택",
-                        "--file-filter=동영상 파일 | " + " ".join("*" + e for e in gdrive.VIDEO_EXT),
-                        "--file-filter=모든 파일 | *"])
-    ps = ("Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.OpenFileDialog; "
-          "$d.Filter = '동영상 파일|*.mp4;*.mkv;*.mov;*.avi;*.wmv;*.m4v;*.ts|모든 파일|*.*'; "
-          "$d.Title = '설교 영상 선택'; if ($d.ShowDialog() -eq 'OK') { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Write-Output $d.FileName }")
-    r = subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", ps], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", timeout=600)
-    return r.stdout.strip().replace("\\", "/") or None
-
-
-def pick_folder():
-    if os.name != "nt":
-        return _zenity(["--directory", "--title=결과 파일을 저장할 폴더"])
-    ps = ("Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; "
-          "$d.Description = '결과 파일을 저장할 폴더'; if ($d.ShowDialog() -eq 'OK') { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Write-Output $d.SelectedPath }")
-    r = subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", ps], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", timeout=600)
-    return r.stdout.strip().replace("\\", "/") or None
-
-
 def frame_jpeg(video, t, roi=None):
     vf = "scale=720:-2"
     if roi:
@@ -141,7 +110,34 @@ def drive_import_job(job, params):
         return None
     job.msg = "프로젝트를 만드는 중"
     p = prj.Project.create(local)
+    p.data["drive"] = {"path": params["path"].strip("/"), "shared": bool(params.get("shared"))}
+    p.save()
     return {"id": os.path.basename(p.dir)}
+
+
+def drive_folder(p):
+    """결과를 올릴 드라이브 폴더와 공유 문서함 여부. 공유 문서함 맨 위에 있는 파일은 상위 폴더가 없으니 내 드라이브에 둔다."""
+    src = p.data["drive"]
+    parent = posixpath.dirname(src["path"])
+    return posixpath.join(parent, p.data["name"] + OUT_SUFFIX), bool(src.get("shared")) and bool(parent)
+
+
+def upload_results(p, files, job, start):
+    def prog(done, total, speed, i, n):
+        job.progress = start + (1 - start) * done / total
+        job.msg = f"구글 드라이브에 올리는 중 ({i}/{n} 파일, {done / 2**20:,.0f} / {total / 2**20:,.0f}MB)"
+    job.msg = "구글 드라이브에 올리는 중"
+    cancel = lambda: job.cancelled  # noqa
+    folder, shared = drive_folder(p)
+    try:
+        ok = gdrive.upload(files, folder, shared, prog, cancel)
+    except RuntimeError:
+        if not shared:
+            raise
+        # 공유받은 폴더에 쓸 권한이 없으면 내 드라이브에 같은 이름의 폴더를 만든다
+        folder, shared = posixpath.basename(folder), False
+        ok = gdrive.upload(files, folder, False, prog, cancel)
+    return {"folder": folder, "shared": shared, "files": [os.path.basename(f) for f in files]} if ok else None
 
 
 def run_pipeline_job(p, lock, kind, job, params):
@@ -213,18 +209,27 @@ def run_pipeline_job(p, lock, kind, job, params):
         want = set(params.get("want") or ["video", "srt"])
         names = {"track": "음성 트랙을 합치는 중", "video": "영상을 만드는 중", "audio": "오디오 파일을 만드는 중"}
 
+        drive = bool(p.data.get("drive"))
+        scale = 0.8 if drive else 1.0  # 남은 0.2는 드라이브 올리기
+
         def prog(stage, r):
             weights = {"track": (0.0, 0.15), "video": (0.15, 0.75), "audio": (0.9, 0.1)}
             a, w = weights.get(stage, (0, 1))
-            job.progress = a + w * r
+            job.progress = scale * (a + w * r)
             job.msg = f"{names.get(stage, stage)} ({int(r * 100)}%)"
         files, placements = export.run(p, want, orig_audio=params.get("orig_audio") or p.data["settings"]["orig_audio"],
                                        progress=prog, cancel=cancel)
         with lock:
             p.set_step("export")
             p.data["last_export"] = files
+            p.data["drive_export"] = None
             p.save()
-        return {"files": files}
+        if drive and files and not job.cancelled:
+            uploaded = upload_results(p, files, job, scale)
+            with lock:
+                p.data["drive_export"] = uploaded
+                p.save()
+        return {"files": files, "drive": p.data["drive_export"]}
     raise ValueError(kind)
 
 
@@ -266,7 +271,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _file(self, path, cache=False):
+    def _file(self, path, cache=False, download=False):
         if not os.path.isfile(path):
             return self._json({"error": "없는 파일"}, 404)
         ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
@@ -295,6 +300,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         if cache:
             self.send_header("Cache-Control", "max-age=86400")
+        if download:
+            self.send_header("Content-Disposition",
+                             "attachment; filename*=UTF-8''" + urllib.parse.quote(os.path.basename(path)))
         self.end_headers()
         with open(path, "rb") as f:
             f.seek(start)
@@ -345,22 +353,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._file(os.path.join(STATIC, "index.html"))
         if method == "GET" and path.startswith("/static/"):
             return self._file(os.path.join(STATIC, os.path.basename(path)), cache=False)
-        if path == "/api/projects":
-            if method == "GET":
-                items = prj.list_projects()
-                for it in items:
-                    j = _jobs.get(it["dir"])
-                    it["job"] = j.status() if j and not j.done else None
-                return self._json(items)
-            video = self._body().get("video")
-            if not video or not os.path.isfile(video):
-                return self._json({"error": "영상 파일을 찾을 수 없습니다"}, 400)
-            p = prj.Project.create(video)
-            return self._json({"id": os.path.basename(p.dir)})
-        if path == "/api/pick-video" and method == "POST":
-            return self._json({"path": pick_video()})
-        if path == "/api/pick-folder" and method == "POST":
-            return self._json({"path": pick_folder()})
+        if path == "/api/projects" and method == "GET":
+            items = prj.list_projects()
+            for it in items:
+                j = _jobs.get(it["dir"])
+                it["job"] = j.status() if j and not j.done else None
+            return self._json(items)
         if path == "/api/drive/status":
             j = _jobs.get(DRIVE_JOB)
             return self._json({"available": gdrive.available(), "job": j.status() if j else None})
@@ -440,7 +438,7 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             with lock:
                 for k, v in body.items():
-                    if k in prj.DEFAULT_SETTINGS:
+                    if k in prj.DEFAULT_SETTINGS and k != "out_dir":
                         p.data["settings"][k] = v
                 if "min_gap" in body:
                     p.update_ranges()
@@ -455,14 +453,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"cuts": cuts, "sentences": p.data["sentences"]})
         if rest == "/plan":
             return self._json(export.plan(p))
-        if rest == "/open-out" and method == "POST":
-            open_path(export.out_dir(p))
-            return self._json({"ok": True})
-        if rest == "/open-file" and method == "POST":
-            f = self._body().get("path")
-            if f and os.path.isfile(f) and os.path.abspath(f) in [os.path.abspath(x) for x in p.data.get("last_export", [])]:
-                open_path(f)
-            return self._json({"ok": True})
+        if rest == "/download":
+            f = q.get("path")
+            if not (f and os.path.abspath(f) in [os.path.abspath(x) for x in p.data.get("last_export", [])]):
+                return self._json({"error": "없는 파일"}, 404)
+            return self._file(f, download=True)
         sm = re.match(r"^/sentence/(\d+)(/.*)?$", rest)
         if sm:
             sid, action = int(sm.group(1)), sm.group(2) or ""
@@ -487,12 +482,25 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": "없는 주소"}, 404)
 
 
+def lan_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))  # 실제로 보내지 않고 바깥으로 나가는 주소만 고른다
+        return s.getsockname()[0]
+    except OSError:
+        return "<이 PC의 IP>"
+    finally:
+        s.close()
+
+
 def main():
     os.makedirs(prj.ROOT, exist_ok=True)
-    httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     httpd.daemon_threads = True
     url = f"http://127.0.0.1:{PORT}/"
     print("설교 영상 한국어 더빙:", url, flush=True)
+    if HOST != "127.0.0.1":
+        print(f"다른 PC에서 접속: http://{lan_ip()}:{PORT}/ (같은 네트워크의 누구나 접속할 수 있습니다)", flush=True)
     if "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:

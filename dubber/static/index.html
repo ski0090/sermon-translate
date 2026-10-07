@@ -92,8 +92,8 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
 <section id="start">
   <div class="card">
     <div class="row" style="justify-content:space-between">
-      <div><strong>새 프로젝트</strong><div class="muted">화면 아래쪽에 한국어 자막이 있는 설교 영상 파일을 고르세요.</div></div>
-      <div class="row" style="margin:0"><button id="btnDrive" style="display:none">구글 드라이브에서 선택</button><button class="primary" id="btnNew">영상 파일 선택</button></div>
+      <div><strong>새 프로젝트</strong><div class="muted" id="newHint">화면 아래쪽에 한국어 자막이 있는 설교 영상을 구글 드라이브에서 고르세요. 결과물은 영상과 같은 폴더 아래 "영상 이름 한국어 더빙" 폴더에 저장됩니다.</div></div>
+      <button class="primary" id="btnDrive" disabled>구글 드라이브에서 선택</button>
     </div>
   </div>
   <div class="card" style="margin-top:16px">
@@ -200,11 +200,6 @@ async function renderList(){
   document.querySelectorAll("#plist li[data-id]").forEach(li=>li.onclick=()=>openProject(li.dataset.id));
 }
 const stepName=s=>(STEPS.find(x=>x[0]===s)||["","영상 불러오기"])[1];
-$("#btnNew").onclick=async()=>{
-  $("#btnNew").disabled=true;
-  try{const {path}=await api("/api/pick-video","POST",{});if(!path)return;const {id}=await api("/api/projects","POST",{video:path});await openProject(id,true);}
-  catch(e){alert(e.message);}finally{$("#btnNew").disabled=false;}
-};
 $("#btnHome").onclick=showStart;
 
 /* ---------- 구글 드라이브 ---------- */
@@ -258,7 +253,8 @@ $("#btnDrive").onclick=async()=>{
 };
 $("#dShared").onchange=()=>driveList("");
 $("#dClose").onclick=()=>$("#drive").style.display="none";
-api("/api/drive/status").then(s=>{if(s.available)$("#btnDrive").style.display="";}).catch(()=>{});
+api("/api/drive/status").then(s=>{if(s.available)$("#btnDrive").disabled=false;
+  else $("#newHint").textContent="구글 드라이브가 연결되어 있지 않습니다. 서버 PC에서 rclone으로 gdrive를 연결한 뒤 다시 실행하세요(README의 구글 드라이브 연결).";}).catch(()=>{});
 
 /* ---------- 프로젝트 ---------- */
 async function openProject(pid,fresh){
@@ -480,8 +476,10 @@ function renderTts(el){
 }
 
 /* ----- 내보내기 ----- */
+// 결과 폴더는 서버의 drive_folder와 같은 규칙(원본 영상 폴더 아래 "<이름> 한국어 더빙")
+function driveFolder(d){const parts=d.drive.path.split("/");parts.pop();const top=d.drive.shared&&parts.length?"공유 문서함/":"내 드라이브/";return top+parts.concat([d.name+" 한국어 더빙"]).join("/");}
 function renderExport(el){
-  const d=S.d,running=d.job&&d.job.running;const files=S.exportFiles||d.last_export||[];
+  const d=S.d,running=d.job&&d.job.running;const files=S.exportFiles||d.last_export||[];const up=d.drive_export;
   const total=d.info.duration-d.cuts.reduce((a,c)=>a+(c.end-c.start),0);
   el.innerHTML=`<h2>내보내기</h2>
   <div class="card">
@@ -489,16 +487,12 @@ function renderExport(el){
     <div class="row"><label><input type="checkbox" id="wSrt" checked> 한국어 자막 파일 (srt)</label><label><input type="checkbox" id="wTxt" checked> 자막 텍스트 파일</label></div>
     <div class="row"><span>원음 처리</span><label><input type="radio" name="oa" value="remove" ${d.settings.orig_audio!=="duck"?"checked":""}> 원음 제거</label><label><input type="radio" name="oa" value="duck" ${d.settings.orig_audio==="duck"?"checked":""}> 원음 낮춰서 깔기</label></div>
     <div class="muted">잘라내기 ${d.cuts.length}개 구간을 빼면 결과 영상 길이는 약 ${fmt(total)}입니다. 음성이 없는 문장 ${d.sentences.filter(s=>!s.tts).length}개는 빠집니다.<br>원음을 제거하면 오디오 파일은 영상 타이밍과 상관없이 문장을 원래 속도로 이어 붙입니다.</div>
-    <div class="row"><span class="muted">저장 위치: ${esc(d.settings.out_dir||"프로젝트 폴더 안 out")}</span><button class="small" id="btnPickOut">바꾸기</button>${d.settings.out_dir?`<button class="small" id="btnResetOut">기본으로</button>`:""}</div>
-    <div class="row" style="margin-top:8px"><button class="primary" id="btnExport" ${running?"disabled":""}>내보내기</button><button id="btnOpenOut">폴더 열기</button></div>
+    <div class="row"><span class="muted">저장 위치: ${d.drive?`구글 드라이브 ${esc(driveFolder(d))}`:"구글 드라이브에서 불러온 영상이 아니어서 이 PC에만 저장됩니다"}</span></div>
+    <div class="row" style="margin-top:8px"><button class="primary" id="btnExport" ${running?"disabled":""}>내보내기</button></div>
   </div>
-  ${files.length?`<div class="card" style="margin-top:12px"><strong>만들어진 파일</strong><ul class="files">${files.map(f=>`<li><a data-open="${esc(f)}">${esc(f.split(/[\\/]/).pop())}</a></li>`).join("")}</ul></div>`:""}`;
+  ${files.length?`<div class="card" style="margin-top:12px"><strong>만들어진 파일</strong>${up?`<div class="muted">구글 드라이브 ${esc((up.shared?"공유 문서함/":"내 드라이브/")+up.folder)}에 올렸습니다.</div>`:d.drive&&!running?`<div class="err" style="margin:6px 0">구글 드라이브에 올리지 못했습니다. 내보내기를 다시 누르세요.</div>`:""}<ul class="files">${files.map(f=>`<li><a href="${P("/download?path="+encodeURIComponent(f))}" download>${esc(f.split(/[\\/]/).pop())}</a></li>`).join("")}</ul></div>`:""}`;
   $("#btnExport").onclick=()=>{const want=[];if($("#wVideo").checked)want.push("video");if($("#wAudio").checked)want.push("audio");if($("#wSrt").checked)want.push("srt");if($("#wTxt").checked)want.push("txt");
     const oa=document.querySelector("input[name=oa]:checked").value;api(P("/settings"),"POST",{orig_audio:oa});startJob("export",{want,orig_audio:oa});};
-  $("#btnOpenOut").onclick=()=>api(P("/open-out"),"POST",{});
-  $("#btnPickOut").onclick=async()=>{const {path}=await api("/api/pick-folder","POST",{});if(path){await api(P("/settings"),"POST",{out_dir:path});await softReload();}};
-  const ro=$("#btnResetOut");if(ro)ro.onclick=async()=>{await api(P("/settings"),"POST",{out_dir:null});await softReload();};
-  el.querySelectorAll("[data-open]").forEach(a=>a.onclick=()=>api(P("/open-file"),"POST",{path:a.dataset.open}));
 }
 
 /* ---------- 영상 / 미리 듣기 ---------- */
