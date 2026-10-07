@@ -42,27 +42,42 @@ def is_end(text):
     return bool(_END_PUNCT.search(t) or _END_FORM.search(t))
 
 
-def merge(captions):
-    """자막 목록(dict: id, start, end, text)을 문장 목록으로 합친다.
-    반환: [{"caps": [id..], "start", "end", "raw"}]"""
+def collapse(captions):
+    """같은 글이 이어진 자막(장면만 바뀌어 여러 장으로 잡힌 것)을 하나로 묶는다. 글이 없는 자막은 뺀다.
+    반환: [{"ids": [id..], "text"}]"""
+    # ponytail: 설교자가 같은 말을 연달아 두 번 한 자막("아멘" "아멘")도 한 번만 읽힌다. 문제가 되면 사이 간격으로 가른다.
     out = []
-    cur = None
     for c in captions:
         t = clean(c.get("text", ""))
         if not t:
             continue
-        if cur is None:
-            cur = {"caps": [c["id"]], "start": c["start"], "end": c["end"], "raw": t}
+        if out and out[-1]["text"] == t:
+            out[-1]["ids"].append(c["id"])
         else:
-            cur["caps"].append(c["id"])
-            cur["end"] = c["end"]
-            cur["raw"] = (cur["raw"] + " " + t).strip()
-        full = len(cur["caps"]) >= MAX_UNITS or len(cur["raw"]) >= MAX_CHARS
-        if is_end(t) or full:
+            out.append({"ids": [c["id"]], "text": t})
+    return out
+
+
+def merge(captions):
+    """자막 목록(dict: id, start, end, text)을 문장 목록으로 합친다.
+    반환: [{"caps": [id..], "start", "end", "raw"}]"""
+    by_id = {c["id"]: c for c in captions}
+    out = []
+    cur = None
+    for r in collapse(captions):
+        if cur is None:
+            cur = {"caps": [], "raw": "", "n": 0}
+        cur["caps"] += r["ids"]
+        cur["raw"] = (cur["raw"] + " " + r["text"]).strip()
+        cur["n"] += 1
+        if is_end(r["text"]) or cur["n"] >= MAX_UNITS or len(cur["raw"]) >= MAX_CHARS:
             out.append(cur)
             cur = None
     if cur:
         out.append(cur)
+    for m in out:
+        del m["n"]
+        m["start"], m["end"] = by_id[m["caps"][0]]["start"], by_id[m["caps"][-1]]["end"]
     return out
 
 
@@ -103,6 +118,9 @@ if __name__ == "__main__":
     assert reading(caps[5]["text"]) == "요한복음 3장 16절과 이사야 60장 1절에서 3절을 보면", reading(caps[5]["text"])
     assert reading(caps[6]["text"]) == "이사야 60장 5절 말씀입니다"
     assert reading(caps[4]["text"]) == "나라들은 네 빛으로 나아오리라"
+    dup = merge([{"id": 0, "start": 0, "end": 1, "text": "율법을 알아야"}, {"id": 1, "start": 1, "end": 2, "text": "율법을 알아야"},
+                 {"id": 2, "start": 2, "end": 3, "text": ""}, {"id": 3, "start": 3, "end": 4, "text": "거룩함을 압니다"}])
+    assert dup == [{"caps": [0, 1, 3], "raw": "율법을 알아야 거룩함을 압니다", "start": 0, "end": 4}], dup
     assert reading("할렐루야", {"할렐루야": "할렐루우야"}) == "할렐루우야"
     assert is_end("복종했다고 합니다") and is_end("어렵죠") and not is_end("특히 배우자에게는")
     print("ok")

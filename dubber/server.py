@@ -127,28 +127,35 @@ def run_pipeline_job(p, lock, kind, job, params):
     if kind == "read":
         total = (len(p.data["captions"]) + p.data["settings"]["per_strip"] - 1) // max(p.data["settings"]["per_strip"], 1)
 
+        tidy = p.data["settings"].get("ai_tidy")
+        share = 0.85 if tidy else 1.0
+
         def prog(d, n):
-            job.progress = d / max(n, 1)
+            job.progress = share * d / max(n, 1)
             job.msg = f"AI가 자막 그림을 읽는 중 ({d}/{n} 묶음)"
         job.msg = f"AI가 자막 그림을 읽는 중 (0/{total} 묶음)"
         p.read(progress=prog, cancel=cancel)
         if job.cancelled:
             return None
-        job.msg = "문장으로 합치는 중"
-        with lock:
-            n = p.build_sentences()
-        if p.data["settings"].get("ai_correct"):
+        merged = None
+        if tidy:
             def prog2(d, k):
-                job.progress = 0.9 + 0.1 * d / max(k, 1)
-                job.msg = f"AI가 글자를 교정하는 중 ({d}/{k} 묶음)"
-            p.correct(progress=prog2, cancel=cancel)
-        return {"sentences": n}
-    if kind == "correct":
+                job.progress = share + (1 - share) * d / max(k, 1)
+                job.msg = f"AI가 문장을 정리하는 중 ({d}/{k} 묶음)"
+            job.msg = "AI가 문장을 정리하는 중"
+            merged = p.tidy(progress=prog2, cancel=cancel)
+        with lock:
+            return {"sentences": p.build_sentences(merged)}
+    if kind == "tidy":
         def prog2(d, k):
             job.progress = d / max(k, 1)
-            job.msg = f"AI가 글자를 교정하는 중 ({d}/{k} 묶음)"
-        p.correct(progress=prog2, cancel=cancel)
-        return {}
+            job.msg = f"AI가 문장을 정리하는 중 ({d}/{k} 묶음)"
+        job.msg = "AI가 문장을 정리하는 중"
+        merged = p.tidy(progress=prog2, cancel=cancel)
+        if merged is None:
+            return None
+        with lock:
+            return {"sentences": p.build_sentences(merged)}
     if kind == "tts":
         def prog(d, n):
             job.progress = d / max(n, 1)

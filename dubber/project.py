@@ -12,7 +12,7 @@ import sentences
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "projects")
 STEPS = ["load", "scan", "review", "tts", "export"]
 DEFAULT_SETTINGS = {"voice": "F1", "speed": 1.05, "min_gap": 20, "tool": "claude", "orig_audio": "remove",
-                    "per_strip": 25, "workers": 4, "dictionary": {}, "ai_correct": False, "tts_steps": 8,
+                    "per_strip": 25, "workers": 4, "dictionary": {}, "ai_tidy": True, "tts_steps": 8,
                     "out_dir": None}
 
 
@@ -129,32 +129,33 @@ class Project:
         self.save()
 
     # ---------- 문장 정리 ----------
-    def build_sentences(self):
-        caps = [c for c in self.data["captions"] if not self._in_cut(c["start"], c["end"])]
-        merged = sentences.merge(caps)
-        out = []
-        for m in merged:
-            sid = self.data["next_id"]
-            self.data["next_id"] += 1
-            out.append({"id": sid, "caps": m["caps"], "start": m["start"], "end": m["end"], "raw": m["raw"],
-                        "ai": None, "text": m["raw"], "reading": None, "speed": None, "pause": 0.0,
-                        "tts": None, "tts_dur": None, "check": any(self.cap(i)["check"] for i in m["caps"])})
-        self.data["sentences"] = out
+    def uncut_captions(self):
+        return [c for c in self.data["captions"] if not c.get("deleted") and not self._in_cut(c["start"], c["end"])]
+
+    def tidy(self, progress=None, cancel=None):
+        """AI가 자막을 문장으로 묶고 글자를 고치고 읽는 글과 확인 필요를 붙인 결과. 저장은 build_sentences가 한다."""
+        s = self.data["settings"]
+        return ai.tidy_all(self.uncut_captions(), tool=s["tool"], workers=s["workers"], keep=list(s["dictionary"]),
+                           progress=progress, cancel=cancel)
+
+    def build_sentences(self, merged=None):
+        """문장 목록을 새로 만든다. merged(tidy 결과)가 없으면 규칙으로 합친다."""
+        self.data["sentences"] = [self._new(m) for m in (merged or sentences.merge(self.uncut_captions()))]
         self.set_step("review")
         self.save()
-        return len(out)
+        return len(self.data["sentences"])
 
-    def correct(self, progress=None, cancel=None):
-        sents = [s for s in self.data["sentences"] if s["ai"] is None]
-        texts = [s["text"] for s in sents]
-        fixed = ai.correct_texts(texts, tool=self.data["settings"]["tool"], workers=self.data["settings"]["workers"],
-                                 progress=progress, cancel=cancel)
-        for s, t in zip(sents, fixed):
-            s["ai"] = t
-            if t != s["text"]:
-                s["text"] = t
-                s["tts"], s["tts_dur"] = None, None
-        self.save()
+    def _new(self, m):
+        """합친 결과 m(caps, raw와 AI 정리 결과)으로 새 문장을 만든다."""
+        s = {"id": self.data["next_id"], "caps": m["caps"], "raw": m["raw"], "ai": m.get("ai"),
+             "text": m.get("text", m["raw"]), "reading": None, "reading_ai": m.get("reading_ai"), "speed": None,
+             "pause": 0.0, "tts": None, "tts_dur": None, "check": m.get("check", False), "note": m.get("note")}
+        self.data["next_id"] += 1
+        self._recalc(s)
+        return s
+
+    def _text_of(self, cap_ids):
+        return " ".join(r["text"] for r in sentences.collapse([self.cap(c) for c in cap_ids]))
 
     def cap(self, cid):
         return self.data["captions"][cid]
@@ -166,7 +167,7 @@ class Project:
     def reading_of(self, s):
         if s.get("reading"):
             return s["reading"]
-        return sentences.reading(s["text"], self.data["settings"].get("dictionary"))
+        return sentences.reading(s.get("reading_ai") or s["text"], self.data["settings"].get("dictionary"))
 
     # ---------- 문장 편집 ----------
     def find(self, sid):
@@ -188,6 +189,8 @@ class Project:
                 if k in ("text", "reading", "speed") and s.get(k) != v:
                     s["tts"] = None
                     s["tts_dur"] = None
+                    if k == "text":
+                        s["reading_ai"] = None
                 s[k] = v
         self.save()
         return s
@@ -199,14 +202,10 @@ class Project:
             return None
         k = s["caps"].index(at_cap)
         caps_a, caps_b = s["caps"][:k], s["caps"][k:]
-        text_a = " ".join(sentences.clean(self.cap(c)["text"]) for c in caps_a)
-        text_b = " ".join(sentences.clean(self.cap(c)["text"]) for c in caps_b)
-        s["caps"], s["raw"], s["text"], s["ai"], s["reading"] = caps_a, text_a, text_a, None, None
+        text_a = self._text_of(caps_a)
+        s["caps"], s["raw"], s["text"], s["ai"], s["reading"], s["reading_ai"] = caps_a, text_a, text_a, None, None, None
         self._recalc(s)
-        new = {"id": self.data["next_id"], "caps": caps_b, "raw": text_b, "ai": None, "text": text_b, "reading": None,
-               "speed": None, "pause": 0.0, "tts": None, "tts_dur": None, "check": False}
-        self.data["next_id"] += 1
-        self._recalc(new)
+        new = self._new({"caps": caps_b, "raw": self._text_of(caps_b)})
         self.data["sentences"].insert(i + 1, new)
         self.save()
         return new
@@ -219,8 +218,9 @@ class Project:
         s["caps"] += n["caps"]
         s["raw"] = (s["raw"] + " " + n["raw"]).strip()
         s["text"] = (s["text"] + " " + n["text"]).strip()
-        s["ai"], s["reading"] = None, None
+        s["ai"], s["reading"], s["reading_ai"] = None, None, None
         s["check"] = s["check"] or n["check"]
+        s["note"] = s.get("note") or n.get("note")
         self._recalc(s)
         self.save()
         return s
@@ -246,14 +246,8 @@ class Project:
         # 잘라낸 구간 안의 문장은 목록에서 뺀다. 구간 밖으로 돌아온 자막(사용자가 지운 것 제외)은 다시 문장으로 만든다.
         self.data["sentences"] = [s for s in self.data["sentences"] if not self._in_cut(s["start"], s["end"])]
         kept = {c for s in self.data["sentences"] for c in s["caps"]}
-        orphans = [c for c in self.data["captions"] if c["id"] not in kept and not c.get("deleted")
-                   and not self._in_cut(c["start"], c["end"]) and c["text"]]
-        for m in sentences.merge(orphans):
-            new = {"id": self.data["next_id"], "caps": m["caps"], "start": m["start"], "end": m["end"], "raw": m["raw"],
-                   "ai": None, "text": m["raw"], "reading": None, "speed": None, "pause": 0.0, "tts": None,
-                   "tts_dur": None, "check": False}
-            self.data["next_id"] += 1
-            self.data["sentences"].append(new)
+        orphans = [c for c in self.uncut_captions() if c["id"] not in kept]
+        self.data["sentences"] += [self._new(m) for m in sentences.merge(orphans)]
         self.data["sentences"].sort(key=lambda s: s["start"])
         self.save()
         return self.data["cuts"]
@@ -285,6 +279,6 @@ if __name__ == "__main__":
             print("empty", sum(1 for c in p.data["captions"] if not c["text"]))
         elif cmd == "sentences":
             print("sentences", p.build_sentences())
-        elif cmd == "correct":
-            p.correct(progress=lambda d, n: print(f"correct {d}/{n}", flush=True))
-            print("changed", sum(1 for s in p.data["sentences"] if s["ai"] and s["ai"] != s["raw"]))
+        elif cmd == "tidy":
+            print("sentences", p.build_sentences(p.tidy(progress=lambda d, n: print(f"tidy {d}/{n}", flush=True))))
+            print("check", sum(1 for s in p.data["sentences"] if s["check"]))

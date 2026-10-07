@@ -1,5 +1,6 @@
-"""AI 명령줄 도구(claude, codex)로 자막 그림을 읽고 글을 교정한다.
+"""AI 명령줄 도구(claude, codex)로 자막 그림을 읽고 문장을 정리한다.
 자막 그림을 20~30장씩 세로로 이어 붙인 한 장을 보내 번호별로 보이는 글자만 적게 한다."""
+import difflib
 import hashlib
 import json
 import os
@@ -8,6 +9,8 @@ import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image, ImageDraw, ImageFont
+
+import sentences
 
 PER_STRIP = 25
 GUTTER = 72
@@ -24,13 +27,21 @@ READ_PROMPT = (
     "다른 말 없이 JSON 배열만 출력하세요. 형식: [{{\"n\":1,\"text\":\"...\"}}, ...] 항목은 정확히 {n}개여야 합니다."
 )
 
-CORRECT_PROMPT = (
-    "아래는 설교 영상의 한국어 자막을 그림에서 읽어 문장 단위로 합친 목록입니다. 그림을 읽는 과정에서 생긴 "
-    "글자 오류만 고치세요. 허용되는 수정: 잘못 읽힌 글자, 빠지거나 겹친 글자, 띄어쓰기, 문장 부호 보완. "
-    "금지: 말을 바꾸거나 다듬기, 단어 추가나 삭제, 문장 합치기나 나누기, 어미 바꾸기. "
-    "확신이 없으면 그대로 두세요.\n"
-    "입력과 같은 개수, 같은 순서로 JSON 배열만 출력하세요. 형식: [{\"i\":0,\"text\":\"...\"}, ...]\n\n"
+TIDY_PROMPT = (
+    "아래는 설교 영상의 한국어 자막을 그림에서 읽은 목록입니다. 항목 하나가 화면에 한 번 보인 자막이고 c는 자막 번호입니다.\n"
+    "1. 이어지는 자막을 묶어 문장으로 만드세요. 한 문장은 자막 1~{units}개입니다. 모든 번호를 순서대로 한 번씩만 쓰세요.\n"
+    "2. text: 묶은 자막을 공백으로 이은 글에서 그림을 읽다 생긴 오류만 고치세요. 허용: 잘못 읽힌 글자, 빠지거나 겹친 글자, "
+    "띄어쓰기, 문장 부호. 금지: 말을 바꾸거나 다듬기, 단어 더하기나 빼기, 어미 바꾸기. 확신이 없으면 그대로 두세요.\n"
+    "3. reading: 숫자, 영어, 성경 장절이 있는 문장만 음성으로 읽을 글을 적으세요. 숫자는 문맥에 맞는 한국어로(3명은 세 명), "
+    "영어는 한국어 발음으로, 요 3:16은 요한복음 3장 16절로 적습니다. 해당 없으면 빼세요.{keep}\n"
+    "4. check: 잘못 읽힌 것 같은데 고칠 수 없는 곳, 앞뒤 문맥으로 뜻이 통하지 않는 곳, 찬양 가사처럼 설교자가 한 말이 "
+    "아닌 글이 있으면 이유를 짧게 적으세요. 설교자가 성경을 읽거나 인용하는 것은 설교자가 한 말이니 표시하지 마세요. "
+    "없으면 빼세요.\n"
+    "다른 말 없이 JSON 배열만 출력하세요. 형식: [{{\"c\":[1,2],\"text\":\"...\"}}, "
+    "{{\"c\":[3],\"text\":\"...\",\"reading\":\"...\",\"check\":\"...\"}}]\n\n"
 )
+TIDY_CHUNK = 60
+TIDY_TIMEOUT = 600
 
 
 def _font(size=30):
@@ -167,53 +178,106 @@ def read_all(crop_paths, strips_dir, tool="claude", workers=4, per_strip=PER_STR
     return [t if t is not None else "" for t in texts]
 
 
-def _correct_group(texts, g, tool):
-    payload = json.dumps([{"i": j, "text": texts[i]} for j, i in enumerate(g)], ensure_ascii=False)
-    fixed = {}
-    try:
-        res = _parse_json_array(run_tool(CORRECT_PROMPT + payload, tool))
-        if len(res) == len(g):
-            for a in res:
-                j = int(a.get("i", -1))
-                if 0 <= j < len(g) and isinstance(a.get("text"), str) and a["text"].strip():
-                    fixed[g[j]] = a["text"].strip()
-    except Exception:
-        pass
-    return fixed
-
-
-def correct_texts(texts, tool="claude", chunk=60, workers=4, progress=None, cancel=None):
-    """문장 목록을 1:1로 교정한다. 묶음을 동시에 보내고, 실패한 묶음은 원문을 그대로 돌려준다."""
-    out = list(texts)
-    groups = [list(range(i, min(i + chunk, len(texts)))) for i in range(0, len(texts), chunk)]
-    done = 0
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = [ex.submit(_correct_group, texts, g, tool) for g in groups]
-        for fut in as_completed(futs):
-            for i, t in fut.result().items():
-                out[i] = t
-            done += 1
-            if progress:
-                progress(done, len(groups))
-            if cancel and cancel():
-                for f in futs:
-                    f.cancel()
-                break
+def _chunks(runs, size=TIDY_CHUNK):
+    """size개쯤에서 문장이 끝나는 자리로 자른다(문장 하나가 두 묶음에 걸치지 않게). 끝을 못 찾으면 1.5배에서 자른다."""
+    out, cur = [], []
+    for r in runs:
+        cur.append(r)
+        if len(cur) >= size * 1.5 or (len(cur) >= size and sentences.is_end(r["text"])):
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
     return out
 
 
-def diff_marks(a, b):
-    """두 문장의 다른 부분을 <b>..</b>로 표시한 b를 돌려준다(검수 화면 표시용)."""
-    import difflib
-    sm = difflib.SequenceMatcher(None, a, b)
-    parts = []
-    for op, i1, i2, j1, j2 in sm.get_opcodes():
-        seg = b[j1:j2]
-        parts.append(seg if op == "equal" else f"<mark>{seg or '␣'}</mark>")
-    return "".join(parts)
+def _tidy_chunk(runs, tool, keep):
+    """자막 묶음 하나를 AI로 정리한다. 번호는 묶음 안에서 1부터 새로 매긴다(자막 번호의 빈틈을 AI가 빠진 자막으로
+    오해하지 않게). 번호가 빠지거나 순서가 틀리면 None."""
+    keep = f"\n   다음 단어는 reading에서도 그대로 두세요(프로그램이 따로 바꿉니다): {', '.join(keep)}" if keep else ""
+    prompt = TIDY_PROMPT.format(units=sentences.MAX_UNITS, keep=keep) + json.dumps(
+        [{"c": k, "t": r["text"]} for k, r in enumerate(runs, 1)], ensure_ascii=False)
+    for _ in range(2):
+        try:
+            arr = _parse_json_array(run_tool(prompt, tool, timeout=TIDY_TIMEOUT))
+            groups = [[int(c) for c in a["c"]] for a in arr]
+        except Exception:
+            continue
+        if all(groups) and [c for g in groups for c in g] == list(range(1, len(runs) + 1)):
+            return groups, arr
+    return None
+
+
+def _by_rule(runs):
+    return [{"caps": m["caps"], "raw": m["raw"]} for m in sentences.merge(
+        [{"id": i, "start": 0, "end": 0, "text": r["text"]} for r in runs for i in r["ids"]])]
+
+
+def _tidy_groups(runs, groups, arr):
+    """AI 결과를 문장으로 바꾼다. 자막 수가 넘치거나 원문과 너무 다른 문장은 원문을 쓰고 확인 필요로 표시한다."""
+    out = []
+    for g, a in zip(groups, arr):
+        rs = [runs[c - 1] for c in g]
+        if len(rs) > sentences.MAX_UNITS:
+            out += _by_rule(rs)
+            continue
+        raw = " ".join(r["text"] for r in rs)
+        text = sentences.clean(str(a.get("text") or "")) or raw
+        reading = sentences.clean(str(a.get("reading") or ""))
+        check = str(a.get("check") or "").strip()
+        if difflib.SequenceMatcher(None, raw, text).ratio() < 0.8:
+            check = f"AI가 많이 고쳐서 적용하지 않음: {text}"
+            text, reading = raw, ""
+        out.append({"caps": [i for r in rs for i in r["ids"]], "raw": raw, "ai": text, "text": text,
+                    "reading_ai": reading if reading and reading != text else None, "check": bool(check),
+                    "note": check or None})
+    return out
+
+
+def tidy_all(captions, tool="claude", workers=4, keep=(), progress=None, cancel=None):
+    """자막(dict: id, text)을 AI로 문장 단위로 묶고 글자를 고치고 읽는 글과 확인 필요를 붙인다.
+    AI 결과의 형식이 틀린 묶음은 규칙으로 합치고 확인 필요로 표시한다. 시간은 자막 번호로만 정해지므로 AI가 틀려도
+    싱크는 깨지지 않는다. 반환: [{"caps", "raw", "text", "ai", "reading_ai", "check", "note"}], 중단하면 None"""
+    chunks = _chunks(sentences.collapse(captions))
+    results = [None] * len(chunks)
+    done = 0
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(_tidy_chunk, ch, tool, list(keep)): k for k, ch in enumerate(chunks)}
+        for fut in as_completed(futs):
+            results[futs[fut]] = fut.result()
+            done += 1
+            if progress:
+                progress(done, len(chunks))
+            if cancel and cancel():
+                for f in futs:
+                    f.cancel()
+                return None
+    out = []
+    for ch, res in zip(chunks, results):
+        out += _tidy_groups(ch, *res) if res else [
+            dict(m, check=True, note="AI 정리에 실패해 규칙으로 합침") for m in _by_rule(ch)]
+    return out
 
 
 if __name__ == "__main__":
     import sys
-    crops = sys.argv[2:]
-    print(read_strip(crops, sys.argv[1]))
+    if len(sys.argv) > 1:
+        print(read_strip(sys.argv[2:], sys.argv[1]))
+        sys.exit()
+    # AI 없이 정리 결과 검증과 대체 처리를 확인한다.
+    caps = [{"id": i, "text": t} for i, t in enumerate(["은혜가 크고", "율법을 알지", "율법을 알지", "거룩합니다",
+                                                         "12명이", "모였습니다"])]
+    replies = iter([json.dumps([{"c": [1, 2], "text": "은혜가 크고 율법을 알지."},
+                                {"c": [3], "text": "전혀 다른 말로 바꿨습니다"},
+                                {"c": [4, 5], "text": "12명이 모였습니다.", "reading": "열두 명이 모였습니다.",
+                                 "check": "뜻이 이상함"}], ensure_ascii=False)])
+    run_tool = lambda *a, **k: next(replies)  # noqa
+    out = tidy_all(caps, workers=1)
+    assert [s["caps"] for s in out] == [[0, 1, 2], [3], [4, 5]], out
+    assert out[0]["text"] == "은혜가 크고 율법을 알지." and out[0]["raw"] == "은혜가 크고 율법을 알지" and not out[0]["check"]
+    assert out[1]["text"] == "거룩합니다" and out[1]["check"], out[1]
+    assert out[2]["reading_ai"] == "열두 명이 모였습니다." and out[2]["note"] == "뜻이 이상함"
+    replies = iter(['[{"c":[1],"text":"x"}]'] * 2)
+    out = tidy_all(caps, workers=1)
+    assert [s["caps"] for s in out] == [[0, 1, 2, 3], [4, 5]] and all(s["check"] for s in out), out
+    print("ok")

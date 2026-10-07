@@ -130,7 +130,7 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
     <label>한 묶음에 넣는 자막 수 (20~30)</label><input id="sPer" type="number" min="5" max="40">
     <label>동시에 읽는 묶음 수</label><input id="sWorkers" type="number" min="1" max="8">
     <label>자막 없음 기준 시간(초)</label><input id="sGap" type="number" min="5" max="120">
-    <label><input id="sCorrect" type="checkbox"> 자막 읽기 뒤 AI 글자 교정 실행 (묶음당 수 분이 걸릴 수 있음)</label>
+    <label><input id="sTidy" type="checkbox"> 자막 읽기 뒤 AI가 문장 정리 (문장 묶기, 글자 교정, 읽는 글, 확인 필요 표시)</label>
     <label>음성 합성 품질</label>
     <select id="sSteps"><option value="8">표준 (문장당 약 5초)</option><option value="4">빠름 (품질 조금 낮음, 약 2배 빠름)</option></select>
     <div class="muted">품질을 바꾸면 모든 문장의 음성을 다시 만듭니다.</div>
@@ -319,11 +319,12 @@ function setupRoiEditor(){
 function badges(s,pl){
   const b=[];
   if(s.check)b.push(`<span class="badge warn">확인 필요</span>`);
-  if(s.ai&&s.ai!==s.raw)b.push(`<span class="badge">자동 수정됨</span>`);
+  if(edited(s))b.push(`<span class="badge">자동 수정됨</span>`);
   if(pl&&pl.fixed_overflow)b.push(`<span class="badge bad">고정 지점 초과</span>`);else if(pl&&pl.overflow)b.push(`<span class="badge warn">길이 초과</span>`);
   if(pl&&pl.tempo>1.001)b.push(`<span class="badge">${pl.tempo.toFixed(2)}배속</span>`);
   return b.join(" ");
 }
+function edited(s){const n=t=>(t||"").replace(/[\s.,?!…"'“”‘’]/g,"");return !!s.ai&&n(s.ai)!==n(s.raw);}
 function diffHtml(a,b){
   // 글자 단위 LCS로 바뀐 부분 표시
   const n=a.length,m=b.length;if(n*m>40000)return esc(b);
@@ -335,30 +336,31 @@ function diffHtml(a,b){
 function filtered(){
   const pm=Object.fromEntries(S.plan.map(p=>[p.sid,p]));
   return S.d.sentences.filter(s=>{const p=pm[s.id];
-    if(S.filter==="check")return s.check;if(S.filter==="ai")return s.ai&&s.ai!==s.raw;if(S.filter==="over")return p&&(p.overflow||p.fixed_overflow);return true;});
+    if(S.filter==="check")return s.check;if(S.filter==="ai")return edited(s);if(S.filter==="over")return p&&(p.overflow||p.fixed_overflow);return true;});
 }
 function renderReview(el){
   const d=S.d,pm=Object.fromEntries(S.plan.map(p=>[p.sid,p]));
-  const counts={check:d.sentences.filter(s=>s.check).length,ai:d.sentences.filter(s=>s.ai&&s.ai!==s.raw).length,over:S.plan.filter(p=>p.overflow||p.fixed_overflow).length};
+  const counts={check:d.sentences.filter(s=>s.check).length,ai:d.sentences.filter(edited).length,over:S.plan.filter(p=>p.overflow||p.fixed_overflow).length};
   const list=filtered();
   el.innerHTML=`<h2>정리와 검수</h2>
   <div class="row"><select id="filter"><option value="all">전체 (${d.sentences.length})</option><option value="check">확인 필요 (${counts.check})</option><option value="ai">자동 수정됨 (${counts.ai})</option><option value="over">길이 초과 (${counts.over})</option></select>
-  <button class="small" id="btnCorrect" ${d.job&&d.job.running?"disabled":""}>AI 글자 교정 실행</button>
+  <button class="small" id="btnTidy" ${d.job&&d.job.running?"disabled":""}>AI로 다시 정리</button>
   <span class="muted">글을 고치면 그 문장의 음성은 다시 만듭니다. 그림 위의 <kbd>여기서 나누기</kbd>로 문장을 나눕니다.</span>
   <span style="flex:1"></span><button class="primary" id="btnToTts">음성 만들기로</button></div>
   <div id="slist">${list.map(s=>sentHtml(s,pm[s.id])).join("")||'<p class="muted">해당하는 문장이 없습니다.</p>'}</div>`;
   $("#filter").value=S.filter;$("#filter").onchange=e=>{S.filter=e.target.value;renderReview(el);};
-  $("#btnCorrect").onclick=()=>startJob("correct");
+  $("#btnTidy").onclick=()=>{if(confirm("문장 목록을 AI로 새로 만듭니다. 직접 고친 내용은 사라집니다. 계속할까요?"))startJob("tidy");};
   $("#btnToTts").onclick=()=>{S.step="tts";render();};
   bindSentences();
 }
 function sentHtml(s,pl){
   const caps=s.caps.map((cid,i)=>{const c=S.d.captions[cid];return `<div class="cap"><img loading="lazy" src="${P("/crop/"+c.crop)}" data-t="${c.start}" title="${fmt(c.start)}">${i>0?`<button class="small" data-split="${s.id}:${cid}">여기서 나누기</button>`:""}</div>`;}).join("");
-  const diff=s.ai&&s.ai!==s.raw?`<div class="diff muted" style="font-size:12px">읽은 글: ${diffHtml(s.ai,s.raw)} <button class="small" data-revert="${s.id}">되돌리기</button></div>`:"";
+  const note=s.check&&s.note?`<div class="muted" style="font-size:12px">확인: ${esc(s.note)} <button class="small" data-ok="${s.id}">확인함</button></div>`:"";
+  const diff=edited(s)?`<div class="diff muted" style="font-size:12px">읽은 글: ${diffHtml(s.ai,s.raw)} <button class="small" data-revert="${s.id}">되돌리기</button></div>`:"";
   return `<div class="sent" data-sid="${s.id}" id="s${s.id}"><div class="crops">${caps}</div><div>
     <div class="row" style="margin:0 0 4px"><span class="time">${fmt(s.start)} – ${fmt(s.end)}</span>${badges(s,pl)}<span style="flex:1"></span>
       <button class="small" data-play="${s.start}">▶ 영상</button>${s.tts?`<button class="small" data-tts="${s.tts}">♪ 음성</button>`:""}</div>
-    <textarea data-text="${s.id}">${esc(s.text)}</textarea>${diff}
+    <textarea data-text="${s.id}">${esc(s.text)}</textarea>${note}${diff}
     <div class="reading">읽는 글: <input data-reading="${s.id}" value="${esc(s.reading||"")}" placeholder="${esc(readingPreview(s))}"></div>
     <div class="tools"><button class="small" data-merge="${s.id}">다음 문장과 합치기</button><button class="small" data-del="${s.id}">삭제</button>
       ${S.step==="tts"?`<label class="muted">속도 <input type="number" step="0.05" min="0.8" max="1.5" style="width:70px" data-speed="${s.id}" value="${s.speed||""}" placeholder="${S.d.settings.speed}"></label>
@@ -379,6 +381,7 @@ function bindSentences(){
   root.querySelectorAll("[data-split]").forEach(b=>b.onclick=async()=>{const [sid,cid]=b.dataset.split.split(":");await api(P(`/sentence/${sid}/split`),"POST",{cap:+cid});await softReload();});
   root.querySelectorAll("[data-merge]").forEach(b=>b.onclick=async()=>{await api(P(`/sentence/${b.dataset.merge}/merge`),"POST",{});await softReload();});
   root.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(!confirm("이 문장을 지울까요? 음성도 만들지 않습니다."))return;await api(P(`/sentence/${b.dataset.del}`),"DELETE");await softReload();});
+  root.querySelectorAll("[data-ok]").forEach(b=>b.onclick=async()=>{await api(P("/sentence/"+b.dataset.ok),"POST",{check:false});await softReload();});
   root.querySelectorAll("[data-revert]").forEach(b=>b.onclick=async()=>{const s=S.d.sentences.find(x=>x.id==b.dataset.revert);await api(P("/sentence/"+s.id),"POST",{text:s.raw});await softReload();});
   root.querySelectorAll("[data-regen]").forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent="만드는 중…";try{await api(P(`/sentence/${b.dataset.regen}/tts`),"POST",{});}catch(e){alert(e.message);}await softReload();});
 }
@@ -477,10 +480,10 @@ function renderCuts(){
 window.addEventListener("resize",drawTimeline);
 
 /* ---------- 설정 ---------- */
-$("#btnSettings").onclick=()=>{if(!S.d){alert("프로젝트를 먼저 여세요.");return;}const s=S.d.settings;$("#sTool").value=s.tool;$("#sPer").value=s.per_strip;$("#sWorkers").value=s.workers;$("#sGap").value=s.min_gap;$("#sCorrect").checked=!!s.ai_correct;$("#sSteps").value=String(s.tts_steps||8);$("#sDict").value=Object.entries(s.dictionary||{}).map(([k,v])=>k+"="+v).join("\n");$("#settings").style.display="flex";};
+$("#btnSettings").onclick=()=>{if(!S.d){alert("프로젝트를 먼저 여세요.");return;}const s=S.d.settings;$("#sTool").value=s.tool;$("#sPer").value=s.per_strip;$("#sWorkers").value=s.workers;$("#sGap").value=s.min_gap;$("#sTidy").checked=!!s.ai_tidy;$("#sSteps").value=String(s.tts_steps||8);$("#sDict").value=Object.entries(s.dictionary||{}).map(([k,v])=>k+"="+v).join("\n");$("#settings").style.display="flex";};
 $("#sCancel").onclick=()=>$("#settings").style.display="none";
 $("#sSave").onclick=async()=>{const dict={};$("#sDict").value.split("\n").forEach(l=>{const i=l.indexOf("=");if(i>0)dict[l.slice(0,i).trim()]=l.slice(i+1).trim();});
-  const body={tool:$("#sTool").value,per_strip:+$("#sPer").value,workers:+$("#sWorkers").value,min_gap:+$("#sGap").value,ai_correct:$("#sCorrect").checked,dictionary:dict};
+  const body={tool:$("#sTool").value,per_strip:+$("#sPer").value,workers:+$("#sWorkers").value,min_gap:+$("#sGap").value,ai_tidy:$("#sTidy").checked,dictionary:dict};
   if(String(S.d.settings.tts_steps||8)!==$("#sSteps").value){if(!confirm("음성 합성 품질을 바꾸면 모든 문장의 음성을 다시 만듭니다. 계속할까요?"))return;body.tts_steps=+$("#sSteps").value;}
   await api(P("/settings"),"POST",body);$("#settings").style.display="none";await softReload();};
 
