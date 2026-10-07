@@ -8,6 +8,7 @@ import tts
 
 MAX_TEMPO = 1.2
 DUCK_VOLUME = 0.12
+GAP_MIN, GAP_MAX = 0.4, 1.5  # 싱크 없는 오디오에서 문장 사이 쉼(원본 간격을 이 범위로 맞춘다)
 
 
 def _region_end(project, t):
@@ -86,6 +87,22 @@ def build_track(project, placements, progress=None):
     return out, total
 
 
+def build_natural(project):
+    """싱크 없는 오디오용 트랙: 문장을 원래 속도로 차례대로 잇는다. 쉼은 원본 간격을 줄인 값 + 문장의 앞 쉼."""
+    sents = sorted([s for s in project.data["sentences"] if s.get("tts") and s.get("tts_dur")],
+                   key=lambda s: s["start"])
+    parts = []
+    for i, s in enumerate(sents):
+        if i:
+            gap = min(max(s["start"] - sents[i - 1]["end"], GAP_MIN), GAP_MAX) + float(s.get("pause") or 0.0)
+            parts.append(np.zeros(int(gap * tts.SR), dtype=np.float32))
+        parts.append(tts.read_wav(os.path.join(project.dir, "tts", s["tts"]))[0])
+    buf = np.concatenate(parts) if parts else np.zeros(tts.SR, dtype=np.float32)
+    out = os.path.join(project.sub("out"), "natural.wav")
+    tts.write_wav(out, buf)
+    return out, len(buf) / tts.SR
+
+
 def _select_expr(cuts, var="t"):
     if not cuts:
         return None
@@ -134,11 +151,14 @@ def run(project, want, orig_audio="remove", progress=None, cancel=None):
         files += [p for p, k in ((srt, "srt"), (txt, "txt")) if k in want]
     if not ({"video", "audio"} & set(want)):
         return files, placements
-    if progress:
-        progress("track", 0.0)
-    dub, total = build_track(project, placements, progress=lambda r: progress and progress("track", r))
-    if cancel and cancel():
-        return files, placements
+    # 원음을 깔면 영상과 맞아야 하므로 오디오도 영상 타이밍을 따른다. 아니면 오디오는 싱크 없이 자연스럽게 잇는다.
+    natural = not (orig_audio == "duck" and project.data["info"].get("has_audio"))
+    if "video" in want or not natural:
+        if progress:
+            progress("track", 0.0)
+        dub, total = build_track(project, placements, progress=lambda r: progress and progress("track", r))
+        if cancel and cancel():
+            return files, placements
     video = project.data["video"]
     cuts = project.data["cuts"]
     sel = _select_expr(cuts)
@@ -148,31 +168,38 @@ def run(project, want, orig_audio="remove", progress=None, cancel=None):
             continue
         if cancel and cancel():
             break
-        fc = []
-        if kind == "video":
-            fc.append(f"[0:v]select='{sel}',setpts=N/FRAME_RATE/TB[v]" if sel else "[0:v]copy[v]")
-        fc.append(f"[0:a]aselect='{sel}',asetpts=N/SR/TB[oa]" if sel else "[0:a]acopy[oa]")
-        if orig_audio == "duck" and project.data["info"].get("has_audio"):
-            fc.append(f"[oa]volume={DUCK_VOLUME}[od]")
-            fc.append("[od][1:a]amix=inputs=2:duration=first:normalize=0[a]")
-        else:
-            fc.pop()  # 원음은 쓰지 않는다
-            fc.append("[1:a]acopy[a]")
-        cmd = ["ffmpeg", "-v", "error", "-y", "-nostdin", "-progress", "pipe:1", "-i", video, "-i", dub,
-               "-filter_complex", ";".join(fc)]
-        if kind == "video":
-            out = os.path.join(out_dir_, name + " (한국어 더빙).mp4")
-            cmd += ["-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-                    "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-t", f"{total:.3f}", out]
-        else:
+        if kind == "audio" and natural:
+            src, length = build_natural(project)
             out = os.path.join(out_dir_, name + " (한국어 음성).mp3")
-            cmd += ["-map", "[a]", "-vn", "-c:a", "libmp3lame", "-b:a", "160k", "-t", f"{total:.3f}", out]
+            cmd = ["ffmpeg", "-v", "error", "-y", "-nostdin", "-progress", "pipe:1", "-i", src,
+                   "-c:a", "libmp3lame", "-b:a", "160k", out]
+        else:
+            length = total
+            fc = []
+            if kind == "video":
+                fc.append(f"[0:v]select='{sel}',setpts=N/FRAME_RATE/TB[v]" if sel else "[0:v]copy[v]")
+            fc.append(f"[0:a]aselect='{sel}',asetpts=N/SR/TB[oa]" if sel else "[0:a]acopy[oa]")
+            if orig_audio == "duck" and project.data["info"].get("has_audio"):
+                fc.append(f"[oa]volume={DUCK_VOLUME}[od]")
+                fc.append("[od][1:a]amix=inputs=2:duration=first:normalize=0[a]")
+            else:
+                fc.pop()  # 원음은 쓰지 않는다
+                fc.append("[1:a]acopy[a]")
+            cmd = ["ffmpeg", "-v", "error", "-y", "-nostdin", "-progress", "pipe:1", "-i", video, "-i", dub,
+                   "-filter_complex", ";".join(fc)]
+            if kind == "video":
+                out = os.path.join(out_dir_, name + " (한국어 더빙).mp4")
+                cmd += ["-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-t", f"{total:.3f}", out]
+            else:
+                out = os.path.join(out_dir_, name + " (한국어 음성).mp3")
+                cmd += ["-map", "[a]", "-vn", "-c:a", "libmp3lame", "-b:a", "160k", "-t", f"{total:.3f}", out]
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
                              errors="replace")
         for line in p.stdout:
             if line.startswith("out_time_ms="):
                 try:
-                    done = int(line.split("=")[1]) / 1e6 / max(total, 0.001)
+                    done = int(line.split("=")[1]) / 1e6 / max(length, 0.001)
                     if progress:
                         progress(kind, min(done, 1.0))
                 except ValueError:
