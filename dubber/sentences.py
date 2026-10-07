@@ -1,4 +1,5 @@
 """문장 정리 규칙: 자막 한 장(화면 표시 단위)을 문장으로 합치고, 음성으로 읽을 글(읽는 글)을 만든다."""
+import difflib
 import re
 
 MAX_UNITS = 3        # 한 문장에 합치는 자막 최대 장수
@@ -42,19 +43,34 @@ def is_end(text):
     return bool(_END_PUNCT.search(t) or _END_FORM.search(t))
 
 
+SAME_RATIO = 0.9     # 이어 붙은 두 자막의 글이 이만큼 같으면 같은 자막이 나뉘어 조금 다르게 읽힌 것으로 본다
+TOUCH = 0.3          # 앞 자막 끝과 다음 자막 시작이 이 시간(초) 안이면 이어 붙은 것
+_NOISE = re.compile(r"[\s.,?!…\"'“”‘’–\-]")
+
+
+def _same(a, b):
+    """띄어쓰기·문장 부호만 다르거나("아래있으면"/"아래 있으면") 글자가 거의 같으면("친구나"/"친규나") 같은 글."""
+    a, b = _NOISE.sub("", a), _NOISE.sub("", b)
+    return a == b or difflib.SequenceMatcher(None, a, b).ratio() >= SAME_RATIO
+
+
 def collapse(captions):
     """같은 글이 이어진 자막(장면만 바뀌어 여러 장으로 잡힌 것)을 하나로 묶는다. 글이 없는 자막은 뺀다.
+    같은 자막이 나뉘어 AI가 조금 다르게 읽은 경우도, 두 자막이 시간상 바로 이어 붙어 있으면 하나로 본다.
     반환: [{"ids": [id..], "text"}]"""
     # ponytail: 설교자가 같은 말을 연달아 두 번 한 자막("아멘" "아멘")도 한 번만 읽힌다. 문제가 되면 사이 간격으로 가른다.
     out = []
+    last_end = None
     for c in captions:
         t = clean(c.get("text", ""))
         if not t:
             continue
-        if out and out[-1]["text"] == t:
+        touching = last_end is not None and c.get("start") is not None and c["start"] - last_end <= TOUCH
+        if out and (out[-1]["text"] == t or (touching and _same(out[-1]["text"], t))):
             out[-1]["ids"].append(c["id"])
         else:
             out.append({"ids": [c["id"]], "text": t})
+        last_end = c.get("end")
     return out
 
 
