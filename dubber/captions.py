@@ -12,6 +12,7 @@ MIN_TEXT_PX = 150       # 이보다 적으면 글자 없음
 CHANGE_RATIO = 0.4      # 마스크 차이 비율이 이보다 크면 새 자막
 DEBOUNCE = 2            # 바뀐 상태가 이 프레임 수만큼 이어져야 인정
 MAX_KEEP = 40           # 대표 그림 선택용으로 보관하는 프레임 수
+MIN_BAND_SHARE = 0.2    # 자막 띠로 볼 최소 글자량(감지 구간 전체 글자량 대비)
 
 
 def probe(video):
@@ -98,8 +99,11 @@ def detect_band(video, info, start=120.0, dur=300.0):
     thresh = rows.max() * 0.15
     ys = np.where(rows > thresh)[0]
     # 가장 아래쪽 연속 구간(설교 자막)을 고른다. 위쪽의 성경 구절 상자는 떨어져 있다.
+    # 화면 맨 아래의 가는 선(진행 막대, 테두리)처럼 글자가 거의 없는 구간은 건너뛴다.
     groups = np.split(ys, np.where(np.diff(ys) > 12)[0] + 1)
-    band = groups[-1]
+    total = rows.sum()
+    big = [g for g in groups if rows[g].sum() >= total * MIN_BAND_SHARE]
+    band = (big or groups)[-1]
     top = max(0, int(band[0]) - 9)
     bot = min(H - y0, int(band[-1]) + 12)
     return even_roi({"x": 0, "y": y0 + top, "w": W, "h": bot - top}, W, H)
