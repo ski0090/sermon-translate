@@ -575,7 +575,7 @@ def _batch_lane(lane):
             if cur:
                 cur[1].update(stage=busy, error=None, started=time.time())
         if not cur:
-            if all(st["stage"] in ("done", "error") for _, st in items):
+            if all(st["stage"] in ("done", "error", "skipped") for _, st in items):
                 if lane == "voice" and items:
                     _batch["on"] = False
                     _batch_save()
@@ -617,6 +617,32 @@ def batch_kick():
             _batch_threads[lane].start()
 
 
+def _same_video_key(path):
+    """받아 둔 영상 파일의 크기와 앞부분 4MB 해시. 같으면 같은 영상이 이름만 다르게 올라간 것."""
+    f = os.path.join(DRIVE_DIR, posixpath.basename(path))
+    if not os.path.isfile(f):
+        return None
+    with open(f, "rb") as fh:
+        head = fh.read(4 << 20)
+    import hashlib
+    return os.path.getsize(f), hashlib.md5(head).hexdigest()
+
+
+def _mark_duplicates():
+    """대기 중인 영상 가운데 앞 영상과 같은 파일은 건너뛴다(같은 설교를 두 번 만들지 않는다)."""
+    first = {}
+    for p in _batch["queue"]:
+        st = _batch["items"][p]
+        key = _same_video_key(p)
+        if key is None:
+            continue
+        if key in first and st["stage"] == "waiting":
+            st.update(stage="skipped", msg="", error=None,
+                      same_as=os.path.splitext(posixpath.basename(first[key]))[0])
+        else:
+            first.setdefault(key, p)
+
+
 def batch_start(voice=None):
     """아직 끝나지 않은 JP 영상을 모두 대기열에 넣고 시작한다(번호순). 이미 넣은 영상의 진행 상태는 그대로 둔다."""
     lib = library(force=True)
@@ -641,6 +667,7 @@ def batch_start(voice=None):
                 _batch["items"][it["path"]].update(stage="waiting", error=None, rescanned=False, read_tried=False)
         _batch["on"] = True
         _batch["stopped_reason"] = None
+    _mark_duplicates()
     _batch_save()
     batch_kick()
 
@@ -662,7 +689,8 @@ def batch_status():
     return {"on": _batch["on"], "voice": _batch["voice"], "count": count, "total": len(items), "current": cur,
             "stopped_reason": _batch.get("stopped_reason"),
             "wait_until": _batch["wait_until"],
-            "errors": [{"name": name(p), "path": p, "error": st["error"]} for p, st in items if st["stage"] == "error"]}
+            "errors": [{"name": name(p), "path": p, "error": st["error"]} for p, st in items if st["stage"] == "error"],
+            "skipped": [{"name": name(p), "same_as": st.get("same_as")} for p, st in items if st["stage"] == "skipped"]}
 
 
 def batch_resume():
