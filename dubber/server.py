@@ -622,6 +622,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         if cache:
             self.send_header("Cache-Control", "max-age=86400")
+        elif path.endswith(".html"):
+            self.send_header("Cache-Control", "no-cache")  # 서버를 고친 뒤 브라우저가 예전 화면을 쓰지 않게
         if download:
             self.send_header("Content-Disposition",
                              "attachment; filename*=UTF-8''" + urllib.parse.quote(os.path.basename(path)))
