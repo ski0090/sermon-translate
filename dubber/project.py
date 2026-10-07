@@ -12,8 +12,7 @@ import sentences
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "projects")
 STEPS = ["load", "scan", "review", "tts", "export"]
 DEFAULT_SETTINGS = {"voice": "F1", "speed": 1.05, "min_gap": 20, "tool": "claude", "orig_audio": "remove",
-                    "per_strip": 25, "workers": 4, "dictionary": {}, "ai_tidy": True, "tts_steps": 8,
-                    "out_dir": None}
+                    "per_strip": 25, "workers": 4, "dictionary": {}, "ai_tidy": True, "tts_steps": 8}
 
 
 def _slug(name):

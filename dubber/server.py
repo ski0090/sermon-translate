@@ -26,7 +26,6 @@ DRIVE_JOB = "_drive"
 PORT = int(os.environ.get("DUBBER_PORT", "8765"))
 # --lan이면 같은 네트워크의 다른 PC에서도 접속을 받는다
 HOST = os.environ.get("DUBBER_HOST") or ("0.0.0.0" if "--lan" in sys.argv else "127.0.0.1")
-OUT_SUFFIX = " 한국어 더빙"  # 결과 폴더: 원본 영상과 같은 드라이브 폴더 아래 "<영상 이름> 한국어 더빙"
 
 _projects = {}
 _locks = {}
@@ -119,7 +118,7 @@ def drive_folder(p):
     """결과를 올릴 드라이브 폴더와 공유 문서함 여부. 공유 문서함 맨 위에 있는 파일은 상위 폴더가 없으니 내 드라이브에 둔다."""
     src = p.data["drive"]
     parent = posixpath.dirname(src["path"])
-    return posixpath.join(parent, p.data["name"] + OUT_SUFFIX), bool(src.get("shared")) and bool(parent)
+    return posixpath.join(parent, export.out_name(p)), bool(src.get("shared")) and bool(parent)
 
 
 def upload_results(p, files, job, start):
@@ -438,7 +437,7 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             with lock:
                 for k, v in body.items():
-                    if k in prj.DEFAULT_SETTINGS and k != "out_dir":
+                    if k in prj.DEFAULT_SETTINGS:
                         p.data["settings"][k] = v
                 if "min_gap" in body:
                     p.update_ranges()

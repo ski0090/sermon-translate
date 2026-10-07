@@ -63,7 +63,7 @@ def build_track(project, placements, progress=None):
     total = project.out_time(project.data["info"]["duration"])
     buf = np.zeros(int(total * tts.SR) + tts.SR, dtype=np.float32)
     by_id = {s["id"]: s for s in project.data["sentences"]}
-    tmp = os.path.join(project.sub("out"), "_tempo.wav")
+    tmp = os.path.join(project.sub("work"), "_tempo.wav")
     for k, p in enumerate(placements):
         s = by_id[p["sid"]]
         path = os.path.join(project.dir, "tts", s["tts"])
@@ -82,7 +82,7 @@ def build_track(project, placements, progress=None):
     peak = float(np.abs(buf).max()) or 1.0
     if peak > 0.95:
         buf *= 0.95 / peak
-    out = os.path.join(project.sub("out"), "dub.wav")
+    out = os.path.join(project.sub("work"), "dub.wav")
     tts.write_wav(out, buf[:int(total * tts.SR)])
     return out, total
 
@@ -98,7 +98,7 @@ def build_natural(project):
             parts.append(np.zeros(int(gap * tts.SR), dtype=np.float32))
         parts.append(tts.read_wav(os.path.join(project.dir, "tts", s["tts"]))[0])
     buf = np.concatenate(parts) if parts else np.zeros(tts.SR, dtype=np.float32)
-    out = os.path.join(project.sub("out"), "natural.wav")
+    out = os.path.join(project.sub("work"), "natural.wav")
     tts.write_wav(out, buf)
     return out, len(buf) / tts.SR
 
@@ -133,12 +133,17 @@ def write_subtitles(project, placements, out_dir):
     return srt, txt
 
 
+OUT_SUFFIX = " 한국어 더빙"
+
+
+def out_name(project):
+    """결과 폴더 이름. 프로젝트 폴더와 구글 드라이브에 같은 이름으로 만든다."""
+    return project.data["name"] + OUT_SUFFIX
+
+
 def out_dir(project):
-    """결과 파일 폴더. 설정에 저장 폴더가 있으면 그곳, 없으면 프로젝트의 out 폴더."""
-    d = project.data["settings"].get("out_dir")
-    if d and os.path.isdir(d):
-        return d
-    return project.sub("out")
+    """결과 파일 폴더: 프로젝트 폴더 아래 "<영상 이름> 한국어 더빙". 중간 파일은 work 폴더에 둔다."""
+    return project.sub(out_name(project))
 
 
 def run(project, want, orig_audio="remove", progress=None, cancel=None):
