@@ -515,18 +515,18 @@ def _batch_prep(path, st):
                                        "settings": dict(prj.DEFAULT_SETTINGS, voice=_batch["voice"])})
         pid = os.path.basename(p.dir)
     st["pid"] = pid
-    for _ in range(4):
+    for _ in range(6):
         _wait_job(pid)
         p, lock = get_project(pid)
         caps, sents = p.data["captions"], p.data["sentences"]
         unread = sum(1 for c in caps if not (c.get("text") or "").strip()) / max(len(caps), 1)
         if not caps:
             st["msg"] = "자막을 찾고 읽는 중"
-            _batch_step(pid, "scan", {"auto_roi": True})  # 자막 찾기 -> AI 읽기 -> 문장 정리까지 이어진다
-        elif not sents:
-            st["msg"] = "자막을 읽는 중"
-            _batch_step(pid, "read", {})
-        elif unread >= BAD_READ:
+            # 자막 영역이 없거나 다시 찾을 때만 자동 감지한다(미리 손으로 맞춘 영역은 그대로 쓴다).
+            # 자막 찾기 -> AI 읽기 -> 문장 정리까지 이어진다
+            _batch_step(pid, "scan", {"auto_roi": bool(st.get("rescanned"))})
+            st["read_tried"] = True
+        elif unread >= BAD_READ and st.get("read_tried"):
             if st.get("rescanned"):
                 raise RuntimeError(f"자막 그림의 {unread:.0%}를 읽지 못했습니다. 자막 영역을 확인한 뒤 다시 하세요")
             st["rescanned"] = True  # 자막 영역이 틀렸을 수 있으니 자동 감지부터 한 번 다시 한다
@@ -534,6 +534,10 @@ def _batch_prep(path, st):
             with lock:
                 p.data["captions"], p.data["sentences"] = [], []
                 p.save()
+        elif not sents or unread >= BAD_READ:  # 자막은 찾았지만 아직 안 읽었다
+            st["msg"] = "자막을 읽는 중"
+            _batch_step(pid, "read", {})
+            st["read_tried"] = True
         else:
             if not any(s.get("tts") for s in sents) and p.data["settings"].get("voice") != _batch["voice"]:
                 with lock:
@@ -616,7 +620,7 @@ def batch_kick():
 def batch_start(voice=None):
     """아직 끝나지 않은 JP 영상을 모두 대기열에 넣고 시작한다(번호순). 이미 넣은 영상의 진행 상태는 그대로 둔다."""
     lib = library(force=True)
-    for _ in range(60):  # 서버가 막 켜져 드라이브 목록을 읽는 중이면 다 읽을 때까지 기다린다
+    for _ in range(180):  # 서버가 막 켜져 드라이브 목록을 읽는 중이면 다 읽을 때까지 기다린다(바쁠 때는 1분 넘게 걸린다)
         if not lib["loading"] and not _lib["busy"]:
             break
         time.sleep(1)
@@ -634,7 +638,7 @@ def batch_start(voice=None):
                 _batch["queue"].append(it["path"])
                 _batch["items"][it["path"]] = {"stage": "waiting", "msg": "", "error": None}
             elif _batch["items"][it["path"]]["stage"] == "error":
-                _batch["items"][it["path"]].update(stage="waiting", error=None, rescanned=False)
+                _batch["items"][it["path"]].update(stage="waiting", error=None, rescanned=False, read_tried=False)
         _batch["on"] = True
         _batch["stopped_reason"] = None
     _batch_save()

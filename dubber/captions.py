@@ -12,7 +12,11 @@ MIN_TEXT_PX = 150       # 이보다 적으면 글자 없음
 CHANGE_RATIO = 0.4      # 마스크 차이 비율이 이보다 크면 새 자막
 DEBOUNCE = 2            # 바뀐 상태가 이 프레임 수만큼 이어져야 인정
 MAX_KEEP = 40           # 대표 그림 선택용으로 보관하는 프레임 수
-MIN_BAND_SHARE = 0.2    # 자막 띠로 볼 최소 글자량(감지 구간 전체 글자량 대비)
+MIN_BAND_SHARE = 0.2    # 자막 띠로 볼 최소 글자량(강한 띠들 전체 대비)
+BAND_TH = 0.3           # 부드럽게 한 줄별 글자량이 최고치의 이만큼을 넘어야 띠 후보
+BAND_EDGE = 0.25        # 띠의 위아래 끝: 원래 글자량이 띠 최고치의 이만큼을 넘는 줄까지
+STATIC_RATIO = 0.1      # 바뀐 양/글자량이 이보다 작은 줄은 늘 떠 있는 것(플레이어 막대, 테두리)
+MIN_LINE = 0.025        # 자막 띠의 실제 글자 높이가 화면 높이의 이만큼은 되어야 한다(가는 선 제외)
 
 
 def probe(video):
@@ -56,11 +60,14 @@ def text_mask(rgb):
     g = rgb.mean(axis=2)
     bright = (rgb[..., 0] > BRIGHT) & (rgb[..., 1] > BRIGHT)
     dark = g < DARK
+    # 위아래·좌우 2픽셀 안에 검은 테두리가 있는지 본다. np.roll은 반대쪽 끝으로 넘어가서(아래쪽 검은 띠가 맨 윗줄의
+    # 테두리로 잡히는 등) 가짜 글자가 생기므로 넘어가지 않게 민다.
     near_dark = dark.copy()
-    for dy in (-2, -1, 1, 2):
-        near_dark |= np.roll(dark, dy, axis=0)
-    for dx in (-2, -1, 1, 2):
-        near_dark |= np.roll(dark, dx, axis=1)
+    for d in (1, 2):
+        near_dark[d:] |= dark[:-d]
+        near_dark[:-d] |= dark[d:]
+        near_dark[:, d:] |= dark[:, :-d]
+        near_dark[:, :-d] |= dark[:, d:]
     return bright & near_dark
 
 
@@ -77,35 +84,75 @@ def _diff(a, b):
     return (a ^ b).sum() / max((a | b).sum(), 1)
 
 
-def detect_band(video, info, start=120.0, dur=300.0):
-    """첫 몇 분에서 글자가 가장 많이 나타나는 가로 띠를 찾아 자막 영역으로 삼는다."""
+def _band_rows(video, info, y0):
+    """아래쪽(y0부터)의 줄별 글자량(seen)과 이어진 두 화면 사이에 바뀐 양(change).
+    영상 전체의 키프레임만 풀어 빠르게 훑는다. 키프레임이 너무 적으면 다섯 지점을 1초에 한 장씩 본다."""
     H, W = info["height"], info["width"]
-    total = float(info.get("duration") or 0)
-    if total and start + dur > total:
-        # 짧은 영상이면 가운데 구간을 쓴다
-        dur = min(dur, total)
-        start = max(0.0, (total - dur) / 2)
+    h = H - y0
+    seen, change = np.zeros(h), np.zeros(h)
+
+    def add(frames):
+        prev, n = None, 0
+        for f in frames:
+            m = text_mask(f)
+            if m.sum() >= MIN_TEXT_PX:
+                seen[:] += m.sum(axis=1)
+            if prev is not None:
+                change[:] += (m ^ prev).sum(axis=1)
+            prev, n = m, n + 1
+        return n
+
+    def keyframes():
+        p = subprocess.Popen(["ffmpeg", "-v", "error", "-nostdin", "-skip_frame", "nokey", "-i", video, "-vf",
+                              f"format=rgb24,crop={W}:{h}:0:{y0}", "-fps_mode", "passthrough", "-f", "rawvideo", "pipe:1"],
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10 ** 7)
+        try:
+            while True:
+                buf = p.stdout.read(W * h * 3)
+                if len(buf) < W * h * 3:
+                    break
+                yield np.frombuffer(buf, np.uint8).reshape(h, W, 3)
+        finally:
+            p.stdout.close()
+            p.wait()
+    if add(keyframes()) < 30:
+        seen[:], change[:] = 0, 0
+        total = float(info.get("duration") or 0)
+        roi = {"x": 0, "y": y0, "w": W, "h": h}
+        for frac in (0.15, 0.35, 0.55, 0.75, 0.9):
+            add(f for _, f in _frames(video, roi, 1, max(0.0, min(total * frac, total - 60)), 60))
+    return seen, change
+
+
+def detect_band(video, info):
+    """자막 영역(가로 띠)을 찾는다.
+    - 영상 전체를 훑어 줄마다 글자량을 모은다(앞부분에 자막이 없거나 다른 영상도 있다).
+    - 늘 떠 있어 바뀌지 않는 줄(웹 플레이어 막대, 테두리)은 뺀다.
+    - 글자 한 줄 높이로 부드럽게 한 뒤 강한 띠 가운데 가장 아래쪽을 고른다. 가끔 뜨는 성경 구절 상자는 자막보다
+      약해서 빠지고, 밝지만 가는 선(진행 막대)은 실제 글자 높이가 모자라 빠진다.
+    - 고른 띠 안에서 원래 글자량으로 위아래 끝을 정하고 여백을 둔다."""
+    H, W = info["height"], info["width"]
     y0 = int(H * 0.55)
-    roi = {"x": 0, "y": y0, "w": W, "h": H - y0}
-    rows = np.zeros(H - y0)
-    n = 0
-    for _, f in _frames(video, roi, 1, start, dur):
-        m = text_mask(f)
-        if m.sum() >= MIN_TEXT_PX:
-            rows += m.sum(axis=1)
-            n += 1
-    if n == 0:
+    seen, change = _band_rows(video, info, y0)
+    rows = seen.copy()
+    rows[change / np.maximum(seen, 1) < STATIC_RATIO] = 0
+    if rows.sum() == 0:
+        rows = seen
+    if rows.sum() == 0:
         return {"x": 0, "y": int(H * 0.7), "w": W, "h": H - int(H * 0.7)}
-    thresh = rows.max() * 0.15
-    ys = np.where(rows > thresh)[0]
-    # 가장 아래쪽 연속 구간(설교 자막)을 고른다. 위쪽의 성경 구절 상자는 떨어져 있다.
-    # 화면 맨 아래의 가는 선(진행 막대, 테두리)처럼 글자가 거의 없는 구간은 건너뛴다.
+    w = max(5, int(H * 0.04))  # 글자 한 줄쯤의 높이
+    sm = np.convolve(rows, np.ones(w) / w, mode="same")
+    ys = np.where(sm > sm.max() * BAND_TH)[0]
     groups = np.split(ys, np.where(np.diff(ys) > 12)[0] + 1)
-    total = rows.sum()
-    big = [g for g in groups if rows[g].sum() >= total * MIN_BAND_SHARE]
-    band = (big or groups)[-1]
-    top = max(0, int(band[0]) - 9)
-    bot = min(H - y0, int(band[-1]) + 12)
+
+    def core(g):  # 띠 안에서 원래 글자량이 띠 최고치의 BAND_EDGE배를 넘는 줄들
+        a, b = max(0, int(g[0]) - w // 2), min(len(rows), int(g[-1]) + w // 2 + 1)
+        part = rows[a:b]
+        return a + np.where(part > part.max() * BAND_EDGE)[0]
+    big = [g for g in groups if sm[g].sum() >= sm[ys].sum() * MIN_BAND_SHARE and np.ptp(core(g)) + 1 >= H * MIN_LINE]
+    c = core((big or groups)[-1])
+    top = max(0, int(c[0]) - 9)
+    bot = min(H - y0, int(c[-1]) + 12)
     return even_roi({"x": 0, "y": y0 + top, "w": W, "h": bot - top}, W, H)
 
 
