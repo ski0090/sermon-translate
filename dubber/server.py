@@ -459,6 +459,7 @@ def _yt_upload_one(path, st, cancel):
 # 준비 줄은 음성 줄보다 BATCH_AHEAD편까지만 앞서 가서 Claude 사용량을 고르게 쓴다.
 BATCH_STATE = os.path.join(prj.ROOT, "_batch.json")
 BATCH_AHEAD = 2
+BATCH_MAX_FAILS = 3
 BAD_READ = 0.5  # 자막 그림의 이 비율 이상을 못 읽으면 자막 영역이 틀린 것으로 본다
 LIMIT_MIN, LIMIT_MARGIN = 60, 120  # 한도에 걸리면 최소 이만큼(초), 풀리는 시각보다 이만큼 더 기다린다
 _batch = {"on": False, "queue": [], "items": {}, "voice": "M4", "wait_until": None}
@@ -558,6 +559,7 @@ def _batch_voice(path, st):
 def _batch_lane(lane):
     """lane: "prep"(준비 줄) 또는 "voice"(음성 줄). 대기열 순서대로 자기 차례인 영상을 하나씩 처리한다."""
     want, busy, after = {"prep": ("waiting", "prep", "ready"), "voice": ("ready", "voice", "done")}[lane]
+    fails = 0
     while _batch["on"]:
         with _glock:
             items = [(p, _batch["items"][p]) for p in _batch["queue"]]
@@ -581,6 +583,7 @@ def _batch_lane(lane):
         try:
             (_batch_prep if lane == "prep" else _batch_voice)(path, st)
             st.update(stage=after, msg="")
+            fails = 0
         except ai.UsageLimit as e:
             # 풀리는 시각을 모르면 30분, 이미 지난 시각이면(오래된 정보) 잠깐 기다렸다가 다시 해 본다
             until = max(e.resets_at or time.time() + 1800, time.time() + LIMIT_MIN) + LIMIT_MARGIN
@@ -594,6 +597,10 @@ def _batch_lane(lane):
         except Exception as e:  # noqa
             traceback.print_exc()
             st.update(stage="error", error=str(e), msg="")
+            fails += 1
+            if fails >= BATCH_MAX_FAILS:  # 모든 영상에 걸리는 문제(드라이브 연결 등)면 줄줄이 실패로 넘기지 않고 멈춘다
+                _batch["on"] = False
+                _batch["stopped_reason"] = f"{BATCH_MAX_FAILS}편이 연달아 실패해 멈췄습니다. 실패 이유를 확인한 뒤 다시 시작하세요"
         st["finished"] = time.time()
         _batch_save()
 
@@ -629,6 +636,7 @@ def batch_start(voice=None):
             elif _batch["items"][it["path"]]["stage"] == "error":
                 _batch["items"][it["path"]].update(stage="waiting", error=None, rescanned=False)
         _batch["on"] = True
+        _batch["stopped_reason"] = None
     _batch_save()
     batch_kick()
 
@@ -648,6 +656,7 @@ def batch_status():
     cur = {lane: next(({"name": name(p), "msg": st.get("msg")} for p, st in items if st["stage"] == lane), None)
            for lane in ("prep", "voice")}
     return {"on": _batch["on"], "voice": _batch["voice"], "count": count, "total": len(items), "current": cur,
+            "stopped_reason": _batch.get("stopped_reason"),
             "wait_until": _batch["wait_until"],
             "errors": [{"name": name(p), "path": p, "error": st["error"]} for p, st in items if st["stage"] == "error"]}
 
