@@ -194,6 +194,7 @@ def library(force=False):
               "project": by_path.get(path),
               "importing": imp.status() if importing == path else None,
               "youtube": _yt["items"].get(path),
+              "batch": (_batch["items"].get(path) or {}).get("stage"),
               "yt_existing": yt_existing(stem, videos)}
         it["yt_ready"] = it["drive_done"] or bool(it["project"] and it["project"]["exported"])
         if it["project"]:
@@ -449,6 +450,216 @@ def _yt_upload_one(path, st, cancel):
         for f in temp:
             if os.path.exists(f):
                 os.remove(f)
+
+
+# ---------- 자동 진행 대기열 ----------
+# 드라이브 영상을 한 편씩 끝까지 진행한다. 두 줄로 나눠 돌린다:
+#   준비 줄: 프로젝트 만들기 -> 자막 영역 자동 감지 -> 자막 찾기 -> AI 읽기 -> AI 문장 정리 (Claude 사용)
+#   음성 줄: 음성 만들기 -> 내보내기 -> 드라이브 올리기 (CPU)
+# 준비 줄은 음성 줄보다 BATCH_AHEAD편까지만 앞서 가서 Claude 사용량을 고르게 쓴다.
+BATCH_STATE = os.path.join(prj.ROOT, "_batch.json")
+BATCH_AHEAD = 2
+BAD_READ = 0.5  # 자막 그림의 이 비율 이상을 못 읽으면 자막 영역이 틀린 것으로 본다
+LIMIT_MIN, LIMIT_MARGIN = 60, 120  # 한도에 걸리면 최소 이만큼(초), 풀리는 시각보다 이만큼 더 기다린다
+_batch = {"on": False, "queue": [], "items": {}, "voice": "M4", "wait_until": None}
+_batch_threads = {}
+
+
+def _batch_save():
+    with _glock:
+        tmp = BATCH_STATE + ".tmp"
+        _write_json(tmp, _batch)
+        os.replace(tmp, BATCH_STATE)
+
+
+def _project_of(path):
+    return next((it["dir"] for it in prj.list_projects() if it.get("drive") == path), None)
+
+
+def _wait_job(pid):
+    while True:
+        j = _jobs.get(pid)
+        if not j or j.done:
+            return j
+        time.sleep(5)
+
+
+def _batch_step(pid, kind, params):
+    """단계를 하나 돌리고 끝날 때까지 기다린다. 이미 돌고 있으면(서버 재시작 뒤 이어 하기 등) 그것을 기다린다."""
+    p, lock = get_project(pid)
+    try:
+        start_step(pid, p, lock, kind, dict(params, kind=kind))
+    except RuntimeError:
+        pass
+    j = _wait_job(pid)
+    if j and j.error:
+        if j.error.startswith(ai.UsageLimit.PREFIX):
+            raise ai.UsageLimit((ai.load_usage().get("info") or {}).get("resetsAt"))
+        raise RuntimeError(j.error)
+    if j and j.cancelled:
+        raise RuntimeError("작업을 중단했습니다")
+
+
+def _batch_prep(path, st):
+    """자막을 읽고 문장 목록을 만들 때까지. 상태를 보고 필요한 단계만 하므로 몇 번을 다시 해도 된다."""
+    pid = _project_of(path)
+    if not pid:
+        st["msg"] = "프로젝트를 만드는 중"
+        if _lib["files"] is None:
+            _refresh_library()
+        rel = path[len(LIBRARY) + 1:] if path.startswith(LIBRARY + "/") else posixpath.basename(path)
+        size = next((f["size"] for f in _lib["files"] or [] if f["path"] == rel), -1)
+        local = gdrive.download(path, DRIVE_DIR, size)  # 이미 받아 두었으면 바로 돌려준다
+        p = prj.Project.create(local, {"drive": {"path": path, "shared": False},
+                                       "settings": dict(prj.DEFAULT_SETTINGS, voice=_batch["voice"])})
+        pid = os.path.basename(p.dir)
+    st["pid"] = pid
+    for _ in range(4):
+        _wait_job(pid)
+        p, lock = get_project(pid)
+        caps, sents = p.data["captions"], p.data["sentences"]
+        unread = sum(1 for c in caps if not (c.get("text") or "").strip()) / max(len(caps), 1)
+        if not caps:
+            st["msg"] = "자막을 찾고 읽는 중"
+            _batch_step(pid, "scan", {"auto_roi": True})  # 자막 찾기 -> AI 읽기 -> 문장 정리까지 이어진다
+        elif not sents:
+            st["msg"] = "자막을 읽는 중"
+            _batch_step(pid, "read", {})
+        elif unread >= BAD_READ:
+            if st.get("rescanned"):
+                raise RuntimeError(f"자막 그림의 {unread:.0%}를 읽지 못했습니다. 자막 영역을 확인한 뒤 다시 하세요")
+            st["rescanned"] = True  # 자막 영역이 틀렸을 수 있으니 자동 감지부터 한 번 다시 한다
+            st["msg"] = "자막 영역을 다시 찾는 중"
+            with lock:
+                p.data["captions"], p.data["sentences"] = [], []
+                p.save()
+        else:
+            if not any(s.get("tts") for s in sents) and p.data["settings"].get("voice") != _batch["voice"]:
+                with lock:
+                    p.data["settings"]["voice"] = _batch["voice"]
+                    p.save()
+            return
+    raise RuntimeError("자막 읽기를 여러 번 했지만 문장 목록을 만들지 못했습니다")
+
+
+def _batch_voice(path, st):
+    pid = _project_of(path)
+    p, _ = get_project(pid)
+    if not (p.data.get("last_export") and p.data.get("drive_export")):
+        st["msg"] = "음성을 만들고 내보내는 중"
+        _batch_step(pid, "tts", {})  # 음성이 끝나면 내보내기와 드라이브 올리기가 이어진다
+        p, _ = get_project(pid)
+    if not p.data.get("last_export"):
+        raise RuntimeError("내보낸 파일이 없습니다")
+    if not p.data.get("drive_export"):
+        raise RuntimeError("구글 드라이브에 올리지 못했습니다")
+
+
+def _batch_lane(lane):
+    """lane: "prep"(준비 줄) 또는 "voice"(음성 줄). 대기열 순서대로 자기 차례인 영상을 하나씩 처리한다."""
+    want, busy, after = {"prep": ("waiting", "prep", "ready"), "voice": ("ready", "voice", "done")}[lane]
+    while _batch["on"]:
+        with _glock:
+            items = [(p, _batch["items"][p]) for p in _batch["queue"]]
+            ahead = sum(1 for _, st in items if st["stage"] in ("ready", "voice"))
+            cur = next(((p, st) for p, st in items if st["stage"] == busy), None) \
+                or next(((p, st) for p, st in items if st["stage"] == want), None)
+            if lane == "prep" and cur and cur[1]["stage"] == "waiting" and ahead > BATCH_AHEAD:
+                cur = None  # 음성 줄이 따라올 때까지 기다린다
+            if cur:
+                cur[1].update(stage=busy, error=None, started=time.time())
+        if not cur:
+            if all(st["stage"] in ("done", "error") for _, st in items):
+                if lane == "voice" and items:
+                    _batch["on"] = False
+                    _batch_save()
+                return
+            time.sleep(15)
+            continue
+        path, st = cur
+        _batch_save()
+        try:
+            (_batch_prep if lane == "prep" else _batch_voice)(path, st)
+            st.update(stage=after, msg="")
+        except ai.UsageLimit as e:
+            # 풀리는 시각을 모르면 30분, 이미 지난 시각이면(오래된 정보) 잠깐 기다렸다가 다시 해 본다
+            until = max(e.resets_at or time.time() + 1800, time.time() + LIMIT_MIN) + LIMIT_MARGIN
+            st.update(stage=want, msg=f"Claude 사용량 한도: {time.strftime('%m월 %d일 %H:%M', time.localtime(until))}에 이어서 합니다")
+            _batch["wait_until"] = until
+            _batch_save()
+            while _batch["on"] and time.time() < until:
+                time.sleep(max(0.5, min(30, until - time.time())))
+            _batch["wait_until"] = None
+            continue
+        except Exception as e:  # noqa
+            traceback.print_exc()
+            st.update(stage="error", error=str(e), msg="")
+        st["finished"] = time.time()
+        _batch_save()
+
+
+def batch_kick():
+    for lane in ("prep", "voice"):
+        t = _batch_threads.get(lane)
+        if not (t and t.is_alive()):
+            _batch_threads[lane] = threading.Thread(target=_batch_lane, args=(lane,), daemon=True)
+            _batch_threads[lane].start()
+
+
+def batch_start(voice=None):
+    """아직 끝나지 않은 JP 영상을 모두 대기열에 넣고 시작한다(번호순). 이미 넣은 영상의 진행 상태는 그대로 둔다."""
+    lib = library(force=True)
+    for _ in range(60):  # 서버가 막 켜져 드라이브 목록을 읽는 중이면 다 읽을 때까지 기다린다
+        if not lib["loading"] and not _lib["busy"]:
+            break
+        time.sleep(1)
+        lib = library()
+    if not lib["items"]:
+        raise RuntimeError("구글 드라이브 목록을 읽지 못했습니다: " + str(lib.get("error") or "영상이 없습니다"))
+    with _glock:
+        if voice:
+            _batch["voice"] = voice
+        for it in lib["items"]:
+            p = it["project"]
+            if (p and p["exported"]) or (not p and it["drive_done"]):
+                continue
+            if it["path"] not in _batch["items"]:
+                _batch["queue"].append(it["path"])
+                _batch["items"][it["path"]] = {"stage": "waiting", "msg": "", "error": None}
+            elif _batch["items"][it["path"]]["stage"] == "error":
+                _batch["items"][it["path"]].update(stage="waiting", error=None, rescanned=False)
+        _batch["on"] = True
+    _batch_save()
+    batch_kick()
+
+
+def batch_stop():
+    """새 영상은 더 시작하지 않는다. 지금 하던 단계는 끝까지 한다."""
+    _batch["on"] = False
+    _batch_save()
+
+
+def batch_status():
+    items = [(p, _batch["items"][p]) for p in _batch["queue"]]
+    count = {}
+    for _, st in items:
+        count[st["stage"]] = count.get(st["stage"], 0) + 1
+    name = lambda p: os.path.splitext(posixpath.basename(p))[0]  # noqa
+    cur = {lane: next(({"name": name(p), "msg": st.get("msg")} for p, st in items if st["stage"] == lane), None)
+           for lane in ("prep", "voice")}
+    return {"on": _batch["on"], "voice": _batch["voice"], "count": count, "total": len(items), "current": cur,
+            "wait_until": _batch["wait_until"],
+            "errors": [{"name": name(p), "path": p, "error": st["error"]} for p, st in items if st["stage"] == "error"]}
+
+
+def batch_resume():
+    if os.path.exists(BATCH_STATE):
+        with open(BATCH_STATE, encoding="utf-8") as f:
+            _batch.update(json.load(f))
+        _batch["wait_until"] = None
+    if _batch["on"]:
+        print("자동 진행 대기열을 이어 갑니다:", batch_status()["count"], flush=True)
+        batch_kick()
 
 
 def yt_resume():
@@ -773,6 +984,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(items)
         if path == "/api/library":
             return self._json(library(force=bool(q.get("refresh"))))
+        if path == "/api/batch":
+            if method == "POST":
+                body = self._body()
+                if body.get("action") == "start":
+                    try:
+                        batch_start(body.get("voice"))
+                    except RuntimeError as e:
+                        return self._json({"error": str(e)}, 409)
+                elif body.get("action") == "stop":
+                    batch_stop()
+            return self._json(batch_status())
         if path == "/api/usage":
             return self._json(ai.load_usage())
         if path == "/api/usage/check" and method == "POST":
@@ -956,6 +1178,7 @@ def main():
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     resume_all()
     yt_resume()
+    batch_resume()
     httpd.daemon_threads = True
     url = f"http://127.0.0.1:{PORT}/"
     print("설교 영상 한국어 더빙:", url, "· 프로젝트 폴더:", prj.ROOT, flush=True)

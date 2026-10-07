@@ -108,9 +108,22 @@ def _run(cmd, prompt, cwd, env, timeout):
     return p.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
 
 
+class UsageLimit(RuntimeError):
+    """Claude 플랜 사용량 한도에 걸렸다. 빈칸으로 저장하지 않고 멈춰야 한도가 풀린 뒤 다시 읽을 수 있다."""
+    PREFIX = "Claude 사용량 한도에 걸렸습니다"
+
+    def __init__(self, resets_at=None):
+        self.resets_at = resets_at
+        when = f" ({time.strftime('%m월 %d일 %H:%M', time.localtime(resets_at))}에 풀림)" if resets_at else ""
+        super().__init__(self.PREFIX + when)
+
+
+_LIMIT_TEXT = re.compile(r"usage limit|limit reached|rate limit|hit your limit", re.I)
+
+
 def _claude_result(raw):
-    """stream-json 출력에서 답 글을 꺼내고, 사용량 정보가 있으면 저장한다."""
-    text, info = "", None
+    """stream-json 출력에서 답 글을 꺼내고, 사용량 정보가 있으면 저장한다. 한도에 걸렸으면 UsageLimit."""
+    text, info, is_error = "", None, False
     for line in raw.splitlines():
         try:
             j = json.loads(line)
@@ -119,9 +132,11 @@ def _claude_result(raw):
         if j.get("type") == "rate_limit_event":
             info = j.get("rate_limit_info")
         elif j.get("type") == "result":
-            text = j.get("result") or ""
+            text, is_error = j.get("result") or "", bool(j.get("is_error"))
     if info:
         save_usage(info)
+    if (info and info.get("status") == "rejected") or (is_error and _LIMIT_TEXT.search(text)):
+        raise UsageLimit((info or {}).get("resetsAt"))
     return text
 
 
@@ -189,6 +204,8 @@ def read_strip(crop_paths, strips_dir, tool="claude"):
             if len(arr) == n:
                 texts = [str(a.get("text", "")).strip() for a in sorted(arr, key=lambda a: int(a.get("n", 0)))]
                 break
+        except UsageLimit:
+            raise  # 빈칸으로 캐시하지 않는다
         except Exception:
             if attempt == 1 and n <= 3:
                 texts = [""] * n
@@ -219,6 +236,10 @@ def read_all(crop_paths, strips_dir, tool="claude", workers=4, per_strip=PER_STR
             g = futs[fut]
             try:
                 res = fut.result()
+            except UsageLimit:
+                for f in futs:
+                    f.cancel()
+                raise  # 읽은 묶음은 캐시에 남아 있으니 한도가 풀린 뒤 이어서 읽는다
             except Exception:
                 res = [""] * len(g)
             for i, t in zip(g, res):
@@ -256,6 +277,8 @@ def _tidy_chunk(runs, tool, keep):
         try:
             arr = _parse_json_array(run_tool(prompt, tool, timeout=TIDY_TIMEOUT))
             groups = [[int(c) for c in a["c"]] for a in arr]
+        except UsageLimit:
+            raise  # 규칙으로 합치지 않고 멈춘다
         except Exception:
             continue
         if all(groups) and [c for g in groups for c in g] == list(range(1, len(runs) + 1)):
@@ -299,7 +322,12 @@ def tidy_all(captions, tool="claude", workers=4, keep=(), progress=None, cancel=
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futs = {ex.submit(_tidy_chunk, ch, tool, list(keep)): k for k, ch in enumerate(chunks)}
         for fut in as_completed(futs):
-            results[futs[fut]] = fut.result()
+            try:
+                results[futs[fut]] = fut.result()
+            except UsageLimit:
+                for f in futs:
+                    f.cancel()
+                raise
             done += 1
             if progress:
                 progress(done, len(chunks))
