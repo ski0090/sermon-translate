@@ -13,11 +13,14 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import export
+import gdrive
 import project as prj
 import tts
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
+DRIVE_DIR = os.path.join(prj.ROOT, "_drive")  # 구글 드라이브에서 받은 영상
+DRIVE_JOB = "_drive"
 PORT = int(os.environ.get("DUBBER_PORT", "8765"))
 
 _projects = {}
@@ -81,7 +84,24 @@ def start_job(pid, kind, fn):
     return job
 
 
+def _zenity(args):
+    r = subprocess.run(["zenity", "--file-selection", *args], capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=600)
+    return r.stdout.strip() or None
+
+
+def open_path(path):
+    if os.name == "nt":
+        os.startfile(path)
+    else:
+        subprocess.Popen(["xdg-open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def pick_video():
+    if os.name != "nt":
+        return _zenity(["--title=설교 영상 선택",
+                        "--file-filter=동영상 파일 | " + " ".join("*" + e for e in gdrive.VIDEO_EXT),
+                        "--file-filter=모든 파일 | *"])
     ps = ("Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.OpenFileDialog; "
           "$d.Filter = '동영상 파일|*.mp4;*.mkv;*.mov;*.avi;*.wmv;*.m4v;*.ts|모든 파일|*.*'; "
           "$d.Title = '설교 영상 선택'; if ($d.ShowDialog() -eq 'OK') { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Write-Output $d.FileName }")
@@ -91,6 +111,8 @@ def pick_video():
 
 
 def pick_folder():
+    if os.name != "nt":
+        return _zenity(["--directory", "--title=결과 파일을 저장할 폴더"])
     ps = ("Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; "
           "$d.Description = '결과 파일을 저장할 폴더'; if ($d.ShowDialog() -eq 'OK') { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Write-Output $d.SelectedPath }")
     r = subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", ps], capture_output=True, text=True,
@@ -105,6 +127,21 @@ def frame_jpeg(video, t, roi=None):
     r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-ss", f"{t:.3f}", "-i", video, "-frames:v", "1",
                         "-vf", vf, "-f", "image2", "-c:v", "mjpeg", "-q:v", "4", "pipe:1"], capture_output=True)
     return r.stdout
+
+
+def drive_import_job(job, params):
+    """구글 드라이브 영상을 받아 프로젝트를 만든다. 결과는 새 프로젝트 id."""
+    def prog(done, total, speed):
+        job.progress = 0.97 * done / total
+        job.msg = f"구글 드라이브에서 내려받는 중 ({done / 2**20:,.0f} / {total / 2**20:,.0f}MB, {speed / 2**20:.1f}MB/s)"
+    job.msg = "구글 드라이브에서 내려받는 중"
+    local = gdrive.download(params["path"], DRIVE_DIR, int(params.get("size") or -1), bool(params.get("shared")),
+                            progress=prog, cancel=lambda: job.cancelled)
+    if local is None:
+        return None
+    job.msg = "프로젝트를 만드는 중"
+    p = prj.Project.create(local)
+    return {"id": os.path.basename(p.dir)}
 
 
 def run_pipeline_job(p, lock, kind, job, params):
@@ -196,7 +233,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         first = str(args[0]) if args else ""
-        if "/api/p/" in first and "/job" in first:
+        if ("/api/p/" in first and "/job" in first) or "/api/drive/status" in first:
             return
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
@@ -324,6 +361,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"path": pick_video()})
         if path == "/api/pick-folder" and method == "POST":
             return self._json({"path": pick_folder()})
+        if path == "/api/drive/status":
+            j = _jobs.get(DRIVE_JOB)
+            return self._json({"available": gdrive.available(), "job": j.status() if j else None})
+        if path == "/api/drive/list":
+            return self._json(gdrive.list_dir(q.get("path", ""), bool(q.get("shared"))))
+        if path == "/api/drive/import" and method == "POST":
+            body = self._body()
+            try:
+                j = start_job(DRIVE_JOB, "drive", lambda jb: drive_import_job(jb, body))
+            except RuntimeError:
+                return self._json({"error": "이미 내려받는 영상이 있습니다"}, 409)
+            return self._json(j.status())
+        if path == "/api/drive/cancel" and method == "POST":
+            j = _jobs.get(DRIVE_JOB)
+            if j and not j.done:
+                j.cancelled = True
+                j.msg = "중단하는 중"
+            return self._json(j.status() if j else None)
         if path == "/api/voices":
             return self._json(tts.VOICES)
         if path.startswith("/api/voice-sample/"):
@@ -401,12 +456,12 @@ class Handler(BaseHTTPRequestHandler):
         if rest == "/plan":
             return self._json(export.plan(p))
         if rest == "/open-out" and method == "POST":
-            os.startfile(export.out_dir(p))
+            open_path(export.out_dir(p))
             return self._json({"ok": True})
         if rest == "/open-file" and method == "POST":
             f = self._body().get("path")
             if f and os.path.isfile(f) and os.path.abspath(f) in [os.path.abspath(x) for x in p.data.get("last_export", [])]:
-                os.startfile(f)
+                open_path(f)
             return self._json({"ok": True})
         sm = re.match(r"^/sentence/(\d+)(/.*)?$", rest)
         if sm:

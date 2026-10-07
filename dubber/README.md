@@ -32,6 +32,7 @@
 | `sentences.py` | 문장 합치기 규칙, 성경 약어 풀어 읽기, 읽기 사전 |
 | `tts.py` | Supertonic 합성, 캐시, 목소리 예시 |
 | `export.py` | 음성 배치(1.2배속 한도, 밀림, 고정 지점), 더빙 트랙, ffmpeg 내보내기 |
+| `gdrive.py` | 구글 드라이브(rclone) 폴더 보기와 영상 내려받기 |
 | `project.py` | 프로젝트 저장소와 문장 편집, 잘라내기 구간 |
 | `server.py` | 로컬 웹 서버와 API (표준 라이브러리) |
 | `static/index.html` | 화면 |

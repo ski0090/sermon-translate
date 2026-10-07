@@ -75,6 +75,9 @@ header h1{font-size:16px;margin:0;white-space:nowrap}
 .files li{margin:4px 0}
 .files a{color:var(--accent);cursor:pointer}
 .sel{color:var(--warn)}
+#dCrumbs a{color:var(--accent);cursor:pointer}
+#dList{max-height:50vh;overflow:auto;margin-bottom:10px}
+#dList.busy li{pointer-events:none;opacity:.5}
 kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
 </style>
 </head>
@@ -90,7 +93,7 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
   <div class="card">
     <div class="row" style="justify-content:space-between">
       <div><strong>새 프로젝트</strong><div class="muted">화면 아래쪽에 한국어 자막이 있는 설교 영상 파일을 고르세요.</div></div>
-      <button class="primary" id="btnNew">영상 파일 선택</button>
+      <div class="row" style="margin:0"><button id="btnDrive" style="display:none">구글 드라이브에서 선택</button><button class="primary" id="btnNew">영상 파일 선택</button></div>
     </div>
   </div>
   <div class="card" style="margin-top:16px">
@@ -137,6 +140,17 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
     <label>읽기 사전 (한 줄에 하나, 보이는 글=읽는 글)</label>
     <textarea id="sDict" rows="6" placeholder="할렐루야=할렐루우야"></textarea>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button id="sCancel">닫기</button><button class="primary" id="sSave">저장</button></div>
+  </div>
+</div>
+
+<div class="modal" id="drive">
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-top:0"><h2 style="margin:0">구글 드라이브에서 영상 선택</h2><label class="muted" style="margin:0"><input type="checkbox" id="dShared"> 공유 문서함</label></div>
+    <div class="row" id="dCrumbs"></div>
+    <ul class="plist" id="dList"></ul>
+    <div id="dJob"></div>
+    <div class="muted">고른 영상은 이 PC(dubber/projects/_drive)에 내려받은 뒤 프로젝트로 만듭니다. 이미 받은 영상은 다시 받지 않습니다.</div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button id="dClose">닫기</button></div>
   </div>
 </div>
 
@@ -192,6 +206,59 @@ $("#btnNew").onclick=async()=>{
   catch(e){alert(e.message);}finally{$("#btnNew").disabled=false;}
 };
 $("#btnHome").onclick=showStart;
+
+/* ---------- 구글 드라이브 ---------- */
+const D={path:"",items:[],poll:null};
+const fsize=b=>b<0?"":b>=2**30?(b/2**30).toFixed(1)+"GB":Math.max(1,Math.round(b/2**20))+"MB";
+const shared=()=>$("#dShared").checked?"1":"";
+async function driveList(path){
+  D.path=path;D.items=[];
+  const parts=path?path.split("/"):[];
+  $("#dCrumbs").innerHTML=[`<a data-crumb="">${shared()?"공유 문서함":"내 드라이브"}</a>`]
+    .concat(parts.map((n,i)=>`<a data-crumb="${esc(parts.slice(0,i+1).join("/"))}">${esc(n)}</a>`)).join(" / ");
+  document.querySelectorAll("#dCrumbs a").forEach(a=>a.onclick=()=>driveList(a.dataset.crumb));
+  $("#dList").innerHTML=`<li class="muted">불러오는 중…</li>`;
+  let items;
+  try{items=await api(`/api/drive/list?path=${encodeURIComponent(path)}&shared=${shared()}`);}
+  catch(e){if(path===D.path)$("#dList").innerHTML=`<li class="err">${esc(e.message)}</li>`;return;}
+  if(path!==D.path)return;
+  D.items=items;
+  $("#dList").innerHTML=items.length?items.map((it,i)=>`<li data-i="${i}"><span>${it.dir?"📁 ":"🎬 "}${esc(it.name)}</span><span class="muted">${it.dir?"":fsize(it.size)}</span></li>`).join("")
+    :`<li class="muted">폴더나 영상 파일이 없습니다.</li>`;
+  document.querySelectorAll("#dList li[data-i]").forEach(li=>li.onclick=()=>{
+    const it=D.items[+li.dataset.i];const p=(D.path?D.path+"/":"")+it.name;
+    if(it.dir)driveList(p);else driveImport(p,it.size);
+  });
+}
+async function driveImport(path,size){
+  try{await api("/api/drive/import","POST",{path,size,shared:!!shared()});}catch(e){alert(e.message);return;}
+  drivePoll();
+}
+function renderDriveJob(j){
+  const running=j&&!j.done;
+  $("#dList").classList.toggle("busy",!!running);$("#dShared").disabled=!!running;
+  $("#dJob").innerHTML=running?`<div class="job"><span>${esc(j.msg||"내려받는 중")}</span><div class="bar"><i style="width:${Math.round(j.progress*100)}%"></i></div><span class="time">${Math.round(j.progress*100)}%</span><button class="small" id="dCancel">중단</button></div>`
+    :j&&j.error?`<div class="err">${esc(j.error)}</div>`:"";
+  const c=$("#dCancel");if(c)c.onclick=()=>api("/api/drive/cancel","POST",{});
+}
+function drivePoll(){
+  if(D.poll)clearInterval(D.poll);
+  const tick=async()=>{
+    const {job}=await api("/api/drive/status");renderDriveJob(job);
+    if(!job||job.done){clearInterval(D.poll);D.poll=null;
+      // 그사이 다른 프로젝트를 열었으면 끌어오지 않는다. 새 프로젝트는 최근 목록에 나온다
+      if(job&&job.done&&!job.error&&!job.cancelled&&job.result&&!S.pid){$("#drive").style.display="none";$("#dJob").innerHTML="";await openProject(job.result.id,true);}}
+  };
+  tick();D.poll=setInterval(tick,1000);
+}
+$("#btnDrive").onclick=async()=>{
+  $("#drive").style.display="flex";$("#dJob").innerHTML="";
+  driveList(D.path);
+  const {job}=await api("/api/drive/status");if(job&&!job.done)drivePoll();
+};
+$("#dShared").onchange=()=>driveList("");
+$("#dClose").onclick=()=>$("#drive").style.display="none";
+api("/api/drive/status").then(s=>{if(s.available)$("#btnDrive").style.display="";}).catch(()=>{});
 
 /* ---------- 프로젝트 ---------- */
 async function openProject(pid,fresh){
