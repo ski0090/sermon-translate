@@ -51,6 +51,19 @@ def list_dir(path="", shared=False):
     return items
 
 
+def list_library(root):
+    """root 폴더의 영상과 진행 흔적을 한 번에 읽는다. 작업 폴더(crops 등)는 내려가지 않는다.
+    맨 위 영상, <이름>/project.json(이전 작업), <이름> 한국어 더빙/*.mp4, <이름>/out/*.mp4(이전 결과)"""
+    inc = [f"/*{e}" for e in VIDEO_EXT] + ["/*/project.json", "/*/*.mp4", "/*/out/*.mp4"]
+    args = ["lsjson", REMOTE + root.strip("/"), "-R", "--files-only", "--no-mimetype"]
+    for i in inc:
+        args += ["--include", i]
+    r = _run(args)
+    if r.returncode:
+        raise RuntimeError(f"구글 드라이브 {root} 폴더를 읽지 못했습니다: " + _err(r.stderr))
+    return [{"path": it["Path"], "size": it.get("Size", -1)} for it in json.loads(r.stdout or "[]")]
+
+
 def _local_path(dest_dir, name, size):
     """같은 이름·같은 크기의 파일은 이미 받은 것으로 보고 다시 쓴다. 이름만 같으면 다른 프로젝트의 영상을 덮지 않도록 새 이름을 붙인다."""
     base, ext = os.path.splitext(name)

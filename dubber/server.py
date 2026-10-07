@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 import traceback
 import urllib.parse
 import webbrowser
@@ -23,9 +24,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
 DRIVE_DIR = os.path.join(prj.ROOT, "_drive")  # 구글 드라이브에서 받은 영상
 DRIVE_JOB = "_drive"
+IMPORT_MARK = os.path.join(DRIVE_DIR, "_import.json")  # 받는 중인 영상(서버가 꺼졌다 켜지면 다시 받는다)
+MAX_RESUME = 3  # 같은 단계를 연달아 다시 시작하는 최대 횟수(서버를 죽이는 작업이 무한히 반복되지 않게)
 PORT = int(os.environ.get("DUBBER_PORT", "8765"))
 # --lan이면 같은 네트워크의 다른 PC에서도 접속을 받는다
 HOST = os.environ.get("DUBBER_HOST") or ("0.0.0.0" if "--lan" in sys.argv else "127.0.0.1")
+LIBRARY = os.environ.get("DUBBER_LIBRARY", "JP").strip("/")  # 프로젝트 목록에 보여 줄 드라이브 폴더
+LIBRARY_TTL = 60
 
 _projects = {}
 _locks = {}
@@ -59,10 +64,13 @@ class Job:
         self.cancelled = False
         self.result = None
         self.thread = None
+        self.target = None
+        self.resumed = False
 
     def status(self):
         return {"kind": self.kind, "progress": round(self.progress, 4), "msg": self.msg, "error": self.error,
-                "done": self.done, "cancelled": self.cancelled, "result": self.result, "running": not self.done}
+                "done": self.done, "cancelled": self.cancelled, "result": self.result, "running": not self.done,
+                "resumed": self.resumed}
 
 
 def start_job(pid, kind, fn):
@@ -97,6 +105,26 @@ def frame_jpeg(video, t, roi=None):
     return r.stdout
 
 
+def start_import(params, resumed=False):
+    """드라이브 영상 받기를 시작한다. 받는 중이라는 표시를 파일로 남겨, 서버가 중간에 꺼지면 다시 켤 때 처음부터 받는다."""
+    def fn(job):
+        os.makedirs(DRIVE_DIR, exist_ok=True)
+        _write_json(IMPORT_MARK, params)
+        try:
+            return drive_import_job(job, params)
+        finally:
+            if os.path.exists(IMPORT_MARK):
+                os.remove(IMPORT_MARK)
+    j = start_job(DRIVE_JOB, "drive", fn)
+    j.target, j.resumed = params.get("path", "").strip("/"), resumed
+    return j
+
+
+def _write_json(path, obj):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False)
+
+
 def drive_import_job(job, params):
     """구글 드라이브 영상을 받아 프로젝트를 만든다. 결과는 새 프로젝트 id."""
     def prog(done, total, speed):
@@ -108,10 +136,61 @@ def drive_import_job(job, params):
     if local is None:
         return None
     job.msg = "프로젝트를 만드는 중"
-    p = prj.Project.create(local)
-    p.data["drive"] = {"path": params["path"].strip("/"), "shared": bool(params.get("shared"))}
-    p.save()
+    p = prj.Project.create(local, {"drive": {"path": params["path"].strip("/"), "shared": bool(params.get("shared"))}})
     return {"id": os.path.basename(p.dir)}
+
+
+_lib = {"t": 0.0, "files": None, "error": None, "busy": False}
+
+
+def _refresh_library():
+    try:
+        _lib["files"], _lib["error"] = gdrive.list_library(LIBRARY), None
+    except Exception as e:  # noqa
+        _lib["error"] = str(e)
+    finally:
+        _lib["t"], _lib["busy"] = time.time(), False
+
+
+def _natural(name):
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", name)]
+
+
+def library(force=False):
+    """LIBRARY 폴더의 영상마다 진행 상태를 붙인다. 드라이브 목록은 LIBRARY_TTL초마다 뒤에서 새로 읽는다."""
+    with _glock:
+        start = (force or time.time() - _lib["t"] > LIBRARY_TTL) and not _lib["busy"]
+        if start:
+            _lib["busy"] = True
+    if start:
+        if _lib["files"] is None:
+            _refresh_library()  # 처음 한 번은 기다린다
+        else:
+            threading.Thread(target=_refresh_library, daemon=True).start()
+    files = _lib["files"] or []
+    sub = {f["path"] for f in files if "/" in f["path"]}
+    projects = prj.list_projects()
+    for it in projects:
+        j = _jobs.get(it["dir"])
+        it["job"] = j.status() if j and not j.done else None
+    by_path = {it["drive"]: it for it in projects if it.get("drive")}
+    imp = _jobs.get(DRIVE_JOB)
+    importing = imp.target if imp and not imp.done else None
+    items, used = [], set()
+    for f in sorted((f for f in files if "/" not in f["path"]), key=lambda f: _natural(f["path"])):
+        path = LIBRARY + "/" + f["path"]
+        stem = os.path.splitext(f["path"])[0]
+        dubbed = stem + " (한국어 더빙).mp4"
+        it = {"name": stem, "path": path, "size": f["size"],
+              "drive_done": f"{stem}{export.OUT_SUFFIX}/{dubbed}" in sub or f"{stem}/out/{dubbed}" in sub,
+              "legacy": f"{stem}/project.json" in sub,
+              "project": by_path.get(path),
+              "importing": imp.status() if importing == path else None}
+        if it["project"]:
+            used.add(it["project"]["dir"])
+        items.append(it)
+    return {"root": LIBRARY, "items": items, "others": [p for p in projects if p["dir"] not in used],
+            "error": _lib["error"], "loading": _lib["files"] is None}
 
 
 def drive_folder(p):
@@ -139,6 +218,59 @@ def upload_results(p, files, job, start):
     return {"folder": folder, "shared": shared, "files": [os.path.basename(f) for f in files]} if ok else None
 
 
+def start_step(pid, p, lock, kind, params, restarts=0):
+    """단계 작업을 시작한다. project.json에 진행 중인 단계를 남겨 두고, 끝나면(성공, 실패, 중단) 지운다.
+    서버가 중간에 꺼지면 표시가 남으므로 다시 켤 때 resume_all이 그 단계를 처음부터 다시 한다."""
+    def fn(job):
+        with lock:
+            p.data["running_step"] = {"kind": kind, "params": params, "restarts": restarts}
+            p.save()
+        try:
+            return run_pipeline_job(p, lock, kind, job, params)
+        finally:
+            with lock:
+                p.data.pop("running_step", None)
+                p.save()
+    j = start_job(pid, kind, fn)
+    j.resumed = restarts > 0
+    return j
+
+
+def _mark_step(p, lock, kind, params):
+    """한 작업 안에서 다음 단계로 넘어갈 때 진행 중 표시를 바꾼다(다음 단계에서 꺼지면 그 단계부터 다시 하도록)."""
+    with lock:
+        p.data["running_step"] = {"kind": kind, "params": params, "restarts": 0}
+        p.save()
+
+
+def resume_all():
+    """서버가 켜질 때, 꺼지기 전에 하던 단계와 받던 영상을 처음부터 다시 시작한다."""
+    if os.path.isdir(DRIVE_DIR):
+        for f in os.listdir(DRIVE_DIR):  # 끊긴 내려받기의 조각 파일
+            if f.endswith(".partial"):
+                os.remove(os.path.join(DRIVE_DIR, f))
+    if os.path.exists(IMPORT_MARK):
+        with open(IMPORT_MARK, encoding="utf-8") as f:
+            params = json.load(f)
+        print("구글 드라이브에서 받던 영상을 처음부터 다시 받습니다:", params.get("path"), flush=True)
+        start_import(params, resumed=True)
+    for it in prj.list_projects():
+        pid = it["dir"]
+        p, lock = get_project(pid)
+        run = p.data.get("running_step")
+        if not run:
+            continue
+        restarts = run.get("restarts", 0) + 1
+        if restarts > MAX_RESUME:
+            print(f"{pid}: {run['kind']} 단계가 {MAX_RESUME}번 연달아 끊겨 다시 시작하지 않습니다", flush=True)
+            with lock:
+                p.data.pop("running_step", None)
+                p.save()
+            continue
+        print(f"{pid}: 꺼지기 전에 하던 {run['kind']} 단계를 처음부터 다시 합니다", flush=True)
+        start_step(pid, p, lock, run["kind"], run.get("params") or {}, restarts)
+
+
 def run_pipeline_job(p, lock, kind, job, params):
     """단계 작업. progress는 0~1, msg는 사람이 읽는 진행 설명."""
     cancel = lambda: job.cancelled  # noqa
@@ -155,7 +287,12 @@ def run_pipeline_job(p, lock, kind, job, params):
         with lock:
             p.set_step("scan")
             p.save()
-        return {"captions": n}
+        if job.cancelled:
+            return {"captions": n}
+        # 자막 바뀜 찾기가 끝나면 AI 읽기로 바로 이어 간다(브라우저를 닫아도 이어진다)
+        job.kind, job.progress = "read", 0.0
+        _mark_step(p, lock, "read", {})
+        return run_pipeline_job(p, lock, "read", job, {})
     if kind == "read":
         total = (len(p.data["captions"]) + p.data["settings"]["per_strip"] - 1) // max(p.data["settings"]["per_strip"], 1)
 
@@ -202,8 +339,9 @@ def run_pipeline_job(p, lock, kind, job, params):
             return {}
         # 음성이 끝나면 모든 결과물을 원음 제거로 바로 내보낸다(브라우저를 닫아도 이어진다)
         job.kind = "export"
-        return run_pipeline_job(p, lock, "export", job, {"want": ["video", "audio", "srt", "txt"],
-                                                          "orig_audio": "remove"})
+        params = {"want": ["video", "audio", "srt", "txt"], "orig_audio": "remove"}
+        _mark_step(p, lock, "export", params)
+        return run_pipeline_job(p, lock, "export", job, params)
     if kind == "export":
         want = set(params.get("want") or ["video", "srt"])
         names = {"track": "음성 트랙을 합치는 중", "video": "영상을 만드는 중", "audio": "오디오 파일을 만드는 중"}
@@ -237,7 +375,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         first = str(args[0]) if args else ""
-        if ("/api/p/" in first and "/job" in first) or "/api/drive/status" in first:
+        if ("/api/p/" in first and "/job" in first) or "/api/drive/status" in first or "/api/library" in first:
             return
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
@@ -358,15 +496,16 @@ class Handler(BaseHTTPRequestHandler):
                 j = _jobs.get(it["dir"])
                 it["job"] = j.status() if j and not j.done else None
             return self._json(items)
+        if path == "/api/library":
+            return self._json(library(force=bool(q.get("refresh"))))
         if path == "/api/drive/status":
             j = _jobs.get(DRIVE_JOB)
             return self._json({"available": gdrive.available(), "job": j.status() if j else None})
         if path == "/api/drive/list":
             return self._json(gdrive.list_dir(q.get("path", ""), bool(q.get("shared"))))
         if path == "/api/drive/import" and method == "POST":
-            body = self._body()
             try:
-                j = start_job(DRIVE_JOB, "drive", lambda jb: drive_import_job(jb, body))
+                j = start_import(self._body())
             except RuntimeError:
                 return self._json({"error": "이미 내려받는 영상이 있습니다"}, 409)
             return self._json(j.status())
@@ -412,7 +551,7 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             kind = body.get("kind")
             try:
-                j = start_job(pid, kind, lambda jb: run_pipeline_job(p, lock, kind, jb, body))
+                j = start_step(pid, p, lock, kind, body)
             except RuntimeError as e:
                 return self._json({"error": str(e)}, 409)
             return self._json(j.status())
@@ -495,6 +634,7 @@ def lan_ip():
 def main():
     os.makedirs(prj.ROOT, exist_ok=True)
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
+    resume_all()
     httpd.daemon_threads = True
     url = f"http://127.0.0.1:{PORT}/"
     print("설교 영상 한국어 더빙:", url, flush=True)

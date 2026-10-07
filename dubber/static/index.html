@@ -97,8 +97,9 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
     </div>
   </div>
   <div class="card" style="margin-top:16px">
-    <strong>최근 프로젝트</strong>
+    <div class="row" style="justify-content:space-between;margin:0"><strong id="libTitle">설교 영상</strong><span class="row" style="margin:0"><span class="muted" id="libSum"></span><button class="small" id="btnLibRefresh">새로고침</button></span></div>
     <ul class="plist" id="plist"></ul>
+    <div id="otherBox" style="display:none;margin-top:16px"><strong>다른 프로젝트</strong><ul class="plist" id="olist"></ul></div>
   </div>
 </section>
 
@@ -187,18 +188,50 @@ function progressText(p){
   if(p.exported)parts.push("내보내기 완료");
   return parts.join(" · ")||"아직 자막을 읽지 않음";
 }
-async function renderList(){
-  const list=await api("/api/projects");
-  const html=list.length?list.map(p=>{
-    const j=p.job;
-    const right=j?`<div class="pjob"><span>${esc(j.msg||"작업 중")}</span><div class="bar"><i style="width:${Math.round(j.progress*100)}%"></i></div><span class="time">${Math.round(j.progress*100)}%</span></div>`
-      :`<div class="muted" style="text-align:right">${progressText(p)}</div>`;
-    return `<li data-id="${esc(p.dir)}"><div style="min-width:0"><div>${esc(p.name)} <span class="badge ${j?"ok":""}">${j?"진행 중 · ":""}${stepName(p.step)}</span></div><div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.video||"")}</div></div>
-      <div style="flex:0 0 auto;margin-left:12px">${right}<div class="muted" style="text-align:right">${p.duration?fmt(p.duration):""} · ${new Date(p.updated*1000).toLocaleString("ko-KR")}</div></div></li>`;}).join("")
-    :`<li class="muted">아직 프로젝트가 없습니다.</li>`;
-  if($("#plist").innerHTML!==html)$("#plist").innerHTML=html;
-  document.querySelectorAll("#plist li[data-id]").forEach(li=>li.onclick=()=>openProject(li.dataset.id));
+const jobMsg=j=>esc(j.msg||"작업 중")+(j.resumed?" · 서버가 다시 켜져 이 단계를 처음부터 다시 하는 중":"");
+function jobBar(j){return `<div class="pjob"><span>${jobMsg(j)}</span><div class="bar"><i style="width:${Math.round(j.progress*100)}%"></i></div><span class="time">${Math.round(j.progress*100)}%</span></div>`;}
+function projectRow(p){
+  const j=p.job;
+  const right=j?jobBar(j):`<div class="muted" style="text-align:right">${progressText(p)}</div>`;
+  return `<li data-id="${esc(p.dir)}"><div style="min-width:0"><div>${esc(p.name)} <span class="badge ${j?"ok":""}">${j?"진행 중 · ":""}${stepName(p.step)}</span></div><div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.drive||p.video||"")}</div></div>
+    <div style="flex:0 0 auto;margin-left:12px">${right}<div class="muted" style="text-align:right">${p.duration?fmt(p.duration):""} · ${new Date(p.updated*1000).toLocaleString("ko-KR")}</div></div></li>`;
 }
+// 드라이브 영상 하나의 상태: 진행 중 > 내려받는 중 > 이 PC의 프로젝트 > 드라이브의 결과 > 이전 작업 > 시작 전
+function libState(it){
+  const p=it.project;
+  if(p&&p.job)return ["run","진행 중 · "+stepName(p.step),"ok",jobBar(p.job)];
+  if(it.importing)return ["run","내려받는 중","ok",jobBar(it.importing)];
+  if(p&&p.exported)return ["done","완료","ok",progressText(p)];
+  if(p)return ["run",stepName(p.step),"warn",progressText(p)];
+  if(it.drive_done)return ["done","완료","ok","구글 드라이브에 결과 있음"];
+  if(it.legacy)return ["run","이전 작업 있음","warn","다른 PC에서 작업한 기록이 드라이브에 있음"];
+  return ["todo","시작 전","",fsize(it.size)];
+}
+async function renderList(refresh){
+  const lib=await api("/api/library"+(refresh?"?refresh=1":""));
+  $("#libTitle").textContent=`구글 드라이브 ${lib.root} 폴더`;
+  const st=lib.items.map(libState);const n=k=>st.filter(x=>x[0]===k).length;
+  $("#libSum").textContent=lib.items.length?`${lib.items.length}개 · 완료 ${n("done")} · 진행 중 ${n("run")} · 시작 전 ${n("todo")}`:"";
+  const html=lib.error?`<li class="err">${esc(lib.error)}</li>`
+    :lib.items.length?lib.items.map((it,i)=>{const [,label,cls,right]=st[i];
+      return `<li data-i="${i}"><div style="min-width:0"><div>${esc(it.name)} <span class="badge ${cls}">${esc(label)}</span></div></div>
+        <div style="flex:0 0 auto;margin-left:12px">${right.startsWith("<")?right:`<div class="muted" style="text-align:right">${esc(right)}</div>`}</div></li>`;}).join("")
+    :`<li class="muted">${lib.loading?"불러오는 중…":"영상이 없습니다."}</li>`;
+  if($("#plist").innerHTML!==html)$("#plist").innerHTML=html;
+  document.querySelectorAll("#plist li[data-i]").forEach(li=>li.onclick=()=>openLibItem(lib.items[+li.dataset.i]));
+  $("#otherBox").style.display=lib.others.length?"":"none";
+  const ohtml=lib.others.map(projectRow).join("");
+  if($("#olist").innerHTML!==ohtml)$("#olist").innerHTML=ohtml;
+  document.querySelectorAll("#olist li[data-id]").forEach(li=>li.onclick=()=>openProject(li.dataset.id));
+}
+async function openLibItem(it){
+  if(it.project)return openProject(it.project.dir);
+  if(it.importing)return;
+  const note=it.drive_done?"\n이미 구글 드라이브에 결과가 있습니다. 다시 만들면 덮어씁니다.":it.legacy?"\n다른 PC에서 작업한 기록이 있지만 이어서 할 수는 없고 처음부터 시작합니다.":"";
+  if(!confirm(`"${it.name}" 영상(${fsize(it.size)})을 내려받아 작업을 시작할까요?${note}`))return;
+  await driveImport(it.path,it.size,false);await renderList();
+}
+$("#btnLibRefresh").onclick=()=>renderList(true);
 const stepName=s=>(STEPS.find(x=>x[0]===s)||["","영상 불러오기"])[1];
 $("#btnHome").onclick=showStart;
 
@@ -225,8 +258,8 @@ async function driveList(path){
     if(it.dir)driveList(p);else driveImport(p,it.size);
   });
 }
-async function driveImport(path,size){
-  try{await api("/api/drive/import","POST",{path,size,shared:!!shared()});}catch(e){alert(e.message);return;}
+async function driveImport(path,size,sh=!!shared()){
+  try{await api("/api/drive/import","POST",{path,size,shared:sh});}catch(e){alert(e.message);return;}
   drivePoll();
 }
 function renderDriveJob(j){
@@ -287,7 +320,7 @@ function renderJob(){
   const j=S.d.job;const box=$("#jobbox");
   if(!j||(j.done&&!j.error)){box.innerHTML="";}
   else if(j.error){box.innerHTML="";$("#errbox").innerHTML=`<div class="err">작업 실패: ${esc(j.error)}</div>`;return;}
-  else box.innerHTML=`<div class="job"><span>${esc(j.msg||"작업 중")}</span><div class="bar"><i style="width:${Math.round(j.progress*100)}%"></i></div><span class="time">${Math.round(j.progress*100)}%</span><button class="small" id="btnCancel">중단</button></div>`;
+  else box.innerHTML=`<div class="job"><span>${jobMsg(j)}</span><div class="bar"><i style="width:${Math.round(j.progress*100)}%"></i></div><span class="time">${Math.round(j.progress*100)}%</span><button class="small" id="btnCancel">중단</button></div>`;
   if(!j||!j.error)$("#errbox").innerHTML="";
   const c=$("#btnCancel");if(c)c.onclick=()=>api(P("/job/cancel"),"POST",{});
 }
@@ -302,8 +335,7 @@ function startPoll(){stopPoll();S.poll=setInterval(async()=>{
 function stopPoll(){if(S.poll){clearInterval(S.poll);S.poll=null;}}
 function onJobDone(j){
   if(j.error||j.cancelled)return;
-  if(j.kind==="scan"){startJob("read");}
-  else if(j.kind==="read"){S.step="review";}
+  if(j.kind==="read"){S.step="review";}
   else if(j.kind==="export"){S.step="export";S.exportFiles=j.result&&j.result.files;}
 }
 

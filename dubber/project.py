@@ -36,7 +36,8 @@ def list_projects():
                             "updated": os.path.getmtime(p), "duration": j.get("info", {}).get("duration"),
                             "captions": len(caps), "read": sum(1 for c in caps if c.get("text")),
                             "sentences": len(sents), "tts": sum(1 for s in sents if s.get("tts")),
-                            "cuts": len(j.get("cuts", [])), "exported": bool(j.get("last_export"))})
+                            "cuts": len(j.get("cuts", [])), "exported": bool(j.get("last_export")),
+                            "drive": (j.get("drive") or {}).get("path")})
             except Exception:
                 pass
     out.sort(key=lambda x: -x["updated"])
@@ -55,7 +56,7 @@ class Project:
             self.data["settings"].setdefault(k, v)
 
     @staticmethod
-    def create(video):
+    def create(video, extra=None):
         name = os.path.splitext(os.path.basename(video))[0]
         d = os.path.join(ROOT, _slug(name))
         n = 2
@@ -66,7 +67,7 @@ class Project:
         os.makedirs(d)
         data = {"name": name, "video": video, "info": info, "roi": None, "step": "load", "captions": [],
                 "sentences": [], "cuts": [], "ranges": {"gaps": [], "lyrics": []}, "settings": dict(DEFAULT_SETTINGS),
-                "next_id": 1, "created": time.time()}
+                "next_id": 1, "created": time.time(), **(extra or {})}
         with open(os.path.join(d, "project.json"), "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=1)
         return Project(d)
