@@ -8,6 +8,7 @@ import re
 import signal
 import subprocess
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image, ImageDraw, ImageFont
 
@@ -19,6 +20,9 @@ DIVIDER = 4
 FONTS = ["C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
          "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
 TIMEOUT = 300
+# claude 호출마다 받은 플랜 사용량(5시간·주간 한도의 사용률과 초기화 시각)을 남겨 화면에 보여 준다
+USAGE = os.path.join(os.environ.get("DUBBER_PROJECTS") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "projects"),
+                     "_usage.json")
 
 READ_PROMPT = (
     "{path} 파일을 Read 도구로 열어 보세요. 한국어 자막 {n}장을 세로로 이어 붙인 그림이고, "
@@ -104,6 +108,45 @@ def _run(cmd, prompt, cwd, env, timeout):
     return p.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
 
 
+def _claude_result(raw):
+    """stream-json 출력에서 답 글을 꺼내고, 사용량 정보가 있으면 저장한다."""
+    text, info = "", None
+    for line in raw.splitlines():
+        try:
+            j = json.loads(line)
+        except ValueError:
+            continue
+        if j.get("type") == "rate_limit_event":
+            info = j.get("rate_limit_info")
+        elif j.get("type") == "result":
+            text = j.get("result") or ""
+    if info:
+        save_usage(info)
+    return text
+
+
+def save_usage(info):
+    os.makedirs(os.path.dirname(USAGE), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(USAGE), suffix=".tmp")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump({"info": info, "t": time.time()}, f)
+    os.replace(tmp, USAGE)
+
+
+def load_usage():
+    try:
+        with open(USAGE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"info": None, "t": None}
+
+
+def check_usage():
+    """사용량만 알아보려고 claude를 아주 짧게 한 번 부른다(토큰이 조금 든다)."""
+    run_tool("다른 말 없이 \"확인\"이라고만 답하세요.", "claude", cwd=tempfile.gettempdir(), timeout=120)
+    return load_usage()
+
+
 def run_tool(prompt, tool="claude", image=None, cwd=None, timeout=TIMEOUT):
     """AI 도구를 한 번 호출해 출력 문자열을 돌려준다. 프롬프트는 stdin으로 넘긴다(명령줄 길이 제한 회피)."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDECODE")}
@@ -119,8 +162,10 @@ def run_tool(prompt, tool="claude", image=None, cwd=None, timeout=TIMEOUT):
             out = f.read()
         os.unlink(last)
         return out
-    cmd = ["claude", "-p", "--output-format", "text", "--max-turns", "4", "--allowedTools", "Read" if image else ""]
-    code, out, err = _run(cmd, prompt, cwd, env, timeout)
+    cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose", "--max-turns", "4",
+           "--allowedTools", "Read" if image else ""]
+    code, raw, err = _run(cmd, prompt, cwd, env, timeout)
+    out = _claude_result(raw)
     if code != 0 and not out.strip():
         raise RuntimeError(f"{tool} 실패: {err.strip()[:300]}")
     return out

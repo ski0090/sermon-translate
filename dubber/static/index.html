@@ -85,6 +85,7 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
 <header>
   <h1 id="title">설교 영상 한국어 더빙</h1>
   <nav class="steps" id="steps"></nav>
+  <span id="usage" class="muted" style="white-space:nowrap"></span>
   <button id="btnHome" class="small">프로젝트 목록</button>
   <button id="btnSettings" class="small">설정</button>
 </header>
@@ -258,6 +259,28 @@ async function openLibItem(it){
   await driveImport(it.path,it.size,false);await renderList();
 }
 $("#btnLibRefresh").onclick=()=>renderList(true);
+
+/* ---------- Claude 사용량 ---------- */
+// AI(claude)를 부를 때마다 받은 5시간·주간 한도 사용률을 남은 비율로 보여 준다
+const when=t=>new Date(t*1000).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+async function renderUsage(){
+  let u;try{u=await api("/api/usage");}catch(e){return;}
+  const i=u.info;let html;
+  if(!i)html=`Claude 남은 사용량: 아직 모름 <button class="small" id="btnUsage">확인</button>`;
+  else{
+    const w=i.unifiedWindows||{};
+    const part=(k,label)=>{if(!w[k])return "";const left=Math.max(0,Math.round((1-w[k].utilization)*100));
+      const c=left<20?"var(--bad)":left<40?"var(--warn)":"var(--text)";
+      return `<span title="${when(w[k].resetsAt)}에 초기화">${label} <b style="color:${c}">${left}%</b></span>`;};
+    const age=Math.round((Date.now()/1000-u.t)/60);
+    html=`Claude 남은 사용량: ${[part("five_hour","5시간"),part("seven_day","주간")].filter(Boolean).join(" · ")}`
+      +(i.status&&i.status!=="allowed"?` <b style="color:var(--bad)">한도 도달 (${when(i.resetsAt)}까지)</b>`:"")
+      +` <span title="AI를 부를 때마다 갱신됩니다">(${age<1?"방금":age<60?age+"분 전":Math.round(age/60)+"시간 전"} 기준)</span> <button class="small" id="btnUsage">확인</button>`;
+  }
+  if($("#usage").innerHTML!==html){$("#usage").innerHTML=html;
+    $("#btnUsage").onclick=async()=>{$("#btnUsage").disabled=true;try{await api("/api/usage/check","POST",{});}catch(e){alert(e.message);}renderUsage();};}
+}
+renderUsage();setInterval(renderUsage,30000);
 const stepName=s=>(STEPS.find(x=>x[0]===s)||["","영상 불러오기"])[1];
 $("#btnHome").onclick=showStart;
 

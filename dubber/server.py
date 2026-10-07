@@ -15,6 +15,7 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import ai
 import export
 import gdrive
 import project as prj
@@ -559,7 +560,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         first = str(args[0]) if args else ""
-        if ("/api/p/" in first and "/job" in first) or "/api/drive/status" in first or "/api/library" in first:
+        if ("/api/p/" in first and "/job" in first) or "/api/drive/status" in first or "/api/library" in first or "/api/usage" in first:
             return
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
@@ -682,6 +683,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(items)
         if path == "/api/library":
             return self._json(library(force=bool(q.get("refresh"))))
+        if path == "/api/usage":
+            return self._json(ai.load_usage())
+        if path == "/api/usage/check" and method == "POST":
+            return self._json(ai.check_usage())
         if path == "/api/youtube/status":
             return self._json(dict(youtube.status(), playlist=YT_PLAYLIST, privacy=YT_PRIVACY))
         if path == "/api/youtube/login" and method == "POST":
@@ -830,14 +835,31 @@ def lan_ip():
         s.close()
 
 
+def lock_root():
+    """한 프로젝트 폴더에는 서버 하나만 띄운다. 둘이면 같은 작업을 동시에 이어 하고 project.json을 서로 덮어쓴다."""
+    f = open(os.path.join(prj.ROOT, "_server.lock"), "a+")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        sys.exit(f"이 프로젝트 폴더({prj.ROOT})를 쓰는 서버가 이미 실행 중입니다. 먼저 그 서버를 끄세요.")
+    return f  # 서버가 끝날 때까지 열어 둔다
+
+
 def main():
     os.makedirs(prj.ROOT, exist_ok=True)
+    _root_lock = lock_root()  # noqa
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     resume_all()
     yt_resume()
     httpd.daemon_threads = True
     url = f"http://127.0.0.1:{PORT}/"
-    print("설교 영상 한국어 더빙:", url, flush=True)
+    print("설교 영상 한국어 더빙:", url, "· 프로젝트 폴더:", prj.ROOT, flush=True)
     if HOST != "127.0.0.1":
         print(f"다른 PC에서 접속: http://{lan_ip()}:{PORT}/ (같은 네트워크의 누구나 접속할 수 있습니다)", flush=True)
     if "--no-browser" not in sys.argv:
