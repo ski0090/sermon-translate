@@ -95,6 +95,7 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
       <div><strong>새 프로젝트</strong><div class="muted" id="newHint">화면 아래쪽에 한국어 자막이 있는 설교 영상을 구글 드라이브에서 고르세요. 결과물은 영상과 같은 폴더 아래 "영상 이름 한국어 더빙" 폴더에 저장됩니다.</div></div>
       <button class="primary" id="btnDrive" disabled>구글 드라이브에서 선택</button>
     </div>
+    <div class="row" id="ytBox" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px"></div>
   </div>
   <div class="card" style="margin-top:16px">
     <div class="row" style="justify-content:space-between;margin:0"><strong id="libTitle">설교 영상</strong><span class="row" style="margin:0"><span class="muted" id="libSum"></span><button class="small" id="btnLibRefresh">새로고침</button></span></div>
@@ -160,7 +161,7 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
 <script>
 const $=s=>document.querySelector(s);
 const STEPS=[["load","영상 불러오기"],["scan","자막 읽기"],["review","정리와 검수"],["tts","음성"],["export","내보내기"]];
-const S={pid:null,d:null,plan:[],step:"scan",filter:"all",sel:null,preview:false,poll:null,cur:null,exportFiles:null};
+const S={yt:null,pid:null,d:null,plan:[],step:"scan",filter:"all",sel:null,preview:false,poll:null,cur:null,exportFiles:null};
 
 async function api(path,method="GET",body){
   const r=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
@@ -215,14 +216,39 @@ async function renderList(refresh){
   const html=lib.error?`<li class="err">${esc(lib.error)}</li>`
     :lib.items.length?lib.items.map((it,i)=>{const [,label,cls,right]=st[i];
       return `<li data-i="${i}"><div style="min-width:0"><div>${esc(it.name)} <span class="badge ${cls}">${esc(label)}</span></div></div>
-        <div style="flex:0 0 auto;margin-left:12px">${right.startsWith("<")?right:`<div class="muted" style="text-align:right">${esc(right)}</div>`}</div></li>`;}).join("")
+        <div style="flex:0 0 auto;margin-left:12px">${right.startsWith("<")?right:`<div class="muted" style="text-align:right">${esc(right)}</div>`}${ytCell(it,i)}</div></li>`;}).join("")
     :`<li class="muted">${lib.loading?"불러오는 중…":"영상이 없습니다."}</li>`;
   if($("#plist").innerHTML!==html)$("#plist").innerHTML=html;
   document.querySelectorAll("#plist li[data-i]").forEach(li=>li.onclick=()=>openLibItem(lib.items[+li.dataset.i]));
+  document.querySelectorAll("#plist [data-yt]").forEach(b=>b.onclick=async ev=>{ev.stopPropagation();
+    const it=lib.items[+b.dataset.i];
+    try{await api("/api/youtube/"+b.dataset.yt,"POST",{path:it.path});}catch(e){alert(e.message);}
+    await renderList();});
+  renderYt();
   $("#otherBox").style.display=lib.others.length?"":"none";
   const ohtml=lib.others.map(projectRow).join("");
   if($("#olist").innerHTML!==ohtml)$("#olist").innerHTML=ohtml;
   document.querySelectorAll("#olist li[data-id]").forEach(li=>li.onclick=()=>openProject(li.dataset.id));
+}
+// 유튜브 상태: 올리기 버튼, 대기·진행, 링크, 실패
+function ytCell(it,i){
+  const y=it.youtube||{};const btn=(act,t)=>`<button class="small" data-yt="${act}" data-i="${i}">${t}</button>`;
+  let h="";
+  if(y.status==="done")h=`<a href="${esc(y.url)}" target="_blank" onclick="event.stopPropagation()">▶ 유튜브 (비공개)</a>${y.captions==="none"?" · 자막 파일 없음":""}`;
+  else if(y.status==="queued"||y.status==="uploading")h=`<span>${esc(y.msg||"유튜브 대기 중")}${y.status==="uploading"&&y.progress?` ${Math.round(y.progress*100)}%`:""}${y.resumed?" · 서버가 다시 켜져 처음부터 다시 올리는 중":""}</span> ${btn("cancel","취소")}`;
+  else if(y.status==="error")h=`<span style="color:var(--bad)">유튜브 실패: ${esc(y.error)}</span> ${btn("upload","다시 올리기")}`;
+  else if(it.yt_ready&&S.yt&&S.yt.connected)h=btn("upload",y.video_id?"유튜브 올리기 이어서":"유튜브 올리기");
+  return h?`<div class="muted" style="text-align:right;margin-top:2px">${h}</div>`:"";
+}
+async function renderYt(){
+  try{S.yt=await api("/api/youtube/status");}catch(e){return;}
+  const y=S.yt,remote=!["127.0.0.1","localhost"].includes(location.hostname);
+  const html=y.connected
+    ?`<span class="muted">유튜브: <b>${esc(y.channel||"연결됨")}</b> 채널에 비공개로 올리고 재생목록 "${esc(y.playlist)}"에 넣습니다.</span><button class="small" id="btnYt">다시 연결</button>`
+    :`<span class="muted">유튜브가 연결되어 있지 않습니다.${remote?" 연결은 서버 PC의 브라우저에서 해야 합니다.":""}${y.login.busy?" 로그인 창에서 계정과 채널을 고르세요.":""}${y.login.error?" 오류: "+esc(y.login.error):""}</span><button class="small" id="btnYt">유튜브 연결</button>`;
+  if($("#ytBox").innerHTML!==html){$("#ytBox").innerHTML=html;
+    $("#btnYt").onclick=async()=>{const w=window.open("","_blank");
+      try{const {url}=await api("/api/youtube/login","POST",{});w.location=url;}catch(e){w.close();alert(e.message);}};}
 }
 async function openLibItem(it){
   if(it.project)return openProject(it.project.dir);

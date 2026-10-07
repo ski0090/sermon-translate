@@ -53,8 +53,8 @@ def list_dir(path="", shared=False):
 
 def list_library(root):
     """root 폴더의 영상과 진행 흔적을 한 번에 읽는다. 작업 폴더(crops 등)는 내려가지 않는다.
-    맨 위 영상, <이름>/project.json(이전 작업), <이름> 한국어 더빙/*.mp4, <이름>/out/*.mp4(이전 결과)"""
-    inc = [f"/*{e}" for e in VIDEO_EXT] + ["/*/project.json", "/*/*.mp4", "/*/out/*.mp4"]
+    맨 위 영상, <이름>/project.json(이전 작업), <이름> 한국어 더빙/*.mp4·srt, <이름>/out/*.mp4·srt(이전 결과)"""
+    inc = [f"/*{e}" for e in VIDEO_EXT] + ["/*/project.json", "/*/*.mp4", "/*/out/*.mp4", "/*/*.srt", "/*/out/*.srt"]
     args = ["lsjson", REMOTE + root.strip("/"), "-R", "--files-only", "--no-mimetype"]
     for i in inc:
         args += ["--include", i]

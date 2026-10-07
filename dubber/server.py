@@ -19,12 +19,17 @@ import export
 import gdrive
 import project as prj
 import tts
+import youtube
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
 DRIVE_DIR = os.path.join(prj.ROOT, "_drive")  # 구글 드라이브에서 받은 영상
 DRIVE_JOB = "_drive"
 IMPORT_MARK = os.path.join(DRIVE_DIR, "_import.json")  # 받는 중인 영상(서버가 꺼졌다 켜지면 다시 받는다)
+YT_DIR = os.path.join(prj.ROOT, "_youtube")  # 유튜브에 올리려고 드라이브에서 받은 파일(올린 뒤 지운다)
+YT_STATE = os.path.join(prj.ROOT, "_youtube.json")  # 영상별 업로드 상태와 대기열
+YT_PLAYLIST = os.environ.get("DUBBER_YT_PLAYLIST", "조셉 프린스 더빙")
+YT_PRIVACY = "private"
 MAX_RESUME = 3  # 같은 단계를 연달아 다시 시작하는 최대 횟수(서버를 죽이는 작업이 무한히 반복되지 않게)
 PORT = int(os.environ.get("DUBBER_PORT", "8765"))
 # --lan이면 같은 네트워크의 다른 PC에서도 접속을 받는다
@@ -185,12 +190,191 @@ def library(force=False):
               "drive_done": f"{stem}{export.OUT_SUFFIX}/{dubbed}" in sub or f"{stem}/out/{dubbed}" in sub,
               "legacy": f"{stem}/project.json" in sub,
               "project": by_path.get(path),
-              "importing": imp.status() if importing == path else None}
+              "importing": imp.status() if importing == path else None,
+              "youtube": _yt["items"].get(path)}
+        it["yt_ready"] = it["drive_done"] or bool(it["project"] and it["project"]["exported"])
         if it["project"]:
             used.add(it["project"]["dir"])
         items.append(it)
     return {"root": LIBRARY, "items": items, "others": [p for p in projects if p["dir"] not in used],
             "error": _lib["error"], "loading": _lib["files"] is None}
+
+
+# ---------- 유튜브 업로드 대기열 ----------
+_yt = {"items": {}, "queue": []}
+_yt_lock = threading.RLock()
+_yt_run = {"thread": None, "cancel": set()}
+
+
+def _yt_save():
+    with _yt_lock:
+        tmp = YT_STATE + ".tmp"
+        _write_json(tmp, _yt)
+        os.replace(tmp, YT_STATE)
+
+
+def yt_enqueue(path):
+    with _yt_lock:
+        st = _yt["items"].setdefault(path, {})
+        if path in _yt["queue"]:
+            return st
+        if st.get("status") == "done":
+            raise RuntimeError("이미 유튜브에 올린 영상입니다")
+        _yt_run["cancel"].discard(path)
+        st.update(status="queued", error=None, msg="올리기 대기 중", progress=0.0, resumed=False)
+        _yt["queue"].append(path)
+        _yt_save()
+    _yt_kick()
+    return st
+
+
+def yt_cancel(path):
+    with _yt_lock:
+        if path not in _yt["queue"]:
+            return
+        if _yt["queue"][0] == path and _yt_run["thread"] and _yt_run["thread"].is_alive():
+            _yt_run["cancel"].add(path)  # 올리는 중이면 다음 조각에서 멈춘다
+            _yt["items"][path]["msg"] = "중단하는 중"
+        else:
+            _yt["queue"].remove(path)
+            _yt["items"][path].update(status="cancelled", msg="")
+            _yt_save()
+
+
+def _yt_kick():
+    with _yt_lock:
+        t = _yt_run["thread"]
+        if t and t.is_alive():
+            return
+        _yt_run["thread"] = threading.Thread(target=_yt_worker, daemon=True)
+        _yt_run["thread"].start()
+
+
+def _quota_reset():
+    """유튜브 할당량이 다시 채워지는 시각(태평양 시간 자정) 조금 뒤."""
+    try:
+        import datetime
+        from zoneinfo import ZoneInfo
+        now = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
+        return (now + datetime.timedelta(days=1)).replace(hour=0, minute=5, second=0, microsecond=0).timestamp()
+    except Exception:  # noqa  시간대 정보가 없으면 한 시간 뒤에 다시 해 본다
+        return time.time() + 3600
+
+
+def _yt_worker():
+    """대기열 맨 앞 영상부터 하나씩 올린다. 할당량이 다 떨어지면 다음 날까지 기다렸다가 이어 간다."""
+    while True:
+        with _yt_lock:
+            if not _yt["queue"]:
+                return
+            path = _yt["queue"][0]
+            st = _yt["items"][path]
+        cancelled = lambda: path in _yt_run["cancel"]  # noqa
+        try:
+            _yt_upload_one(path, st, cancelled)
+            st.update(status="cancelled" if cancelled() else "done", msg="", error=None)
+        except youtube.QuotaExceeded:
+            until = _quota_reset()
+            st.update(status="queued", msg="오늘 유튜브 할당량을 다 썼습니다. "
+                      + time.strftime("%m월 %d일 %H:%M", time.localtime(until)) + "에 이어서 올립니다")
+            _yt_save()
+            while time.time() < until and not cancelled():
+                time.sleep(max(0.5, min(30, until - time.time())))
+            if not cancelled():
+                continue
+            st.update(status="cancelled", msg="")
+        except Exception as e:  # noqa
+            traceback.print_exc()
+            st.update(status="error", error=str(e), msg="")
+        with _yt_lock:
+            if _yt["queue"] and _yt["queue"][0] == path:
+                _yt["queue"].pop(0)
+            _yt_run["cancel"].discard(path)
+            _yt_save()
+
+
+def _yt_source(path, st, cancel):
+    """올릴 더빙 영상과 자막. 이 PC의 결과물을 먼저 쓰고, 없으면 드라이브의 결과 폴더에서 받는다.
+    (영상, 자막 또는 None, 다 올린 뒤 지울 파일들)"""
+    for it in prj.list_projects():
+        if it.get("drive") == path:
+            p, _ = get_project(it["dir"])
+            ex = [f for f in p.data.get("last_export") or [] if os.path.isfile(f)]
+            video = next((f for f in ex if f.endswith(" (한국어 더빙).mp4")), None)
+            if video:
+                return video, next((f for f in ex if f.endswith(".srt")), None), []
+    if _lib["files"] is None:
+        _refresh_library()
+    sizes = {f["path"]: f["size"] for f in _lib["files"] or []}
+    stem = os.path.splitext(posixpath.basename(path))[0]
+
+    def prog(done, total, speed):
+        st["msg"] = f"구글 드라이브에서 더빙 영상을 받는 중 ({done / 2**20:,.0f} / {total / 2**20:,.0f}MB)"
+    for folder in (stem + export.OUT_SUFFIX, stem + "/out"):
+        rel = f"{folder}/{stem} (한국어 더빙).mp4"
+        if rel not in sizes:
+            continue
+        video = gdrive.download(f"{LIBRARY}/{rel}", YT_DIR, sizes[rel], progress=prog, cancel=cancel)
+        srt_rel = f"{folder}/{stem}.srt"
+        srt = gdrive.download(f"{LIBRARY}/{srt_rel}", YT_DIR, sizes[srt_rel], cancel=cancel) if srt_rel in sizes else None
+        return video, srt, [f for f in (video, srt) if f]
+    raise RuntimeError("더빙된 영상(mp4)을 찾지 못했습니다")
+
+
+def _yt_upload_one(path, st, cancel):
+    """영상 올리기 -> 재생목록 -> 자막. 끝난 부분은 기록해 두어 다시 해도 건너뛴다(영상을 두 번 올리지 않게)."""
+    def save(**kw):
+        st.update(**kw)
+        _yt_save()
+    stem = os.path.splitext(posixpath.basename(path))[0]
+    need_video = not st.get("video_id")
+    need_caps = st.get("captions") not in ("done", "none")
+    temp = []
+    try:
+        video = srt = None
+        if need_video or need_caps:
+            save(status="uploading", msg="올릴 파일을 준비하는 중")
+            video, srt, temp = _yt_source(path, st, cancel)
+            if cancel():
+                return
+        if need_video:
+            def prog(done, total):
+                st["progress"] = done / total
+                st["msg"] = f"유튜브에 올리는 중 ({done / 2**20:,.0f} / {total / 2**20:,.0f}MB)"
+            save(msg="유튜브에 올리는 중", progress=0.0)
+            vid = youtube.upload_video(video, f"{stem} (한국어 더빙)", privacy=YT_PRIVACY, progress=prog, cancel=cancel)
+            if vid is None:
+                return
+            save(video_id=vid, url=f"https://www.youtube.com/watch?v={vid}", title=f"{stem} (한국어 더빙)",
+                 uploaded=time.time(), progress=1.0)
+        if not st.get("playlist"):
+            save(msg=f"재생목록 \"{YT_PLAYLIST}\"에 넣는 중")
+            youtube.add_to_playlist(youtube.playlist_id(YT_PLAYLIST), st["video_id"])
+            save(playlist=YT_PLAYLIST)
+        if need_caps:
+            if srt:
+                save(msg="한국어 자막을 올리는 중")
+                youtube.upload_captions(st["video_id"], srt)
+            save(captions="done" if srt else "none")
+    finally:
+        for f in temp:
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def yt_resume():
+    """서버가 켜질 때 대기열을 이어 간다. 올리다 끊긴 영상은 처음부터 다시 올린다(유튜브에 영상이 생기기 전이라 중복되지 않는다)."""
+    if os.path.exists(YT_STATE):
+        with open(YT_STATE, encoding="utf-8") as f:
+            _yt.update(json.load(f))
+    if _yt["queue"]:
+        head = _yt["items"].get(_yt["queue"][0], {})
+        if head.get("status") == "uploading":
+            head.update(resumed=True)
+        for p in _yt["queue"]:
+            _yt["items"].setdefault(p, {})["status"] = "queued"
+        print("유튜브 올리기 대기열을 이어 갑니다:", len(_yt["queue"]), "개", flush=True)
+        _yt_kick()
 
 
 def drive_folder(p):
@@ -498,6 +682,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(items)
         if path == "/api/library":
             return self._json(library(force=bool(q.get("refresh"))))
+        if path == "/api/youtube/status":
+            return self._json(dict(youtube.status(), playlist=YT_PLAYLIST, privacy=YT_PRIVACY))
+        if path == "/api/youtube/login" and method == "POST":
+            try:
+                return self._json({"url": youtube.start_login()})
+            except RuntimeError as e:
+                return self._json({"error": str(e)}, 409)
+        if path == "/api/youtube/upload" and method == "POST":
+            try:
+                return self._json(yt_enqueue(self._body()["path"]))
+            except RuntimeError as e:
+                return self._json({"error": str(e)}, 409)
+        if path == "/api/youtube/cancel" and method == "POST":
+            yt_cancel(self._body()["path"])
+            return self._json({"ok": True})
         if path == "/api/drive/status":
             j = _jobs.get(DRIVE_JOB)
             return self._json({"available": gdrive.available(), "job": j.status() if j else None})
@@ -635,6 +834,7 @@ def main():
     os.makedirs(prj.ROOT, exist_ok=True)
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     resume_all()
+    yt_resume()
     httpd.daemon_threads = True
     url = f"http://127.0.0.1:{PORT}/"
     print("설교 영상 한국어 더빙:", url, flush=True)
