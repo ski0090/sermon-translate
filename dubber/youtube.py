@@ -238,10 +238,10 @@ def has_captions(video, language="ko"):
     return any(c["snippet"].get("language", "").split("-")[0] == language for c in r.get("items", []))
 
 
-def upload_video(path, title, description="", privacy="private", progress=None, cancel=None):
+def upload_video(path, title, description="", privacy="private", progress=None, cancel=None, tags=None):
     """영상을 이어 올리기 방식으로 올리고 영상 id를 돌려준다. 중단하면 None."""
     size = os.path.getsize(path)
-    meta = {"snippet": {"title": title[:100], "description": description, "categoryId": "22",
+    meta = {"snippet": {"title": title[:100], "description": description, "tags": tags or [], "categoryId": "22",
                         "defaultLanguage": "ko", "defaultAudioLanguage": "ko"},
             "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}
     _, h, _ = _req("POST", UPLOAD + "/videos?uploadType=resumable&part=snippet,status", body=meta,

@@ -204,7 +204,32 @@ def library(force=False):
 
 
 # ---------- 유튜브 업로드 대기열 ----------
-_yt = {"items": {}, "queue": []}
+_yt = {"items": {}, "queue": [], "settings": {}}
+# 영상 설명과 해시태그 기본값. 시작 화면의 "설명·해시태그"에서 바꾼다. {이름}은 영상 이름으로 바뀐다
+YT_DEFAULTS = {"description": "조셉 프린스 목사님 설교 \"{이름}\"의 한국어 더빙입니다.",
+               "hashtags": "#조셉프린스 #JosephPrince #한국어더빙 #설교 #은혜"}
+
+
+def yt_settings():
+    return {k: _yt["settings"].get(k, v) for k, v in YT_DEFAULTS.items()}
+
+
+def yt_meta(stem):
+    """올릴 영상의 설명과 태그. 해시태그는 설명 끝에 붙이고(앞의 3개가 제목 위에 보인다) 태그로도 넣는다."""
+    s = yt_settings()
+    tags = [t.lstrip("#") for t in re.split(r"[\s,]+", s["hashtags"]) if t.strip("#")]
+    desc = s["description"].replace("{이름}", stem).strip()
+    if tags:
+        desc += "\n\n" + " ".join("#" + t for t in tags)
+    # 유튜브 제한: 설명 5,000바이트, 꺾쇠 괄호 금지, 태그 합계 500자
+    desc = desc.replace("<", "(").replace(">", ")").encode("utf-8")[:5000].decode("utf-8", "ignore")
+    out, n = [], 0
+    for t in tags:
+        n += len(t) + 1
+        if n > 500:
+            break
+        out.append(t)
+    return desc, out
 _yt_lock = threading.RLock()
 _yt_run = {"thread": None, "cancel": set()}
 
@@ -397,7 +422,9 @@ def _yt_upload_one(path, st, cancel):
                 st["progress"] = done / total
                 st["msg"] = f"유튜브에 올리는 중 ({done / 2**20:,.0f} / {total / 2**20:,.0f}MB)"
             save(msg="유튜브에 올리는 중", progress=0.0)
-            vid = youtube.upload_video(video, f"{stem} (한국어 더빙)", privacy=YT_PRIVACY, progress=prog, cancel=cancel)
+            desc, tags = yt_meta(stem)
+            vid = youtube.upload_video(video, f"{stem} (한국어 더빙)", description=desc, tags=tags, privacy=YT_PRIVACY,
+                                       progress=prog, cancel=cancel)
             if vid is None:
                 return
             save(video_id=vid, url=f"https://www.youtube.com/watch?v={vid}", title=f"{stem} (한국어 더빙)",
@@ -762,6 +789,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(yt_enqueue(self._body()["path"]))
             except RuntimeError as e:
                 return self._json({"error": str(e)}, 409)
+        if path == "/api/youtube/settings":
+            if method == "POST":
+                body = self._body()
+                with _yt_lock:
+                    for k in YT_DEFAULTS:
+                        if k in body:
+                            _yt["settings"][k] = str(body[k])
+                    _yt_save()
+            return self._json(dict(yt_settings(), preview=yt_meta("218 선생이 아닌 구세주 예수")[0]))
         if path == "/api/youtube/cancel" and method == "POST":
             yt_cancel(self._body()["path"])
             return self._json({"ok": True})
