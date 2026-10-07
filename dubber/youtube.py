@@ -34,6 +34,12 @@ class QuotaExceeded(RuntimeError):
     pass
 
 
+class ApiError(RuntimeError):
+    def __init__(self, code, msg):
+        super().__init__(f"유튜브 API 오류 {code}: {msg}")
+        self.code = code
+
+
 def client():
     cid, sec = os.environ.get("DUBBER_YT_CLIENT_ID"), os.environ.get("DUBBER_YT_CLIENT_SECRET")
     if cid and sec:
@@ -183,7 +189,7 @@ def _req(method, url, body=None, data=None, headers=None, ok=(200, 201)):
             msg, reason = raw[:300], ""
         if reason in QUOTA_REASONS:
             raise QuotaExceeded(msg)
-        raise RuntimeError(f"유튜브 API 오류 {e.code}: {msg}")
+        raise ApiError(e.code, msg)
 
 
 def _json(method, url, body=None):
@@ -196,6 +202,40 @@ def channel_title():
     if not items:
         raise RuntimeError("이 구글 계정에는 유튜브 채널이 없습니다")
     return items[0]["snippet"]["title"]
+
+
+def channel_uploads():
+    """내 채널에 올린 영상 전체(비공개 포함). [{"id", "title", "privacy"}] 50개당 1단위."""
+    ch = _json("GET", API + "/channels?part=contentDetails&mine=true").get("items") or []
+    if not ch:
+        return []
+    up = ch[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    out, page = [], ""
+    while True:
+        r = _json("GET", API + f"/playlistItems?part=snippet,status&playlistId={up}&maxResults=50"
+                  + (f"&pageToken={page}" if page else ""))
+        for it in r.get("items", []):
+            out.append({"id": it["snippet"]["resourceId"]["videoId"], "title": it["snippet"]["title"],
+                        "privacy": it.get("status", {}).get("privacyStatus")})
+        page = r.get("nextPageToken")
+        if not page:
+            return out
+
+
+def in_playlist(playlist, video):
+    try:
+        r = _json("GET", API + f"/playlistItems?part=id&playlistId={playlist}&videoId={video}")
+    except ApiError as e:
+        if e.code == 404:  # 방금 만든 재생목록은 잠시 "없음"으로 답한다
+            return False
+        raise
+    return bool(r.get("items"))
+
+
+def has_captions(video, language="ko"):
+    """이미 그 언어 자막이 있는지(50단위)."""
+    r = _json("GET", API + f"/captions?part=snippet&videoId={video}")
+    return any(c["snippet"].get("language", "").split("-")[0] == language for c in r.get("items", []))
 
 
 def upload_video(path, title, description="", privacy="private", progress=None, cancel=None):
@@ -248,8 +288,15 @@ def playlist_id(title):
 
 
 def add_to_playlist(playlist, video):
-    _json("POST", API + "/playlistItems?part=snippet",
-          {"snippet": {"playlistId": playlist, "resourceId": {"kind": "youtube#video", "videoId": video}}})
+    for attempt in range(4):
+        try:
+            _json("POST", API + "/playlistItems?part=snippet",
+                  {"snippet": {"playlistId": playlist, "resourceId": {"kind": "youtube#video", "videoId": video}}})
+            return
+        except ApiError as e:
+            if e.code != 404 or attempt == 3:  # 방금 만든 재생목록이 아직 안 보이면 잠시 뒤 다시
+                raise
+            time.sleep(10 * (attempt + 1))
 
 
 def upload_captions(video, srt_path, language="ko", name="한국어"):

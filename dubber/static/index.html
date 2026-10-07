@@ -233,11 +233,15 @@ async function renderList(refresh){
 }
 // 유튜브 상태: 올리기 버튼, 대기·진행, 링크, 실패
 function ytCell(it,i){
-  const y=it.youtube||{};const btn=(act,t)=>`<button class="small" data-yt="${act}" data-i="${i}">${t}</button>`;
+  const y=it.youtube||{},ex=it.yt_existing;const btn=(act,t)=>`<button class="small" data-yt="${act}" data-i="${i}">${t}</button>`;
+  const priv=p=>({public:"공개",unlisted:"일부 공개",private:"비공개"})[p]||"비공개";
+  const link=(url,label)=>`<a href="${esc(url)}" target="_blank" onclick="event.stopPropagation()">▶ 유튜브 (${label})</a>`;
+  const caps={none:" · 자막 파일 없음",existing:" · 자막은 원래 있던 것"}[y.captions]||"";
   let h="";
-  if(y.status==="done")h=`<a href="${esc(y.url)}" target="_blank" onclick="event.stopPropagation()">▶ 유튜브 (비공개)</a>${y.captions==="none"?" · 자막 파일 없음":""}`;
+  if(y.status==="done")h=link(y.url,priv(y.privacy)+(y.existing?" · 이미 있던 영상":""))+caps;
   else if(y.status==="queued"||y.status==="uploading")h=`<span>${esc(y.msg||"유튜브 대기 중")}${y.status==="uploading"&&y.progress?` ${Math.round(y.progress*100)}%`:""}${y.resumed?" · 서버가 다시 켜져 처음부터 다시 올리는 중":""}</span> ${btn("cancel","취소")}`;
-  else if(y.status==="error")h=`<span style="color:var(--bad)">유튜브 실패: ${esc(y.error)}</span> ${btn("upload","다시 올리기")}`;
+  else if(y.status==="error")h=`<span style="color:var(--bad)">유튜브 실패: ${esc(y.error)}</span> ${btn("upload","다시 하기")}`;
+  else if(ex)h=`${link(ex.url,"이미 있음 · "+priv(ex.privacy))} ${S.yt&&S.yt.connected?btn("upload","재생목록·자막 넣기"):""}`;
   else if(it.yt_ready&&S.yt&&S.yt.connected)h=btn("upload",y.video_id?"유튜브 올리기 이어서":"유튜브 올리기");
   return h?`<div class="muted" style="text-align:right;margin-top:2px">${h}</div>`:"";
 }

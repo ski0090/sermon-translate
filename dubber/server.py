@@ -182,6 +182,7 @@ def library(force=False):
     by_path = {it["drive"]: it for it in projects if it.get("drive")}
     imp = _jobs.get(DRIVE_JOB)
     importing = imp.target if imp and not imp.done else None
+    videos = channel_videos(force)
     items, used = [], set()
     for f in sorted((f for f in files if "/" not in f["path"]), key=lambda f: _natural(f["path"])):
         path = LIBRARY + "/" + f["path"]
@@ -192,7 +193,8 @@ def library(force=False):
               "legacy": f"{stem}/project.json" in sub,
               "project": by_path.get(path),
               "importing": imp.status() if importing == path else None,
-              "youtube": _yt["items"].get(path)}
+              "youtube": _yt["items"].get(path),
+              "yt_existing": yt_existing(stem, videos)}
         it["yt_ready"] = it["drive_done"] or bool(it["project"] and it["project"]["exported"])
         if it["project"]:
             used.add(it["project"]["dir"])
@@ -294,15 +296,56 @@ def _yt_worker():
             _yt_save()
 
 
-def _yt_source(path, st, cancel):
+_ytch = {"t": 0.0, "videos": None, "busy": False}
+YT_CHANNEL_TTL = 900  # 채널 영상 목록을 다시 읽는 간격(초). 50개당 1단위라 15분이면 하루 100단위쯤
+
+
+def _yt_norm(title):
+    """제목 비교용: "한국어 더빙", 괄호, 띄어쓰기, 문장 부호를 뺀다."""
+    t = re.sub(r"한국어\s*더빙", "", title)
+    return re.sub(r"[\s()\[\]{}<>.,_\-–:;'\"“”‘’!?]", "", t)
+
+
+def _refresh_channel():
+    try:
+        _ytch["videos"] = youtube.channel_uploads()
+    except Exception as e:  # noqa  연결 안 됨, 네트워크 등: 다음에 다시 읽는다
+        print("유튜브 채널 영상 목록을 읽지 못했습니다:", e, flush=True)
+    finally:
+        _ytch["t"], _ytch["busy"] = time.time(), False
+
+
+def channel_videos(force=False):
+    """채널에 이미 있는 영상(직접 올린 것 포함)을 이름으로 찾기 위한 목록. 뒤에서 가끔 새로 읽는다."""
+    if not youtube.status()["connected"]:
+        return []
+    with _glock:
+        start = (force or time.time() - _ytch["t"] > YT_CHANNEL_TTL) and not _ytch["busy"]
+        if start:
+            _ytch["busy"] = True
+    if start:
+        if force or _ytch["videos"] is None:
+            _refresh_channel()
+        else:
+            threading.Thread(target=_refresh_channel, daemon=True).start()
+    return _ytch["videos"] or []
+
+
+def yt_existing(stem, videos):
+    key = _yt_norm(stem)
+    v = next((v for v in videos if _yt_norm(v["title"]) == key), None)
+    return v and dict(v, url=f"https://www.youtube.com/watch?v={v['id']}")
+
+
+def _yt_source(path, st, cancel, need_video):
     """올릴 더빙 영상과 자막. 이 PC의 결과물을 먼저 쓰고, 없으면 드라이브의 결과 폴더에서 받는다.
-    (영상, 자막 또는 None, 다 올린 뒤 지울 파일들)"""
+    영상이 이미 유튜브에 있으면(need_video=False) 자막만 찾는다. (영상 또는 None, 자막 또는 None, 다 올린 뒤 지울 파일들)"""
     for it in prj.list_projects():
         if it.get("drive") == path:
             p, _ = get_project(it["dir"])
             ex = [f for f in p.data.get("last_export") or [] if os.path.isfile(f)]
             video = next((f for f in ex if f.endswith(" (한국어 더빙).mp4")), None)
-            if video:
+            if video or not need_video:
                 return video, next((f for f in ex if f.endswith(".srt")), None), []
     if _lib["files"] is None:
         _refresh_library()
@@ -312,30 +355,41 @@ def _yt_source(path, st, cancel):
     def prog(done, total, speed):
         st["msg"] = f"구글 드라이브에서 더빙 영상을 받는 중 ({done / 2**20:,.0f} / {total / 2**20:,.0f}MB)"
     for folder in (stem + export.OUT_SUFFIX, stem + "/out"):
-        rel = f"{folder}/{stem} (한국어 더빙).mp4"
-        if rel not in sizes:
+        rel, srt_rel = f"{folder}/{stem} (한국어 더빙).mp4", f"{folder}/{stem}.srt"
+        if rel not in sizes and srt_rel not in sizes:
             continue
-        video = gdrive.download(f"{LIBRARY}/{rel}", YT_DIR, sizes[rel], progress=prog, cancel=cancel)
-        srt_rel = f"{folder}/{stem}.srt"
+        video = None
+        if need_video:
+            if rel not in sizes:
+                continue
+            video = gdrive.download(f"{LIBRARY}/{rel}", YT_DIR, sizes[rel], progress=prog, cancel=cancel)
         srt = gdrive.download(f"{LIBRARY}/{srt_rel}", YT_DIR, sizes[srt_rel], cancel=cancel) if srt_rel in sizes else None
         return video, srt, [f for f in (video, srt) if f]
-    raise RuntimeError("더빙된 영상(mp4)을 찾지 못했습니다")
+    if need_video:
+        raise RuntimeError("더빙된 영상(mp4)을 찾지 못했습니다")
+    return None, None, []
 
 
 def _yt_upload_one(path, st, cancel):
-    """영상 올리기 -> 재생목록 -> 자막. 끝난 부분은 기록해 두어 다시 해도 건너뛴다(영상을 두 번 올리지 않게)."""
+    """영상 올리기 -> 재생목록 -> 자막. 끝난 부분은 기록해 두어 다시 해도 건너뛴다(영상을 두 번 올리지 않게).
+    채널에 같은 이름의 영상이 이미 있으면(직접 올린 것 포함) 올리지 않고 그 영상에 재생목록과 자막만 더한다."""
     def save(**kw):
         st.update(**kw)
         _yt_save()
     stem = os.path.splitext(posixpath.basename(path))[0]
+    if not st.get("video_id"):
+        save(status="uploading", msg="유튜브에 같은 영상이 있는지 확인하는 중")
+        ex = yt_existing(stem, channel_videos(force=True))
+        if ex:
+            save(video_id=ex["id"], url=ex["url"], title=ex["title"], privacy=ex["privacy"], existing=True)
     need_video = not st.get("video_id")
-    need_caps = st.get("captions") not in ("done", "none")
+    need_caps = st.get("captions") not in ("done", "none", "existing")
     temp = []
     try:
         video = srt = None
         if need_video or need_caps:
             save(status="uploading", msg="올릴 파일을 준비하는 중")
-            video, srt, temp = _yt_source(path, st, cancel)
+            video, srt, temp = _yt_source(path, st, cancel, need_video)
             if cancel():
                 return
         if need_video:
@@ -347,16 +401,23 @@ def _yt_upload_one(path, st, cancel):
             if vid is None:
                 return
             save(video_id=vid, url=f"https://www.youtube.com/watch?v={vid}", title=f"{stem} (한국어 더빙)",
-                 uploaded=time.time(), progress=1.0)
+                 privacy=YT_PRIVACY, uploaded=time.time(), progress=1.0)
+            _ytch["t"] = 0  # 다음 목록 새로고침 때 채널 목록도 다시 읽는다
         if not st.get("playlist"):
             save(msg=f"재생목록 \"{YT_PLAYLIST}\"에 넣는 중")
-            youtube.add_to_playlist(youtube.playlist_id(YT_PLAYLIST), st["video_id"])
+            pl = youtube.playlist_id(YT_PLAYLIST)
+            if not youtube.in_playlist(pl, st["video_id"]):
+                youtube.add_to_playlist(pl, st["video_id"])
             save(playlist=YT_PLAYLIST)
         if need_caps:
-            if srt:
+            if srt and st.get("existing") and youtube.has_captions(st["video_id"]):
+                save(captions="existing")  # 직접 올린 영상에 이미 한국어 자막이 있으면 덮지 않는다
+            elif srt:
                 save(msg="한국어 자막을 올리는 중")
                 youtube.upload_captions(st["video_id"], srt)
-            save(captions="done" if srt else "none")
+                save(captions="done")
+            else:
+                save(captions="none")
     finally:
         for f in temp:
             if os.path.exists(f):
