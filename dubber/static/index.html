@@ -241,8 +241,7 @@ function onJobDone(j){
   if(j.error||j.cancelled)return;
   if(j.kind==="scan"){startJob("read");}
   else if(j.kind==="read"){S.step="review";}
-  else if(j.kind==="tts"){S.step="tts";}
-  else if(j.kind==="export"){S.exportFiles=j.result&&j.result.files;}
+  else if(j.kind==="export"){S.step="export";S.exportFiles=j.result&&j.result.files;}
 }
 
 /* ---------- 단계 패널 ---------- */
@@ -419,7 +418,7 @@ function renderExport(el){
   const total=d.info.duration-d.cuts.reduce((a,c)=>a+(c.end-c.start),0);
   el.innerHTML=`<h2>내보내기</h2>
   <div class="card">
-    <div class="row"><label><input type="checkbox" id="wVideo" checked> 한국어 음성이 입혀진 영상</label><label><input type="checkbox" id="wAudio"> 한국어 음성만 담은 오디오 파일</label></div>
+    <div class="row"><label><input type="checkbox" id="wVideo" checked> 한국어 음성이 입혀진 영상</label><label><input type="checkbox" id="wAudio" checked> 한국어 음성만 담은 오디오 파일</label></div>
     <div class="row"><label><input type="checkbox" id="wSrt" checked> 한국어 자막 파일 (srt)</label><label><input type="checkbox" id="wTxt" checked> 자막 텍스트 파일</label></div>
     <div class="row"><span>원음 처리</span><label><input type="radio" name="oa" value="remove" ${d.settings.orig_audio!=="duck"?"checked":""}> 원음 제거</label><label><input type="radio" name="oa" value="duck" ${d.settings.orig_audio==="duck"?"checked":""}> 원음 낮춰서 깔기</label></div>
     <div class="muted">잘라내기 ${d.cuts.length}개 구간을 빼면 결과 영상 길이는 약 ${fmt(total)}입니다. 음성이 없는 문장 ${d.sentences.filter(s=>!s.tts).length}개는 빠집니다.<br>원음을 제거하면 오디오 파일은 영상 타이밍과 상관없이 문장을 원래 속도로 이어 붙입니다.</div>

@@ -164,8 +164,14 @@ def run_pipeline_job(p, lock, kind, job, params):
         tts.run_all(p, progress=prog, cancel=cancel, force=bool(params.get("force")))
         with lock:
             p.set_step("tts")
+            p.data["settings"]["orig_audio"] = "remove"
             p.save()
-        return {}
+        if job.cancelled:
+            return {}
+        # 음성이 끝나면 모든 결과물을 원음 제거로 바로 내보낸다(브라우저를 닫아도 이어진다)
+        job.kind = "export"
+        return run_pipeline_job(p, lock, "export", job, {"want": ["video", "audio", "srt", "txt"],
+                                                          "orig_audio": "remove"})
     if kind == "export":
         want = set(params.get("want") or ["video", "srt"])
         names = {"track": "음성 트랙을 합치는 중", "video": "영상을 만드는 중", "audio": "오디오 파일을 만드는 중"}
