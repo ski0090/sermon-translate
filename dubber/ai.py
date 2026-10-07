@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,7 +16,8 @@ import sentences
 PER_STRIP = 25
 GUTTER = 72
 DIVIDER = 4
-FONT = "C:/Windows/Fonts/arial.ttf"
+FONTS = ["C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
 TIMEOUT = 300
 
 READ_PROMPT = (
@@ -45,10 +47,12 @@ TIDY_TIMEOUT = 600
 
 
 def _font(size=30):
-    try:
-        return ImageFont.truetype(FONT, size)
-    except OSError:
-        return ImageFont.load_default()
+    for f in FONTS:
+        try:
+            return ImageFont.truetype(f, size)
+        except OSError:
+            pass
+    return ImageFont.load_default()
 
 
 def file_hash(paths):
@@ -85,11 +89,17 @@ def _parse_json_array(text):
 
 def _run(cmd, prompt, cwd, env, timeout):
     """시간이 지나면 자식 프로세스 트리까지 끝낸다(shell을 거치면 손자 프로세스가 남아 기다리게 된다)."""
-    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=env)
+    # Linux는 새 세션(프로세스 그룹)으로 띄워 그룹째 끝낸다
+    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=env,
+                         start_new_session=os.name != "nt")
     try:
         out, err = p.communicate(prompt.encode("utf-8"), timeout=timeout)
     except subprocess.TimeoutExpired:
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True)
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True)
+        else:
+            os.killpg(p.pid, signal.SIGKILL)
+            p.communicate()
         raise RuntimeError(f"{cmd[0]} 응답 시간 초과({timeout}초)")
     return p.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
 

@@ -1,3 +1,6 @@
 # dubber 작업 데이터(영상·음성·자막 그림)와 파이썬 캐시
 dubber/projects/
 __pycache__/
+
+# 파이썬 가상 환경
+.venv/
