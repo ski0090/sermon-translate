@@ -33,8 +33,12 @@ _CHAPTER_VERSE = re.compile(r"(\d+)\s*[:：]\s*(\d+)(?:\s*[-~–]\s*(\d+))?")
 
 
 def clean(text):
-    """괄호 표기 제거, 공백 정리."""
-    t = _BRACKETS.sub(" ", text or "")
+    """괄호 표기 제거, 공백 정리. (박수) [웃음] 같은 짧은 표기는 지우고, 괄호 안이 긴 글(성경 인용 등)은
+    괄호만 빼고 남긴다(통째로 지우면 그 문장의 음성이 비어 더빙에서 빠진다)."""
+    def repl(m):
+        inner = m.group(0)[1:-1]
+        return f" {inner} " if len(re.sub(r"\s", "", inner)) > 8 else " "
+    t = _BRACKETS.sub(repl, text or "")
     return re.sub(r"\s+", " ", t).strip()
 
 
@@ -138,5 +142,7 @@ if __name__ == "__main__":
                  {"id": 2, "start": 2, "end": 3, "text": ""}, {"id": 3, "start": 3, "end": 4, "text": "거룩함을 압니다"}])
     assert dup == [{"caps": [0, 1, 3], "raw": "율법을 알아야 거룩함을 압니다", "start": 0, "end": 4}], dup
     assert reading("할렐루야", {"할렐루야": "할렐루우야"}) == "할렐루우야"
+    assert reading("[즉 남편을 주목하고, 높이 평가하라]'") == "즉 남편을 주목하고, 높이 평가하라"  # 긴 인용은 읽는다
+    assert reading("아멘 [웃음] 그렇죠 (청중 박수)") == "아멘 그렇죠"
     assert is_end("복종했다고 합니다") and is_end("어렵죠") and not is_end("특히 배우자에게는")
     print("ok")

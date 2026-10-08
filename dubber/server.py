@@ -737,7 +737,7 @@ def shorts_list():
         d = _pdir(it["dir"])
         has = os.path.exists(os.path.join(d, shorts.STATE))
         voice_done = bool(it["sentences"]) and it["tts"] == it["sentences"]
-        if not (has or voice_done):
+        if not (has or voice_done or it["exported"]):
             continue
         st = shorts.load(d)
         items, sug = st["items"], st["suggest"]
