@@ -41,5 +41,6 @@
 | `server.py` | 로컬 웹 서버와 API (표준 라이브러리) |
 | `static/index.html` | 화면 |
 | `static/shorts.js` | 쇼츠 화면 |
+| `static/schedule.js` | 스케줄 화면(날마다 자동 작업이 쓸 Claude 사용량, `projects/_schedule.json`) |
 
 `caption_extractor/`는 이전 구현(Flutter + Rust + PaddleOCR)이며 더 이상 쓰지 않습니다.

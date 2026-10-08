@@ -820,10 +820,13 @@ def _yt_upload_short(key, st, cancel):
 #   프로젝트 만들기 -> 자막 영역 자동 감지 -> 자막 찾기 -> AI 읽기 -> AI 문장 정리 (Claude 사용)
 # 음성 대기열: 화면에서 "음성 만들기"를 누른 영상만 넣는다(사람이 검수한 뒤). 음성 -> 내보내기 -> 드라이브 올리기.
 # 음성 줄 VOICE_WORKERS개가 늘 돌며 대기열에서 하나씩 가져가므로 CPU를 다투지 않는다.
-# 자동 진행은 Claude 사용량이 USAGE_RESERVE를 넘으면 그 창이 초기화될 때까지 쉬어서, 사람이 Claude를 직접 쓸
-# 몫을 남긴다.
+# 자동 진행은 Claude 사용량이 그날의 한도(스케줄 달력, 기본 5시간 50%·주간 50%)를 넘으면 쉬어서, 사람이 Claude를
+# 직접 쓸 몫을 남긴다.
 BATCH_STATE = os.path.join(prj.ROOT, "_batch.json")
-USAGE_RESERVE = {"seven_day": 0.8, "five_hour": 0.5}
+SCHEDULE_STATE = os.path.join(prj.ROOT, "_schedule.json")
+SCHEDULE_DEFAULT = {"five_hour": 50, "seven_day": 50}  # 자동 작업이 쓸 수 있는 Claude 사용량(%)
+USAGE_NAMES = {"five_hour": "5시간", "seven_day": "주간"}
+_sched = {"default": dict(SCHEDULE_DEFAULT), "days": {}}  # days: {"2026-10-10": {"five_hour": 90, "seven_day": 90}}
 # 음성 줄을 몇 개 동시에 돌릴지(tts.THREADS와 곱해 코어 수쯤)
 VOICE_WORKERS = int(os.environ.get("DUBBER_VOICE_WORKERS", "4"))
 BATCH_MAX_FAILS = 3
@@ -1056,14 +1059,85 @@ def voice_kick():
             _voice_threads[name].start()
 
 
+# ---------- 스케줄: 날마다 자동 작업이 쓸 Claude 사용량 ----------
+def _day(t=None):
+    return time.strftime("%Y-%m-%d", time.localtime(t))
+
+
+def _next_midnight(t):
+    lt = time.localtime(t)
+    return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday + 1, 0, 0, 0, 0, 0, -1))
+
+
+def usage_limits(day=None):
+    """그날 자동 작업이 쓸 수 있는 Claude 사용량(%). 달력에서 정한 날은 그 값, 아니면 기본값."""
+    d = _sched["days"].get(day or _day()) or {}
+    return {k: int(d.get(k, _sched["default"].get(k, v))) for k, v in SCHEDULE_DEFAULT.items()}
+
+
+def schedule_load():
+    if os.path.exists(SCHEDULE_STATE):
+        with open(SCHEDULE_STATE, encoding="utf-8") as f:
+            _sched.update(json.load(f))
+
+
+def schedule_set(body):
+    """기본값({"default": {...}})이나 날짜별 값({"days": {"2026-10-10": {...} 또는 None(기본값으로)}})을 바꾼다."""
+    def pct(v):
+        return min(100, max(0, int(round(float(v)))))
+    with _glock:
+        if body.get("default"):
+            _sched["default"] = {k: pct(body["default"].get(k, _sched["default"].get(k, v)))
+                                 for k, v in SCHEDULE_DEFAULT.items()}
+        for day, v in (body.get("days") or {}).items():
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+                raise ValueError(f"날짜 형식이 틀렸습니다: {day}")
+            if v is None:
+                _sched["days"].pop(day, None)
+            else:
+                _sched["days"][day] = {k: pct(v.get(k, usage_limits(day)[k])) for k in SCHEDULE_DEFAULT}
+        old = _day(time.time() - 90 * 86400)  # 석 달 지난 날은 지운다
+        _sched["days"] = {d: v for d, v in sorted(_sched["days"].items()) if d >= old}
+        tmp = SCHEDULE_STATE + ".tmp"
+        _write_json(tmp, _sched)
+        os.replace(tmp, SCHEDULE_STATE)
+
+
+def schedule_view():
+    u = ai.load_usage()
+    wins = (u.get("info") or {}).get("unifiedWindows") or {}
+    pause = _usage_pause()
+    return {"default": _sched["default"], "days": _sched["days"], "today": _day(), "limits": usage_limits(),
+            "usage": {k: {"utilization": (wins.get(k) or {}).get("utilization"), "resetsAt": (wins.get(k) or {}).get("resetsAt")}
+                      for k in SCHEDULE_DEFAULT},
+            "usage_t": u.get("t"), "pause": {"until": pause[0], "reason": pause[1]} if pause else None}
+
+
 def _usage_pause():
-    """Claude 사용량이 USAGE_RESERVE를 넘었으면 (쉴 때까지의 시각, 이유). 사용량은 마지막 Claude 호출 때의 값이다."""
+    """자동 작업이 Claude를 쉬어야 하면 (다시 해 볼 시각, 이유). 사용량은 마지막 Claude 호출 때의 값이다.
+    그날의 한도는 스케줄 달력에서 정하고, 한도가 더 높은 날이 사용량 초기화보다 먼저 오면 그날 0시에 다시 한다."""
+    now = time.time()
+    lim = usage_limits()
+    if min(lim.values()) <= 0:
+        m = _next_midnight(now)
+        for _ in range(60):
+            if min(usage_limits(_day(m)).values()) > 0:
+                break
+            m = _next_midnight(m + 1)
+        return m + 5, "스케줄에서 오늘은 자동 작업을 쉬도록 정해"
     info = ai.load_usage().get("info") or {}
-    names = {"seven_day": "주간", "five_hour": "5시간"}
-    for k, limit in USAGE_RESERVE.items():
+    for k in SCHEDULE_DEFAULT:
         w = (info.get("unifiedWindows") or {}).get(k) or {}
-        if w.get("utilization", 0) >= limit and w.get("resetsAt", 0) > time.time():
-            return w["resetsAt"] + 120, f"Claude {names[k]} 사용량이 {w['utilization']:.0%}라 {limit:.0%}를 넘어"
+        used, reset = w.get("utilization", 0) or 0, w.get("resetsAt", 0) or 0
+        if used >= lim[k] / 100 and reset > now:
+            until = reset + 120
+            m = _next_midnight(now)
+            while m < until:
+                if used < usage_limits(_day(m))[k] / 100:
+                    until = m + 5
+                    break
+                m = _next_midnight(m + 1)
+            return until, f"Claude {USAGE_NAMES[k]} 사용량이 {used:.0%}라 오늘 한도 {lim[k]}%를 넘어"
     return None
 
 
@@ -1093,6 +1167,11 @@ def _batch_lane():
             _batch_save()
             while _batch["on"] and time.time() < until:
                 time.sleep(max(0.5, min(60, until - time.time())))
+                pause = _usage_pause()  # 스케줄을 바꾸거나 날이 바뀌면 바로 반영한다
+                if not pause:
+                    break
+                until, why = pause
+                _batch.update(wait_until=until, wait_reason=why)
             _batch.update(wait_until=None, wait_reason=None)
             continue
         try:
@@ -1603,6 +1682,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/youtube/cancel" and method == "POST":
             yt_cancel(self._body()["path"])
             return self._json({"ok": True})
+        if path == "/api/schedule":
+            if method == "POST":
+                try:
+                    schedule_set(self._body())
+                except (ValueError, TypeError) as e:
+                    return self._json({"error": str(e)}, 400)
+            return self._json(schedule_view())
         if path == "/api/shorts":
             if method == "POST":
                 body = self._body()
@@ -1841,6 +1927,7 @@ def main():
     os.makedirs(prj.ROOT, exist_ok=True)
     _root_lock = lock_root()  # noqa
     kill_orphans()
+    schedule_load()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     voice = resume_all()
     yt_resume()

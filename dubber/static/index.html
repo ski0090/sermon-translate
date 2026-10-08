@@ -106,6 +106,23 @@ header button.on{background:var(--accent2);color:var(--accent);border-color:#c8d
 .shbar{flex:1;height:6px;background:#e5e9f2;border-radius:3px;overflow:hidden;min-width:80px}
 .shbar i{display:block;height:100%;background:var(--accent)}
 @media (max-width:860px){#shorts{grid-template-columns:1fr}#shorts .side{position:static;max-height:none}}
+/* 스케줄 */
+#sched{display:none;max-width:980px;margin:24px auto;padding:0 16px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:10px}
+.cal .cw{font-size:12px;color:var(--muted);text-align:center;padding:2px 0}
+.cal .cd{border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-height:84px;background:#fff;cursor:pointer;user-select:none;min-width:0}
+.cal .cd:hover{border-color:#9fb3df}
+.cal .cd.blank{border:0;background:transparent;cursor:default}
+.cal .cd.past{opacity:.45;cursor:default}
+.cal .cd.today{border:2px solid var(--accent)}
+.cal .cd.set{background:var(--accent2)}
+.cal .cd.sel{outline:3px solid #f59e0b;outline-offset:-2px}
+.cal .cdn{font-weight:600;font-size:13px}
+.cal .sun,.cal .sun .cdn{color:#c2410c}.cal .sat,.cal .sat .cdn{color:#1d4ed8}
+.cal .cdv{font-size:12px;color:var(--muted);line-height:1.45;margin-top:2px}
+.cal .cd.set .cdv{color:var(--accent);font-weight:600}
+.cal .cdr{font-size:11px;color:var(--warn);margin-top:2px}
+@media (max-width:640px){.cal{gap:3px}.cal .cd{min-height:66px;padding:4px}.cal .cdv,.cal .cdr{font-size:10px}}
 </style>
 </head>
 <body>
@@ -115,6 +132,7 @@ header button.on{background:var(--accent2);color:var(--accent);border-color:#c8d
   <span id="usage" class="muted" style="white-space:nowrap"></span>
   <button id="btnHome" class="small">프로젝트 목록</button>
   <button id="btnShorts" class="small">쇼츠</button>
+  <button id="btnSched" class="small">스케줄</button>
   <button id="btnSettings" class="small">설정</button>
 </header>
 
@@ -165,6 +183,12 @@ header button.on{background:var(--accent2);color:var(--accent);border-color:#c8d
     <ul class="plist" id="shList"></ul>
   </div>
   <div id="shMain"><div class="card muted">왼쪽에서 영상을 고르세요.</div></div>
+</section>
+
+<section id="sched">
+  <div class="card" id="scTop"></div>
+  <div class="card" style="margin-top:16px" id="scCal"></div>
+  <div class="card" style="margin-top:16px" id="scSel"></div>
 </section>
 
 <div class="modal" id="settings">
@@ -231,11 +255,12 @@ const fmt=t=>{t=Math.max(0,t||0);const m=Math.floor(t/60),s=Math.floor(t%60);ret
 const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* ---------- 시작 화면 ---------- */
-// 화면 전환: start(프로젝트 목록), work(프로젝트), shorts(쇼츠)
+// 화면 전환: start(프로젝트 목록), work(프로젝트), shorts(쇼츠), sched(스케줄)
 function showView(v){
-  S.view=v;$("#start").style.display=v==="start"?"block":"none";$("#work").style.display=v==="work"?"grid":"none";$("#shorts").style.display=v==="shorts"?"grid":"none";
-  $("#btnHome").classList.toggle("on",v==="start");$("#btnShorts").classList.toggle("on",v==="shorts");
-  if(v!=="shorts"&&location.hash)history.replaceState(null,"",location.pathname);
+  S.view=v;$("#start").style.display=v==="start"?"block":"none";$("#work").style.display=v==="work"?"grid":"none";
+  $("#shorts").style.display=v==="shorts"?"grid":"none";$("#sched").style.display=v==="sched"?"block":"none";
+  $("#btnHome").classList.toggle("on",v==="start");$("#btnShorts").classList.toggle("on",v==="shorts");$("#btnSched").classList.toggle("on",v==="sched");
+  if(!["shorts","sched"].includes(v)&&location.hash)history.replaceState(null,"",location.pathname);
 }
 async function showStart(){
   stopPoll();S.pid=null;S.d=null;
@@ -730,6 +755,7 @@ $("#sSave").onclick=async()=>{const dict={};$("#sDict").value.split("\n").forEac
 
 </script>
 <script src="/static/shorts.js"></script>
-<script>if(location.hash.startsWith("#shorts"))showShorts(decodeURIComponent(location.hash.slice(8))||null);else showStart();</script>
+<script src="/static/schedule.js"></script>
+<script>if(location.hash.startsWith("#shorts"))showShorts(decodeURIComponent(location.hash.slice(8))||null);else if(location.hash==="#schedule")showSchedule();else showStart();</script>
 </body>
 </html>
