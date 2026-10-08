@@ -10,6 +10,10 @@ SR = 44100
 VOICES = ["F1", "F2", "F3", "F4", "F5", "M1", "M2", "M3", "M4", "M5"]
 SAMPLE_TEXT = "하나님의 은혜가 여러분과 함께하시기를 바랍니다. 요한복음 3장 16절 말씀을 함께 읽겠습니다."
 
+# 문장 하나를 만들 때 쓰는 CPU 스레드 수. 엔진은 한 문장으로 코어를 다 쓰지 못해서 여러 영상을 동시에 만드는 게
+# 빠르지만, 작업마다 코어를 전부 쓰려 하면 서로 다툰다. 동시 작업 수 × 이 값이 코어 수쯤 되게 맞춘다.
+THREADS = int(os.environ.get("DUBBER_TTS_THREADS", "4"))
+
 _engine = None
 _lock = threading.Lock()
 _styles = {}
@@ -20,7 +24,7 @@ def engine():
     with _lock:
         if _engine is None:
             from supertonic import TTS
-            _engine = TTS()
+            _engine = TTS(intra_op_num_threads=THREADS, inter_op_num_threads=1)
         return _engine
 
 

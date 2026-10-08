@@ -460,6 +460,8 @@ def _yt_upload_one(path, st, cancel):
 # 그 창이 초기화될 때까지 쉬어서, 사람이 Claude를 직접 쓸 몫을 남긴다.
 BATCH_STATE = os.path.join(prj.ROOT, "_batch.json")
 USAGE_RESERVE = {"seven_day": 0.8, "five_hour": 0.5}
+# 음성 줄을 몇 개 동시에 돌릴지(tts.THREADS와 곱해 코어 수쯤)
+VOICE_WORKERS = int(os.environ.get("DUBBER_VOICE_WORKERS", "4"))
 BATCH_MAX_FAILS = 3
 BAD_READ = 0.5  # 자막 그림의 이 비율 이상을 못 읽으면 자막 영역이 틀린 것으로 본다
 LIMIT_MIN, LIMIT_MARGIN = 60, 120  # 한도에 걸리면 최소 이만큼(초), 풀리는 시각보다 이만큼 더 기다린다
@@ -578,19 +580,21 @@ def _usage_pause():
 
 
 def _batch_lane(lane):
-    """lane: "prep"(준비 줄) 또는 "voice"(음성 줄). 대기열 순서대로 자기 차례인 영상을 하나씩 처리한다."""
-    want, busy, after = {"prep": ("waiting", "prep", "ready"), "voice": ("ready", "voice", "done")}[lane]
+    """lane: "prep"(준비 줄) 또는 "voice-0", "voice-1"…(음성 줄). 대기열 순서대로 자기 차례인 영상을 하나씩 처리한다.
+    음성 줄은 여럿이 같이 돌므로 맡은 영상에 자기 이름(worker)을 붙여 서로 겹치지 않게 한다."""
+    kind = "prep" if lane == "prep" else "voice"
+    want, busy, after = {"prep": ("waiting", "prep", "ready"), "voice": ("ready", "voice", "done")}[kind]
     fails = 0
     while _batch["on"]:
         with _glock:
             items = [(p, _batch["items"][p]) for p in _batch["queue"]]
-            cur = next(((p, st) for p, st in items if st["stage"] == busy), None) \
+            cur = next(((p, st) for p, st in items if st["stage"] == busy and st.get("worker") in (None, lane)), None) \
                 or next(((p, st) for p, st in items if st["stage"] == want), None)
             if cur:
-                cur[1].update(stage=busy, error=None, started=time.time())
+                cur[1].update(stage=busy, error=None, started=time.time(), worker=lane)
         if not cur:
             if all(st["stage"] in ("done", "error", "skipped") for _, st in items):
-                if lane == "voice" and items:
+                if kind == "voice" and items:
                     _batch["on"] = False
                     _batch_save()
                 return
@@ -598,11 +602,11 @@ def _batch_lane(lane):
             continue
         path, st = cur
         _batch_save()
-        if lane == "prep":
+        if kind == "prep":
             pause = _usage_pause()
             if pause:
                 until, why = pause
-                st.update(stage=want, msg="")
+                st.update(stage=want, msg="", worker=None)
                 _batch.update(wait_until=until, wait_reason=why)
                 _batch_save()
                 while _batch["on"] and time.time() < until:
@@ -610,13 +614,13 @@ def _batch_lane(lane):
                 _batch.update(wait_until=None, wait_reason=None)
                 continue
         try:
-            (_batch_prep if lane == "prep" else _batch_voice)(path, st)
-            st.update(stage=after, msg="")
+            (_batch_prep if kind == "prep" else _batch_voice)(path, st)
+            st.update(stage=after, msg="", worker=None)
             fails = 0
         except ai.UsageLimit as e:
             # 풀리는 시각을 모르면 30분, 이미 지난 시각이면(오래된 정보) 잠깐 기다렸다가 다시 해 본다
             until = max(e.resets_at or time.time() + 1800, time.time() + LIMIT_MIN) + LIMIT_MARGIN
-            st.update(stage=want, msg=f"Claude 사용량 한도: {time.strftime('%m월 %d일 %H:%M', time.localtime(until))}에 이어서 합니다")
+            st.update(stage=want, worker=None, msg=f"Claude 사용량 한도: {time.strftime('%m월 %d일 %H:%M', time.localtime(until))}에 이어서 합니다")
             _batch.update(wait_until=until, wait_reason="Claude 사용량 한도에 걸려")
             _batch_save()
             while _batch["on"] and time.time() < until:
@@ -625,7 +629,7 @@ def _batch_lane(lane):
             continue
         except Exception as e:  # noqa
             traceback.print_exc()
-            st.update(stage="error", error=str(e), msg="")
+            st.update(stage="error", error=str(e), msg="", worker=None)
             fails += 1
             if fails >= BATCH_MAX_FAILS:  # 모든 영상에 걸리는 문제(드라이브 연결 등)면 줄줄이 실패로 넘기지 않고 멈춘다
                 _batch["on"] = False
@@ -635,7 +639,7 @@ def _batch_lane(lane):
 
 
 def batch_kick():
-    for lane in ("prep", "voice"):
+    for lane in ["prep"] + [f"voice-{i}" for i in range(VOICE_WORKERS)]:
         t = _batch_threads.get(lane)
         if not (t and t.is_alive()):
             _batch_threads[lane] = threading.Thread(target=_batch_lane, args=(lane,), daemon=True)
@@ -709,8 +713,8 @@ def batch_status():
     for _, st in items:
         count[st["stage"]] = count.get(st["stage"], 0) + 1
     name = lambda p: os.path.splitext(posixpath.basename(p))[0]  # noqa
-    cur = {lane: next(({"name": name(p), "msg": st.get("msg")} for p, st in items if st["stage"] == lane), None)
-           for lane in ("prep", "voice")}
+    cur = {"prep": next(({"name": name(p), "msg": st.get("msg")} for p, st in items if st["stage"] == "prep"), None),
+           "voice": [{"name": name(p), "msg": st.get("msg")} for p, st in items if st["stage"] == "voice"]}
     return {"on": _batch["on"], "voice": _batch["voice"], "count": count, "total": len(items), "current": cur,
             "stopped_reason": _batch.get("stopped_reason"),
             "wait_until": _batch["wait_until"], "wait_reason": _batch.get("wait_reason"),
@@ -723,6 +727,8 @@ def batch_resume():
         with open(BATCH_STATE, encoding="utf-8") as f:
             _batch.update(json.load(f))
         _batch.update(wait_until=None, wait_reason=None)
+        for st in _batch["items"].values():
+            st["worker"] = None  # 서버가 새로 켜지면 음성 줄이 맡은 영상을 다시 나눠 맡는다
     if _batch["on"]:
         print("자동 진행 대기열을 이어 갑니다:", batch_status()["count"], flush=True)
         batch_kick()
