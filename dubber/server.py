@@ -19,6 +19,7 @@ import ai
 import export
 import gdrive
 import project as prj
+import shorts
 import tts
 import youtube
 
@@ -208,18 +209,21 @@ def library(force=False):
 _yt = {"items": {}, "queue": [], "settings": {}}
 # 영상 설명과 해시태그 기본값. 시작 화면의 "설명·해시태그"에서 바꾼다. {이름}은 영상 이름으로 바뀐다
 YT_DEFAULTS = {"description": "조셉 프린스 목사님 설교 \"{이름}\"의 한국어 더빙입니다.",
-               "hashtags": "#조셉프린스 #JosephPrince #한국어더빙 #설교 #은혜"}
+               "hashtags": "#조셉프린스 #JosephPrince #한국어더빙 #설교 #은혜",
+               # 쇼츠: {제목}은 쇼츠 제목 두 줄, {링크}는 유튜브에 올린 전체 영상(없으면 그 줄을 뺀다)
+               "shorts_title": "{제목} | 조셉 프린스 설교 (한국어 더빙)",
+               "shorts_description": "조셉 프린스 목사님 설교 \"{이름}\" 중에서 (한국어 더빙)\n전체 영상: {링크}"}
 
 
 def yt_settings():
     return {k: _yt["settings"].get(k, v) for k, v in YT_DEFAULTS.items()}
 
 
-def yt_meta(stem):
+def yt_meta(stem, desc=None, extra_tags=()):
     """올릴 영상의 설명과 태그. 해시태그는 설명 끝에 붙이고(앞의 3개가 제목 위에 보인다) 태그로도 넣는다."""
     s = yt_settings()
-    tags = [t.lstrip("#") for t in re.split(r"[\s,]+", s["hashtags"]) if t.strip("#")]
-    desc = s["description"].replace("{이름}", stem).strip()
+    tags = list(extra_tags) + [t.lstrip("#") for t in re.split(r"[\s,]+", s["hashtags"]) if t.strip("#")]
+    desc = (s["description"] if desc is None else desc).replace("{이름}", stem).strip()
     if tags:
         desc += "\n\n" + " ".join("#" + t for t in tags)
     # 유튜브 제한: 설명 5,000바이트, 꺾쇠 괄호 금지, 태그 합계 500자
@@ -251,7 +255,11 @@ def yt_enqueue(path):
             raise RuntimeError("이미 유튜브에 올린 영상입니다")
         _yt_run["cancel"].discard(path)
         st.update(status="queued", error=None, msg="올리기 대기 중", progress=0.0, resumed=False)
-        _yt["queue"].append(path)
+        q, at = _yt["queue"], len(_yt["queue"])
+        if not path.startswith(SHORT_KEY):  # 전체 영상은 기다리는 쇼츠보다 먼저 올린다(올리는 중인 것은 그대로)
+            busy = bool(_yt_run["thread"] and _yt_run["thread"].is_alive())
+            at = next((k for k, x in enumerate(q) if x.startswith(SHORT_KEY) and not (k == 0 and busy)), len(q))
+        q.insert(at, path)
         _yt_save()
     _yt_kick()
     return st
@@ -300,7 +308,7 @@ def _yt_worker():
             st = _yt["items"][path]
         cancelled = lambda: path in _yt_run["cancel"]  # noqa
         try:
-            _yt_upload_one(path, st, cancelled)
+            (_yt_upload_short if path.startswith(SHORT_KEY) else _yt_upload_one)(path, st, cancelled)
             st.update(status="cancelled" if cancelled() else "done", msg="", error=None)
         except youtube.QuotaExceeded:
             until = _quota_reset()
@@ -450,6 +458,361 @@ def _yt_upload_one(path, st, cancel):
         for f in temp:
             if os.path.exists(f):
                 os.remove(f)
+
+
+# ---------- 쇼츠 ----------
+# 쇼츠 대기열: Claude로 후보 고르기(suggest)와 영상 만들기(render)를 한 줄에서 하나씩 한다.
+# 상태는 프로젝트의 shorts.json에 두고, 서버가 꺼졌다 켜지면 기다리던 것과 하던 것을 처음부터 다시 한다.
+# 내보내기가 끝나면(설정이 켜져 있으면) 후보 고르기를 자동으로 넣는다. 자동으로 넣은 후보 고르기는 자동 진행처럼
+# Claude 사용량에 여유가 있을 때만 한다. 유튜브는 화면에서 누른 쇼츠만 유튜브 대기열(전체 영상 뒤)에 넣는다.
+SHORTS_STATE = os.path.join(prj.ROOT, "_shorts.json")  # 쇼츠 설정
+SHORTS_N = 3
+SHORT_KEY = "short:"  # 유튜브 대기열에서 쇼츠를 가리키는 이름: "short:<프로젝트>:<번호>"
+_sh = {"auto": True}
+_sh_q = []     # [{"pid", "kind": "suggest" | "render", "id", "auto"}]
+_sh_live = {}  # (pid, 번호 또는 "suggest") -> {"progress", "msg"}: 하는 중인 일의 진행
+_sh_run = {"thread": None, "cancel": set()}
+
+
+def short_key(pid, sid):
+    return f"{SHORT_KEY}{pid}:{sid}"
+
+
+def _pdir(pid):
+    return os.path.join(prj.ROOT, pid)
+
+
+def shorts_enqueue(pid, kind, sid=None, auto=False):
+    with _glock:
+        e = next((x for x in _sh_q if x["pid"] == pid and x["kind"] == kind and x["id"] == sid), None)
+        if e and not (e["auto"] and not auto):
+            return
+        if e:
+            e["auto"] = False  # 자동으로 넣어 사용량을 기다리던 것을 직접 누르면 바로 한다
+        else:
+            _sh_q.append({"pid": pid, "kind": kind, "id": sid, "auto": auto})
+
+    def mark(st):
+        if kind == "suggest":
+            st["suggest"] = {"status": "queued", "auto": auto, "error": None}
+        elif shorts.find(st, sid):
+            shorts.find(st, sid).update(status="queued", error=None)
+    shorts.change(_pdir(pid), mark)
+    _sh_kick()
+
+
+def _sh_kick():
+    with _glock:
+        t = _sh_run["thread"]
+        if t and t.is_alive():
+            return
+        _sh_run["thread"] = threading.Thread(target=_sh_worker, daemon=True)
+        _sh_run["thread"].start()
+
+
+def _sh_worker():
+    while True:
+        paused = bool(_usage_pause())
+        with _glock:
+            if not _sh_q:
+                _sh_run["thread"] = None  # 잠금 안에서 비워야 그사이 들어온 일을 _sh_kick이 새 줄로 시작한다
+                return
+            x = next((x for x in _sh_q if not (x["kind"] == "suggest" and x["auto"] and paused)), None)
+        if not x:
+            time.sleep(10)  # 자동 후보 고르기만 남았고 Claude 사용량이 넉넉하지 않다
+            continue
+        key = (x["pid"], x["id"] if x["kind"] == "render" else "suggest")
+        try:
+            (_sh_suggest if x["kind"] == "suggest" else _sh_render)(x)
+        except Exception:  # noqa  각 일이 실패를 상태에 남긴다. 여기는 예상 못 한 오류만
+            traceback.print_exc()
+        finally:
+            with _glock:
+                if x in _sh_q:
+                    _sh_q.remove(x)
+                _sh_run["cancel"].discard(key)
+                _sh_live.pop(key, None)
+
+
+def _set_item(d, sid, **kw):
+    shorts.change(d, lambda st: (shorts.find(st, sid) or {}).update(**kw))
+
+
+def _sh_suggest(x):
+    pid, d = x["pid"], _pdir(x["pid"])
+    if not os.path.isdir(d):
+        return
+    p, _ = get_project(pid)
+    _sh_live[(pid, "suggest")] = {"msg": "Claude가 쇼츠로 만들 구간을 고르는 중"}
+    shorts.change(d, lambda st: st["suggest"].update(status="running", error=None))
+    try:
+        taken = [(i["start"], i["end"]) for i in shorts.load(d)["items"]]
+        got = shorts.suggest(p, SHORTS_N, p.data["settings"].get("tool", "claude"), taken)
+    except Exception as e:  # noqa  사용량 한도도 여기서 실패로 남긴다(화면에서 다시 누른다)
+        traceback.print_exc()
+        msg = str(e)
+        shorts.change(d, lambda st: st["suggest"].update(status="error", error=msg))
+        return
+
+    def add(st):
+        ids = []
+        for c in got:
+            c.update(id=st["next_id"], status="queued", created=time.time())
+            st["next_id"] += 1
+            st["items"].append(c)
+            ids.append(c["id"])
+        st["suggest"].update(status="done", error=None, t=time.time())
+        return ids
+    for sid in shorts.change(d, add):
+        shorts_enqueue(pid, "render", sid)
+
+
+def _sh_drive_upload(p, f, cancel):
+    """결과 폴더 아래 "쇼츠" 폴더에 올린다. 내보내기 때 올린 폴더가 있으면 그 폴더를 쓴다."""
+    ex = p.data.get("drive_export") or {}
+    folder, shared = (ex["folder"], ex.get("shared", False)) if ex.get("folder") else drive_folder(p)
+    try:
+        ok = gdrive.upload([f], posixpath.join(folder, "쇼츠"), shared, None, cancel)
+    except RuntimeError:
+        if not shared:
+            raise
+        folder, shared = posixpath.basename(folder), False  # 공유 폴더에 쓸 수 없으면 내 드라이브에
+        ok = gdrive.upload([f], posixpath.join(folder, "쇼츠"), False, None, cancel)
+    return {"folder": posixpath.join(folder, "쇼츠"), "shared": shared} if ok else None
+
+
+def _sh_render(x):
+    pid, sid, d = x["pid"], x["id"], _pdir(x["pid"])
+    it = shorts.find(shorts.load(d), sid) if os.path.isdir(d) else None
+    if not it:
+        return
+    p, _ = get_project(pid)
+    key = (pid, sid)
+    live = _sh_live[key] = {"progress": 0.0, "msg": "쇼츠를 만드는 중"}
+    cancel = lambda: key in _sh_run["cancel"]  # noqa
+    drive = bool(p.data.get("drive"))
+    _set_item(d, sid, status="rendering", error=None)
+    try:
+        live["msg"] = "준비하는 중"
+        box = shorts_box(p)
+        sig = shorts.signature(p, it)
+        out = shorts.out_path(p, it)
+
+        def prog(r):
+            live.update(progress=r * (0.9 if drive else 1.0), msg=f"쇼츠를 만드는 중 ({int(r * 100)}%)")
+        if not shorts.render(p, it, out, box, prog, cancel):
+            _set_item(d, sid, status="done" if it.get("file") else "draft")
+            return
+        _set_item(d, sid, status="done", file=out, rendered=time.time(), rendered_sig=sig, error=None, drive=None)
+        if drive:
+            live.update(progress=0.9, msg="구글 드라이브에 올리는 중")
+            try:
+                _set_item(d, sid, drive=_sh_drive_upload(p, out, cancel))
+            except Exception as e:  # noqa  영상은 만들었으니 드라이브 실패만 따로 남긴다
+                _set_item(d, sid, drive={"error": str(e)})
+    except Exception as e:  # noqa
+        traceback.print_exc()
+        _set_item(d, sid, status="error", error=str(e))
+
+
+def shorts_box(p):
+    """원본의 검은 테두리를 뺀 영역. 한 번 찾으면 shorts.json에 둔다."""
+    box = shorts.load(p.dir).get("box")
+    if not box:
+        box = shorts.content_box(p)
+        shorts.change(p.dir, lambda s: s.update(box=box))
+    return box
+
+
+def shorts_after_export(p):
+    """내보내기가 끝났을 때, 자동 설정이 켜져 있고 아직 후보를 고른 적이 없으면 후보 고르기를 넣는다."""
+    st = shorts.load(p.dir)
+    if _sh["auto"] and not st["items"] and st["suggest"].get("status") in (None, "idle"):
+        shorts_enqueue(os.path.basename(p.dir), "suggest", auto=True)
+
+
+def shorts_new(pid, at):
+    """직접 추가: 더빙 영상의 at초에서 시작하는 문장부터 40초쯤을 새 쇼츠로 만든다(만들기 전 상태)."""
+    p, _ = get_project(pid)
+    tl = shorts.timeline(p)
+    k = next((k for k, s in enumerate(tl) if s["t"] is not None and s["t"] + s["d"] > at), None)
+    if k is None:
+        raise ValueError("그 시각 뒤에 음성이 있는 문장이 없습니다")
+    e = k
+    while e + 1 < len(tl) and tl[e + 1]["t"] is not None and tl[e]["t"] + tl[e]["d"] - tl[k]["t"] < 40:
+        e += 1
+
+    def add(st):
+        st["items"].append({"id": st["next_id"], "start": tl[k]["id"], "end": tl[e]["id"], "title": ["", ""],
+                            "emph": {}, "reason": "직접 추가", "xpos": 0.5, "status": "draft", "created": time.time()})
+        st["next_id"] += 1
+    shorts.change(p.dir, add)
+
+
+def shorts_update(pid, sid, body):
+    """구간, 제목, 강조, 가로 위치를 고친다. 영상은 '다시 만들기'를 눌러야 바뀐다."""
+    p, _ = get_project(pid)
+    tl = shorts.timeline(p)
+
+    def upd(st):
+        it = shorts.find(st, sid)
+        if not it:
+            raise ValueError("없는 쇼츠입니다")
+        new = dict(it)
+        for k in ("start", "end"):
+            if k in body:
+                new[k] = int(body[k])
+        if "title" in body:
+            new["title"] = ([str(x).strip()[:30] for x in body["title"] or []] + ["", ""])[:2]
+        if "emph" in body:
+            new["emph"] = {str(k): [str(v).strip() for v in vs if str(v).strip()]
+                           for k, vs in (body["emph"] or {}).items() if vs}
+        if "xpos" in body:
+            new["xpos"] = min(1.0, max(0.0, float(body["xpos"])))
+        inf = shorts.info(p, new, tl)
+        if "invalid" in inf:
+            raise ValueError(inf["invalid"])
+        if inf["len"] > shorts.LIMIT_LEN:
+            raise ValueError("쇼츠는 3분을 넘을 수 없습니다")
+        it.update(new)  # 구간 밖 문장의 강조는 남겨 둔다(구간을 다시 넓히면 되살아난다)
+    shorts.change(p.dir, upd)
+
+
+def shorts_delete(pid, sid):
+    key = (pid, sid)
+    with _glock:
+        for x in list(_sh_q):
+            if x["pid"] == pid and x["kind"] == "render" and x["id"] == sid:
+                if key in _sh_live:
+                    _sh_run["cancel"].add(key)  # 만드는 중이면 멈춘다
+                else:
+                    _sh_q.remove(x)
+
+    def rm(st):
+        it = shorts.find(st, sid)
+        if it:
+            st["items"].remove(it)
+        return it
+    it = shorts.change(_pdir(pid), rm)
+    if it and it.get("file") and os.path.exists(it["file"]):
+        os.remove(it["file"])
+
+
+def shorts_view(pid, lite=False):
+    """쇼츠 화면에 보일 프로젝트 하나의 쇼츠 목록. lite가 아니면 문장 목록(구간 고치기용)도 넣는다."""
+    p, _ = get_project(pid)
+    st = shorts.load(p.dir)
+    tl = shorts.timeline(p)
+    with _glock:
+        order = [(x["pid"], x["kind"], x["id"]) for x in _sh_q]
+    items = []
+    for it in st["items"]:
+        x = dict(it, **shorts.info(p, it, tl))
+        x["has_file"] = bool(it.get("file")) and os.path.isfile(it["file"])
+        x["dirty"] = x["has_file"] and shorts.signature(p, it, tl) != it.get("rendered_sig")
+        x.update(_sh_live.get((pid, it["id"])) or {})
+        if (pid, "render", it["id"]) in order:
+            x["ahead"] = order.index((pid, "render", it["id"]))
+        x["youtube"] = _yt["items"].get(short_key(pid, it["id"]))
+        items.append(x)
+    sug = dict(st["suggest"], **(_sh_live.get((pid, "suggest")) or {}))
+    if sug.get("status") == "queued":
+        if (pid, "suggest", None) in order:
+            sug["ahead"] = order.index((pid, "suggest", None))
+        if sug.get("auto") and _usage_pause():
+            sug["msg"] = "Claude 사용량에 여유가 생기면 고릅니다"
+    out = {"id": pid, "name": p.data["name"], "items": items, "suggest": sug, "auto": _sh["auto"],
+           "drive": bool(p.data.get("drive"))}
+    if not lite:
+        out["sentences"] = [{"id": s["id"], "text": s["text"], "t": s["t"], "d": s["d"]} for s in tl]
+    return out
+
+
+def shorts_list():
+    """쇼츠를 만들 수 있는 프로젝트(음성을 다 만든 것)와 쇼츠가 있는 프로젝트."""
+    with _glock:
+        busy = {x["pid"] for x in _sh_q}
+    out = []
+    for it in prj.list_projects():
+        d = _pdir(it["dir"])
+        has = os.path.exists(os.path.join(d, shorts.STATE))
+        voice_done = bool(it["sentences"]) and it["tts"] == it["sentences"]
+        if not (has or voice_done):
+            continue
+        st = shorts.load(d)
+        items, sug = st["items"], st["suggest"]
+        out.append({"dir": it["dir"], "name": it["name"], "voice_done": voice_done, "count": len(items),
+                    "done": sum(1 for x in items if x.get("file")),
+                    "uploaded": sum(1 for x in items if (_yt["items"].get(short_key(it["dir"], x["id"])) or {})
+                                    .get("status") == "done"),
+                    "busy": it["dir"] in busy, "suggest": sug.get("status"),
+                    "error": sug.get("error") if sug.get("status") == "error" else None})
+    out.sort(key=lambda x: _natural(x["name"]))
+    return {"items": out, "auto": _sh["auto"]}
+
+
+def shorts_resume():
+    """서버가 켜질 때 기다리던 쇼츠 일과 하던 일을 다시 대기열에 넣는다."""
+    if os.path.exists(SHORTS_STATE):
+        with open(SHORTS_STATE, encoding="utf-8") as f:
+            _sh.update(json.load(f))
+    n = 0
+    for it in prj.list_projects():
+        d = _pdir(it["dir"])
+        if not os.path.exists(os.path.join(d, shorts.STATE)):
+            continue
+        st = shorts.load(d)
+        if st["suggest"].get("status") in ("queued", "running"):
+            shorts_enqueue(it["dir"], "suggest", auto=st["suggest"].get("auto", False))
+            n += 1
+        for x in st["items"]:
+            if x.get("status") in ("queued", "rendering"):
+                shorts_enqueue(it["dir"], "render", x["id"])
+                n += 1
+    if n:
+        print("쇼츠 대기열을 이어 갑니다:", n, "개", flush=True)
+
+
+def yt_short_meta(p, it):
+    """쇼츠의 유튜브 제목, 설명, 태그. 전체 영상이 유튜브에 있으면 설명에 링크를 넣는다."""
+    stem, s = p.data["name"], yt_settings()
+    head = " ".join(x for x in it.get("title") or [] if x).strip() or stem
+    title = s["shorts_title"].replace("{제목}", head).replace("{이름}", stem)
+    title = title.replace("<", "(").replace(">", ")").strip()[:100]
+    path = (p.data.get("drive") or {}).get("path")
+    full = (_yt["items"].get(path) or {}).get("url") if path else None
+    if not full:
+        ex = yt_existing(stem, channel_videos())
+        full = ex and ex["url"]
+    lines = [ln.replace("{링크}", full or "") for ln in s["shorts_description"].split("\n") if full or "{링크}" not in ln]
+    desc, tags = yt_meta(stem, "\n".join(lines), extra_tags=["Shorts"])
+    return title, desc, tags
+
+
+def _yt_upload_short(key, st, cancel):
+    pid, sid = key[len(SHORT_KEY):].rsplit(":", 1)
+    p, _ = get_project(pid)
+    it = shorts.find(shorts.load(p.dir), int(sid))
+    if not it or not it.get("file") or not os.path.isfile(it["file"]):
+        raise RuntimeError("만든 쇼츠 영상이 없습니다")
+    if shorts.signature(p, it) != it.get("rendered_sig"):
+        raise RuntimeError("고친 내용이 영상에 아직 반영되지 않았습니다. 다시 만든 뒤 올리세요")
+    if st.get("video_id"):
+        return
+
+    def prog(done, total):
+        st["progress"] = done / total
+        st["msg"] = f"유튜브에 올리는 중 ({done / 2**20:,.0f} / {total / 2**20:,.0f}MB)"
+    title, desc, tags = yt_short_meta(p, it)
+    st.update(status="uploading", msg="유튜브에 올리는 중", progress=0.0)
+    _yt_save()
+    vid = youtube.upload_video(it["file"], title, description=desc, tags=tags, privacy=YT_PRIVACY, progress=prog,
+                               cancel=cancel)
+    if vid is None:
+        return
+    st.update(video_id=vid, url=f"https://www.youtube.com/shorts/{vid}", title=title, privacy=YT_PRIVACY,
+              uploaded=time.time(), progress=1.0)
+    _yt_save()
 
 
 # ---------- 자동 진행 대기열 ----------
@@ -1062,6 +1425,11 @@ def run_pipeline_job(p, lock, kind, job, params):
             with lock:
                 p.data["drive_export"] = uploaded
                 p.save()
+        if "video" in want and files and not job.cancelled:
+            try:
+                shorts_after_export(p)
+            except Exception:  # noqa  쇼츠 때문에 내보내기가 실패로 보이지 않게
+                traceback.print_exc()
         return {"files": files, "drive": p.data["drive_export"]}
     raise ValueError(kind)
 
@@ -1133,7 +1501,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         if cache:
             self.send_header("Cache-Control", "max-age=86400")
-        elif path.endswith(".html"):
+        elif path.endswith((".html", ".js", ".css")):
             self.send_header("Cache-Control", "no-cache")  # 서버를 고친 뒤 브라우저가 예전 화면을 쓰지 않게
         if download:
             self.send_header("Content-Disposition",
@@ -1235,6 +1603,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/youtube/cancel" and method == "POST":
             yt_cancel(self._body()["path"])
             return self._json({"ok": True})
+        if path == "/api/shorts":
+            if method == "POST":
+                body = self._body()
+                if "auto" in body:
+                    _sh["auto"] = bool(body["auto"])
+                    _write_json(SHORTS_STATE, _sh)
+            return self._json(shorts_list())
         if path == "/api/drive/status":
             j = _jobs.get(DRIVE_JOB)
             return self._json({"available": gdrive.available(), "job": j.status() if j else None})
@@ -1334,6 +1709,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"cuts": cuts, "sentences": p.data["sentences"]})
         if rest == "/plan":
             return self._json(export.plan(p))
+        if rest.startswith("/shorts"):
+            return self._shorts(pid, p, rest[len("/shorts"):], method, q)
         if rest == "/download":
             f = q.get("path")
             if not (f and os.path.abspath(f) in [os.path.abspath(x) for x in p.data.get("last_export", [])]):
@@ -1362,6 +1739,51 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(s)
         return self._json({"error": "없는 주소"}, 404)
 
+    def _shorts(self, pid, p, rest, method, q):
+        """/api/p/<pid>/shorts... : 쇼츠 목록, 후보 고르기, 직접 추가, 고치기, 다시 만들기, 지우기, 영상, 유튜브."""
+        view = lambda: self._json(shorts_view(pid, lite=True))  # noqa
+        try:
+            if rest == "" and method == "GET":
+                return self._json(shorts_view(pid, lite=bool(q.get("lite"))))
+            if rest == "/suggest" and method == "POST":
+                shorts_enqueue(pid, "suggest")
+                return view()
+            if rest == "/new" and method == "POST":
+                shorts_new(pid, float(self._body().get("at") or 0))
+                return view()
+            m = re.match(r"^/(\d+)(/.*)?$", rest)
+            if not m:
+                return self._json({"error": "없는 주소"}, 404)
+            sid, action = int(m.group(1)), m.group(2) or ""
+            it = shorts.find(shorts.load(p.dir), sid)
+            if not it:
+                return self._json({"error": "없는 쇼츠입니다"}, 404)
+            if action == "/video" and method == "GET":
+                return self._file(it.get("file") or "", download=bool(q.get("dl")))
+            if action == "/frame" and method == "GET":
+                t = float(q["t"]) if q.get("t") else None
+                return self._bytes(shorts.preview(p, it, shorts_box(p), t), "image/jpeg")
+            if action == "" and method == "DELETE":
+                shorts_delete(pid, sid)
+                return view()
+            if action == "" and method == "POST":
+                shorts_update(pid, sid, self._body())
+                return view()
+            if action == "/render" and method == "POST":
+                shorts_enqueue(pid, "render", sid)
+                return view()
+            if action == "/youtube" and method == "POST":
+                if shorts.signature(p, it) != it.get("rendered_sig"):
+                    return self._json({"error": "고친 내용을 영상에 반영하려면 먼저 다시 만드세요"}, 409)
+                yt_enqueue(short_key(pid, sid))
+                return view()
+            if action == "/youtube/cancel" and method == "POST":
+                yt_cancel(short_key(pid, sid))
+                return view()
+        except (ValueError, RuntimeError) as e:
+            return self._json({"error": str(e)}, 409)
+        return self._json({"error": "없는 주소"}, 404)
+
 
 def lan_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -1372,6 +1794,31 @@ def lan_ip():
         return "<이 PC의 IP>"
     finally:
         s.close()
+
+
+def kill_orphans():
+    """꺼진 서버가 남긴 ffmpeg(내보내기, 쇼츠)를 끈다. 서버를 끄면 ffmpeg는 혼자 계속 돌아서, 다시 시작한 작업과
+    같은 파일에 함께 쓰면 결과 영상이 깨진다. 프로젝트 폴더를 쓰는 ffmpeg 중 부모가 파이썬이 아닌 것(고아)만 끈다."""
+    if not os.path.isdir("/proc"):
+        return
+    root = os.path.abspath(prj.ROOT).encode()
+
+    def cmd(pid):
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            return f.read().split(b"\0")
+    for d in os.listdir("/proc"):
+        try:
+            args = cmd(d) if d.isdigit() else None
+            if not args or os.path.basename(args[0]) != b"ffmpeg" or root not in b" ".join(args):
+                continue
+            with open(f"/proc/{d}/stat", "rb") as f:
+                ppid = int(f.read().rsplit(b")", 1)[1].split()[1])
+            if b"python" in os.path.basename(cmd(ppid)[0]):
+                continue  # 명령줄로 직접 돌리는 작업
+            os.kill(int(d), 9)
+            print("꺼진 서버가 남긴 ffmpeg를 끕니다:", d, flush=True)
+        except (OSError, ValueError, IndexError):
+            continue
 
 
 def lock_root():
@@ -1393,10 +1840,12 @@ def lock_root():
 def main():
     os.makedirs(prj.ROOT, exist_ok=True)
     _root_lock = lock_root()  # noqa
+    kill_orphans()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     voice = resume_all()
     yt_resume()
     batch_resume()
+    shorts_resume()
     for pid, params, path in voice:  # 음성 대기열을 불러온 뒤에 넣는다. 하던 음성은 직접 요청했던 것이다
         voice_enqueue(pid, params, manual=True, path=path if path in _batch["items"] else None)
     httpd.daemon_threads = True

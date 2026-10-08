@@ -82,6 +82,30 @@ header h1{font-size:16px;margin:0;white-space:nowrap}
 #dList{max-height:50vh;overflow:auto;margin-bottom:10px}
 #dList.busy li{pointer-events:none;opacity:.5}
 kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
+header button.on{background:var(--accent2);color:var(--accent);border-color:#c8d6f7;font-weight:600}
+/* 쇼츠 */
+#shorts{display:none;grid-template-columns:300px minmax(0,1fr);gap:16px;padding:16px;align-items:start}
+#shorts .side{position:sticky;top:69px;max-height:calc(100vh - 86px);overflow:auto}
+#shorts .side .plist li{cursor:pointer;display:block}
+#shorts .side .plist li.sel{background:var(--accent2)}
+.shcard{display:flex;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;flex-wrap:wrap}
+.shvid{flex:0 0 234px;height:416px;background:#1b1d22;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#c9ccd2;font-size:12px;text-align:center;padding:0}
+.shvid video{width:100%;height:100%;background:#000;display:block}
+.shed{flex:1 1 340px;min-width:0;display:flex;flex-direction:column;gap:6px}
+.shed .row{margin:0}
+.shtitle{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.shtitle input{font-weight:600;min-width:0}
+.shtitle input+input{color:#a16207}
+.shtext{background:var(--bg);border-radius:6px;padding:8px 10px;line-height:1.8;max-height:240px;overflow:auto}
+.shtext .ctx{color:var(--muted);font-size:12px;display:block}
+.shtext .shs{display:block;border-radius:4px;padding:0 4px;margin:0 -4px;cursor:pointer}
+.shtext .shs:hover{background:#e8edf8}
+.shtext mark{background:#ffe08a;cursor:pointer;border-radius:3px;padding:0 1px}
+.shtext mark:hover{background:#ffcf4d;text-decoration:line-through}
+.shrange button{padding:1px 8px}
+.shbar{flex:1;height:6px;background:#e5e9f2;border-radius:3px;overflow:hidden;min-width:80px}
+.shbar i{display:block;height:100%;background:var(--accent)}
+@media (max-width:860px){#shorts{grid-template-columns:1fr}#shorts .side{position:static;max-height:none}}
 </style>
 </head>
 <body>
@@ -90,6 +114,7 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
   <nav class="steps" id="steps"></nav>
   <span id="usage" class="muted" style="white-space:nowrap"></span>
   <button id="btnHome" class="small">프로젝트 목록</button>
+  <button id="btnShorts" class="small">쇼츠</button>
   <button id="btnSettings" class="small">설정</button>
 </header>
 
@@ -132,6 +157,16 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
   </div>
 </section>
 
+<section id="shorts">
+  <div class="card side">
+    <strong>쇼츠</strong>
+    <div class="muted">음성을 다 만든 영상에서 Claude가 쇼츠 구간(30~60초)과 제목·강조 구절을 고르고, 세로 영상(1080×1920)을 만듭니다. 결과는 "한국어 더빙/쇼츠" 폴더와 구글 드라이브에 저장됩니다.</div>
+    <label class="muted" style="display:block;margin-top:8px"><input type="checkbox" id="shAuto"> 내보내기가 끝나면 자동으로 후보 3개 만들기</label>
+    <ul class="plist" id="shList"></ul>
+  </div>
+  <div id="shMain"><div class="card muted">왼쪽에서 영상을 고르세요.</div></div>
+</section>
+
 <div class="modal" id="settings">
   <div class="card">
     <h2 style="margin-top:0">설정</h2>
@@ -159,6 +194,10 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
     <input id="ymTags" style="width:100%">
     <label>미리 보기</label>
     <pre id="ymPrev" class="muted" style="white-space:pre-wrap;background:var(--bg);padding:8px;border-radius:6px;margin:0"></pre>
+    <label>쇼츠 제목 ({제목}은 쇼츠 화면 위의 제목 두 줄, {이름}은 영상 이름)</label>
+    <input id="ymSTitle" style="width:100%">
+    <label>쇼츠 설명 ({링크}는 유튜브에 올린 전체 영상 주소. 전체 영상이 아직 없으면 그 줄은 빠집니다. 해시태그는 #Shorts와 위의 해시태그가 붙습니다)</label>
+    <textarea id="ymSDesc" rows="3" style="width:100%"></textarea>
     <div class="muted" style="margin-top:6px">새로 올리는 영상에만 적용됩니다. 이미 유튜브에 있던 영상의 설명은 바꾸지 않습니다.</div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button id="ymCancel">닫기</button><button class="primary" id="ymSave">저장</button></div>
   </div>
@@ -192,13 +231,19 @@ const fmt=t=>{t=Math.max(0,t||0);const m=Math.floor(t/60),s=Math.floor(t%60);ret
 const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* ---------- 시작 화면 ---------- */
+// 화면 전환: start(프로젝트 목록), work(프로젝트), shorts(쇼츠)
+function showView(v){
+  S.view=v;$("#start").style.display=v==="start"?"block":"none";$("#work").style.display=v==="work"?"grid":"none";$("#shorts").style.display=v==="shorts"?"grid":"none";
+  $("#btnHome").classList.toggle("on",v==="start");$("#btnShorts").classList.toggle("on",v==="shorts");
+  if(v!=="shorts"&&location.hash)history.replaceState(null,"",location.pathname);
+}
 async function showStart(){
   stopPoll();S.pid=null;S.d=null;
-  $("#start").style.display="block";$("#work").style.display="none";$("#steps").innerHTML="";$("#title").textContent="설교 영상 한국어 더빙";
+  showView("start");$("#steps").innerHTML="";$("#title").textContent="설교 영상 한국어 더빙";
   await renderList();
   if(S.listPoll)clearInterval(S.listPoll);
   // 앞 요청이 아직 안 끝났으면 건너뛴다(서버가 바쁠 때 요청이 쌓이지 않게)
-  S.listPoll=setInterval(async()=>{if(S.pid){clearInterval(S.listPoll);S.listPoll=null;return;}
+  S.listPoll=setInterval(async()=>{if(S.pid||S.view!=="start"){clearInterval(S.listPoll);S.listPoll=null;return;}
     if(S.listBusy)return;S.listBusy=true;try{await renderList();}catch(e){}finally{S.listBusy=false;}},2000);
 }
 function progressText(p){
@@ -282,10 +327,10 @@ async function renderYt(){
 // 미리 보기는 서버의 yt_meta와 같은 규칙(해시태그를 설명 끝에 붙인다)
 function ytPreview(){const tags=$("#ymTags").value.split(/[\s,]+/).map(t=>t.replace(/^#+/,"")).filter(Boolean);
   $("#ymPrev").textContent=$("#ymDesc").value.split("{이름}").join("218 선생이 아닌 구세주 예수").trim()+(tags.length?"\n\n"+tags.map(t=>"#"+t).join(" "):"");}
-async function openYtMeta(){const m=await api("/api/youtube/settings");$("#ymDesc").value=m.description;$("#ymTags").value=m.hashtags;ytPreview();$("#ytMeta").style.display="flex";}
+async function openYtMeta(){const m=await api("/api/youtube/settings");$("#ymDesc").value=m.description;$("#ymTags").value=m.hashtags;$("#ymSTitle").value=m.shorts_title;$("#ymSDesc").value=m.shorts_description;ytPreview();$("#ytMeta").style.display="flex";}
 $("#ymDesc").oninput=ytPreview;$("#ymTags").oninput=ytPreview;
 $("#ymCancel").onclick=()=>$("#ytMeta").style.display="none";
-$("#ymSave").onclick=async()=>{await api("/api/youtube/settings","POST",{description:$("#ymDesc").value,hashtags:$("#ymTags").value});$("#ytMeta").style.display="none";};
+$("#ymSave").onclick=async()=>{await api("/api/youtube/settings","POST",{description:$("#ymDesc").value,hashtags:$("#ymTags").value,shorts_title:$("#ymSTitle").value,shorts_description:$("#ymSDesc").value});$("#ytMeta").style.display="none";};
 /* ---------- 자동 진행 ---------- */
 const VOICES=["M1","M2","M3","M4","M5","F1","F2","F3","F4","F5"];
 async function renderBatch(){
@@ -397,7 +442,7 @@ api("/api/drive/status").then(s=>{if(s.available)$("#btnDrive").disabled=false;
 async function openProject(pid,fresh){
   S.pid=pid;S.sel=null;S.exportFiles=null;
   await reload();
-  $("#start").style.display="none";$("#work").style.display="grid";
+  showView("work");
   const v=$("#video");v.src=`/api/p/${encodeURIComponent(pid)}/video`;
   const first=(S.d.sentences[0]||S.d.captions[0]||{}).start||0;
   v.onloadedmetadata=()=>{if(v.currentTime<0.1)v.currentTime=first;};
@@ -683,7 +728,8 @@ $("#sSave").onclick=async()=>{const dict={};$("#sDict").value.split("\n").forEac
   if(String(S.d.settings.tts_steps||8)!==$("#sSteps").value){if(!confirm("음성 합성 품질을 바꾸면 모든 문장의 음성을 다시 만듭니다. 계속할까요?"))return;body.tts_steps=+$("#sSteps").value;}
   await api(P("/settings"),"POST",body);$("#settings").style.display="none";await softReload();};
 
-showStart();
 </script>
+<script src="/static/shorts.js"></script>
+<script>if(location.hash.startsWith("#shorts"))showShorts(decodeURIComponent(location.hash.slice(8))||null);else showStart();</script>
 </body>
 </html>
