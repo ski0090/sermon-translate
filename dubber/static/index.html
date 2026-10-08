@@ -291,7 +291,7 @@ async function renderBatch(){
   const html=b.on
     ?`<div class="row" style="justify-content:space-between;margin:0"><strong>자동 진행 중 <span class="badge ok">목소리 ${esc(b.voice)}</span></strong><button class="small" id="btnBatchStop">멈추기</button></div>
       <div class="muted">${sum}</div>${cur("자막 읽기",b.current.prep)}${cur("음성·내보내기",b.current.voice)}
-      ${b.wait_until?`<div class="muted" style="color:var(--warn)">Claude 사용량 한도로 자막 읽기를 ${when(b.wait_until)}까지 쉬는 중 (음성은 계속)</div>`:""}${errs}${skip}`
+      ${b.wait_until?`<div class="muted" style="color:var(--warn)">${esc(b.wait_reason||"Claude 사용량 한도로")} 자막 읽기를 ${when(b.wait_until)}까지 쉬는 중 (음성은 계속)</div>`:""}${errs}${skip}`
     :`<div class="row" style="justify-content:space-between;margin:0"><div><strong>자동 진행</strong><div class="muted">끝나지 않은 JP 영상을 번호순으로 자막 읽기부터 음성, 내보내기, 드라이브 올리기까지 한 편씩 진행합니다.</div></div>
       <span class="row" style="margin:0">목소리 <select id="batchVoice">${VOICES.map(v=>`<option ${v===b.voice?"selected":""}>${v}</option>`).join("")}</select><button class="primary" id="btnBatchStart">${b.total?"다시 시작":"시작"}</button></span></div>
       ${sum?`<div class="muted">${sum}</div>`:""}${skip}${b.stopped_reason?`<div class="err" style="margin:6px 0">${esc(b.stopped_reason)}</div>`:""}${errs}`;

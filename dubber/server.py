@@ -456,13 +456,14 @@ def _yt_upload_one(path, st, cancel):
 # 드라이브 영상을 한 편씩 끝까지 진행한다. 두 줄로 나눠 돌린다:
 #   준비 줄: 프로젝트 만들기 -> 자막 영역 자동 감지 -> 자막 찾기 -> AI 읽기 -> AI 문장 정리 (Claude 사용)
 #   음성 줄: 음성 만들기 -> 내보내기 -> 드라이브 올리기 (CPU)
-# 준비 줄은 음성 줄보다 BATCH_AHEAD편까지만 앞서 가서 Claude 사용량을 고르게 쓴다.
+# 준비 줄(Claude)과 음성 줄(CPU)은 서로 기다리지 않는다. 대신 준비 줄은 Claude 사용량이 USAGE_RESERVE를 넘으면
+# 그 창이 초기화될 때까지 쉬어서, 사람이 Claude를 직접 쓸 몫을 남긴다.
 BATCH_STATE = os.path.join(prj.ROOT, "_batch.json")
-BATCH_AHEAD = 2
+USAGE_RESERVE = {"seven_day": 0.8, "five_hour": 0.5}
 BATCH_MAX_FAILS = 3
 BAD_READ = 0.5  # 자막 그림의 이 비율 이상을 못 읽으면 자막 영역이 틀린 것으로 본다
 LIMIT_MIN, LIMIT_MARGIN = 60, 120  # 한도에 걸리면 최소 이만큼(초), 풀리는 시각보다 이만큼 더 기다린다
-_batch = {"on": False, "queue": [], "items": {}, "voice": "M4", "wait_until": None}
+_batch = {"on": False, "queue": [], "items": {}, "voice": "M4", "wait_until": None, "wait_reason": None}
 _batch_threads = {}
 
 
@@ -516,6 +517,11 @@ def _batch_prep(path, st):
         pid = os.path.basename(p.dir)
     st["pid"] = pid
     for _ in range(6):
+        j = _jobs.get(pid)
+        if j and not j.done and j.kind in ("tts", "export"):
+            # 음성이나 내보내기가 돌고 있으면(사람이 직접 시작한 것 등) 자막은 이미 다 읽은 것이다
+            if get_project(pid)[0].data["sentences"]:
+                return
         _wait_job(pid)
         p, lock = get_project(pid)
         caps, sents = p.data["captions"], p.data["sentences"]
@@ -560,6 +566,17 @@ def _batch_voice(path, st):
         raise RuntimeError("구글 드라이브에 올리지 못했습니다")
 
 
+def _usage_pause():
+    """Claude 사용량이 USAGE_RESERVE를 넘었으면 (쉴 때까지의 시각, 이유). 사용량은 마지막 Claude 호출 때의 값이다."""
+    info = ai.load_usage().get("info") or {}
+    names = {"seven_day": "주간", "five_hour": "5시간"}
+    for k, limit in USAGE_RESERVE.items():
+        w = (info.get("unifiedWindows") or {}).get(k) or {}
+        if w.get("utilization", 0) >= limit and w.get("resetsAt", 0) > time.time():
+            return w["resetsAt"] + 120, f"Claude {names[k]} 사용량이 {w['utilization']:.0%}라 {limit:.0%}를 넘어"
+    return None
+
+
 def _batch_lane(lane):
     """lane: "prep"(준비 줄) 또는 "voice"(음성 줄). 대기열 순서대로 자기 차례인 영상을 하나씩 처리한다."""
     want, busy, after = {"prep": ("waiting", "prep", "ready"), "voice": ("ready", "voice", "done")}[lane]
@@ -567,11 +584,8 @@ def _batch_lane(lane):
     while _batch["on"]:
         with _glock:
             items = [(p, _batch["items"][p]) for p in _batch["queue"]]
-            ahead = sum(1 for _, st in items if st["stage"] in ("ready", "voice"))
             cur = next(((p, st) for p, st in items if st["stage"] == busy), None) \
                 or next(((p, st) for p, st in items if st["stage"] == want), None)
-            if lane == "prep" and cur and cur[1]["stage"] == "waiting" and ahead > BATCH_AHEAD:
-                cur = None  # 음성 줄이 따라올 때까지 기다린다
             if cur:
                 cur[1].update(stage=busy, error=None, started=time.time())
         if not cur:
@@ -584,6 +598,17 @@ def _batch_lane(lane):
             continue
         path, st = cur
         _batch_save()
+        if lane == "prep":
+            pause = _usage_pause()
+            if pause:
+                until, why = pause
+                st.update(stage=want, msg="")
+                _batch.update(wait_until=until, wait_reason=why)
+                _batch_save()
+                while _batch["on"] and time.time() < until:
+                    time.sleep(max(0.5, min(60, until - time.time())))
+                _batch.update(wait_until=None, wait_reason=None)
+                continue
         try:
             (_batch_prep if lane == "prep" else _batch_voice)(path, st)
             st.update(stage=after, msg="")
@@ -592,11 +617,11 @@ def _batch_lane(lane):
             # 풀리는 시각을 모르면 30분, 이미 지난 시각이면(오래된 정보) 잠깐 기다렸다가 다시 해 본다
             until = max(e.resets_at or time.time() + 1800, time.time() + LIMIT_MIN) + LIMIT_MARGIN
             st.update(stage=want, msg=f"Claude 사용량 한도: {time.strftime('%m월 %d일 %H:%M', time.localtime(until))}에 이어서 합니다")
-            _batch["wait_until"] = until
+            _batch.update(wait_until=until, wait_reason="Claude 사용량 한도에 걸려")
             _batch_save()
             while _batch["on"] and time.time() < until:
                 time.sleep(max(0.5, min(30, until - time.time())))
-            _batch["wait_until"] = None
+            _batch.update(wait_until=None, wait_reason=None)
             continue
         except Exception as e:  # noqa
             traceback.print_exc()
@@ -688,7 +713,7 @@ def batch_status():
            for lane in ("prep", "voice")}
     return {"on": _batch["on"], "voice": _batch["voice"], "count": count, "total": len(items), "current": cur,
             "stopped_reason": _batch.get("stopped_reason"),
-            "wait_until": _batch["wait_until"],
+            "wait_until": _batch["wait_until"], "wait_reason": _batch.get("wait_reason"),
             "errors": [{"name": name(p), "path": p, "error": st["error"]} for p, st in items if st["stage"] == "error"],
             "skipped": [{"name": name(p), "same_as": st.get("same_as")} for p, st in items if st["stage"] == "skipped"]}
 
@@ -697,7 +722,7 @@ def batch_resume():
     if os.path.exists(BATCH_STATE):
         with open(BATCH_STATE, encoding="utf-8") as f:
             _batch.update(json.load(f))
-        _batch["wait_until"] = None
+        _batch.update(wait_until=None, wait_reason=None)
     if _batch["on"]:
         print("자동 진행 대기열을 이어 갑니다:", batch_status()["count"], flush=True)
         batch_kick()
