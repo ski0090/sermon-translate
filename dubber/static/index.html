@@ -219,7 +219,7 @@ function projectRow(p){
     <div class="pright">${right}<div class="muted" style="text-align:right">${p.duration?fmt(p.duration):""} · ${new Date(p.updated*1000).toLocaleString("ko-KR")}</div></div></li>`;
 }
 // 지금 돌고 있는 작업 이름(프로젝트 단계가 아니라)
-const jobName=j=>({scan:"자막 읽기",read:"자막 읽기",tidy:"문장 정리",tts:"음성",export:"내보내기"})[j.kind]||"작업";
+const jobName=j=>j.queued?"음성 대기":({scan:"자막 읽기",read:"자막 읽기",tidy:"문장 정리",tts:"음성",export:"내보내기"})[j.kind]||"작업";
 // 드라이브 영상 하나의 상태: 진행 중 > 내려받는 중 > 이 PC의 프로젝트 > 드라이브의 결과 > 이전 작업 > 시작 전
 function libState(it){
   const p=it.project;
@@ -238,7 +238,7 @@ async function renderList(refresh){
   $("#libSum").textContent=lib.items.length?`${lib.items.length}개 · 완료 ${n("done")} · 진행 중 ${n("run")} · 시작 전 ${n("todo")}`:"";
   const html=lib.error?`<li class="err">${esc(lib.error)}</li>`
     :lib.items.length?lib.items.map((it,i)=>{const [,label,cls,right]=st[i];
-      const auto={waiting:"자동 대기",ready:"자동 · 음성 대기",skipped:"같은 영상이라 건너뜀"}[it.batch];
+      const auto={waiting:"자동 대기",ready:"검수 대기 · 음성은 직접",skipped:"같은 영상이라 건너뜀"}[it.batch];
       return `<li data-i="${i}"><div class="pleft"><div>${esc(it.name)} <span class="badge ${cls}">${esc(label)}</span>${auto&&!(it.project&&it.project.job)?` <span class="badge">${auto}</span>`:""}</div></div>
         <div class="pright">${right.startsWith("<")?right:`<div class="muted" style="text-align:right">${esc(right)}</div>`}${ytCell(it,i)}</div></li>`;}).join("")
     :`<li class="muted">${lib.loading?"불러오는 중…":"영상이 없습니다."}</li>`;
@@ -291,7 +291,7 @@ const VOICES=["M1","M2","M3","M4","M5","F1","F2","F3","F4","F5"];
 async function renderBatch(){
   let b;try{b=await api("/api/batch");}catch(e){return;}
   const c=b.count||{},n=k=>c[k]||0;
-  const sum=b.total?`완료 ${n("done")} / ${b.total}편 · 자막 대기 ${n("waiting")} · 음성 대기 ${n("ready")} · 실패 ${n("error")}${n("skipped")?` · 같은 영상이라 건너뜀 ${n("skipped")}`:""}`:"";
+  const sum=b.total?`완료 ${n("done")} / ${b.total}편 · 검수 대기 ${n("ready")} · 자막 대기 ${n("waiting")} · 음성 대기열 ${b.voice_waiting||0}편 · 실패 ${n("error")}${n("skipped")?` · 같은 영상이라 건너뜀 ${n("skipped")}`:""}`:"";
   const skip=(b.skipped||[]).length?`<details class="muted"><summary>같은 영상이라 건너뛴 ${b.skipped.length}편 (드라이브의 제목을 확인하세요)</summary>${b.skipped.map(x=>`${esc(x.name)} = ${esc(x.same_as)}`).join("<br>")}</details>`:"";
   const cur=(lab,x)=>x?`<div class="muted">${lab}: <b>${esc(x.name)}</b> ${esc(x.msg||"")}</div>`:"";
   const errs=b.errors.length?`<div class="muted" style="color:var(--bad)">${b.errors.map(e=>`${esc(e.name)}: ${esc(e.error)}`).join("<br>")}</div>`:"";
@@ -299,7 +299,7 @@ async function renderBatch(){
     ?`<div class="row" style="justify-content:space-between;margin:0"><strong>자동 진행 중 <span class="badge ok">목소리 ${esc(b.voice)}</span></strong><button class="small" id="btnBatchStop">멈추기</button></div>
       <div class="muted">${sum}</div>${cur("자막 읽기",b.current.prep)}${(b.current.voice||[]).map(v=>cur("음성·내보내기",v)).join("")}
       ${b.wait_until?`<div class="muted" style="color:var(--warn)">${esc(b.wait_reason||"Claude 사용량 한도로")} 자막 읽기를 ${when(b.wait_until)}까지 쉬는 중 (음성은 계속)</div>`:""}${errs}${skip}`
-    :`<div class="row" style="justify-content:space-between;margin:0"><div><strong>자동 진행</strong><div class="muted">끝나지 않은 JP 영상을 번호순으로 자막 읽기부터 음성, 내보내기, 드라이브 올리기까지 한 편씩 진행합니다.</div></div>
+    :`<div class="row" style="justify-content:space-between;margin:0"><div><strong>자동 진행</strong><div class="muted">끝나지 않은 JP 영상을 번호순으로 자막 읽기와 문장 정리까지 진행합니다. 검수한 뒤 음성은 각 영상에서 "음성 만들기"를 눌러 시작합니다(음성 대기열에서 4편씩 만듭니다).</div></div>
       <span class="row" style="margin:0">목소리 <select id="batchVoice">${VOICES.map(v=>`<option ${v===b.voice?"selected":""}>${v}</option>`).join("")}</select><button class="primary" id="btnBatchStart">${b.total?"다시 시작":"시작"}</button></span></div>
       ${sum?`<div class="muted">${sum}</div>`:""}${skip}${b.stopped_reason?`<div class="err" style="margin:6px 0">${esc(b.stopped_reason)}</div>`:""}${errs}`;
   if($("#batchBox").innerHTML!==html){$("#batchBox").innerHTML=html;
@@ -434,7 +434,7 @@ async function startJob(kind,params={}){
 }
 function startPoll(){stopPoll();S.poll=setInterval(async()=>{
   const j=await api(P("/job"));if(!S.d)return;S.d.job=j;renderJob();
-  if(j&&j.done){stopPoll();await reload();onJobDone(j);render();}
+  if(!j||j.done){stopPoll();await reload();if(j)onJobDone(j);render();}  // 대기열에서 뺀 경우(j 없음)도 멈춘다
 },1000);}
 function stopPoll(){if(S.poll){clearInterval(S.poll);S.poll=null;}}
 function onJobDone(j){

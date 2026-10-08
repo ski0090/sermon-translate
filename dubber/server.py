@@ -178,7 +178,7 @@ def library(force=False):
     projects = prj.list_projects()
     for it in projects:
         j = _jobs.get(it["dir"])
-        it["job"] = j.status() if j and not j.done else None
+        it["job"] = j.status() if j and not j.done else queued_status(it["dir"])
     by_path = {it["drive"]: it for it in projects if it.get("drive")}
     imp = _jobs.get(DRIVE_JOB)
     importing = imp.target if imp and not imp.done else None
@@ -453,11 +453,12 @@ def _yt_upload_one(path, st, cancel):
 
 
 # ---------- 자동 진행 대기열 ----------
-# 드라이브 영상을 한 편씩 끝까지 진행한다. 두 줄로 나눠 돌린다:
-#   준비 줄: 프로젝트 만들기 -> 자막 영역 자동 감지 -> 자막 찾기 -> AI 읽기 -> AI 문장 정리 (Claude 사용)
-#   음성 줄: 음성 만들기 -> 내보내기 -> 드라이브 올리기 (CPU)
-# 준비 줄(Claude)과 음성 줄(CPU)은 서로 기다리지 않는다. 대신 준비 줄은 Claude 사용량이 USAGE_RESERVE를 넘으면
-# 그 창이 초기화될 때까지 쉬어서, 사람이 Claude를 직접 쓸 몫을 남긴다.
+# 자동 진행: 드라이브 영상을 차례로 프로젝트로 만들고 자막을 읽어 문장 목록까지 만든다(검수 단계에서 멈춤).
+#   프로젝트 만들기 -> 자막 영역 자동 감지 -> 자막 찾기 -> AI 읽기 -> AI 문장 정리 (Claude 사용)
+# 음성 대기열: 화면에서 "음성 만들기"를 누른 영상만 넣는다(사람이 검수한 뒤). 음성 -> 내보내기 -> 드라이브 올리기.
+# 음성 줄 VOICE_WORKERS개가 늘 돌며 대기열에서 하나씩 가져가므로 CPU를 다투지 않는다.
+# 자동 진행은 Claude 사용량이 USAGE_RESERVE를 넘으면 그 창이 초기화될 때까지 쉬어서, 사람이 Claude를 직접 쓸
+# 몫을 남긴다.
 BATCH_STATE = os.path.join(prj.ROOT, "_batch.json")
 USAGE_RESERVE = {"seven_day": 0.8, "five_hour": 0.5}
 # 음성 줄을 몇 개 동시에 돌릴지(tts.THREADS와 곱해 코어 수쯤)
@@ -465,8 +466,11 @@ VOICE_WORKERS = int(os.environ.get("DUBBER_VOICE_WORKERS", "4"))
 BATCH_MAX_FAILS = 3
 BAD_READ = 0.5  # 자막 그림의 이 비율 이상을 못 읽으면 자막 영역이 틀린 것으로 본다
 LIMIT_MIN, LIMIT_MARGIN = 60, 120  # 한도에 걸리면 최소 이만큼(초), 풀리는 시각보다 이만큼 더 기다린다
-_batch = {"on": False, "queue": [], "items": {}, "voice": "M4", "wait_until": None, "wait_reason": None}
+_batch = {"on": False, "queue": [], "items": {}, "voice": "M4", "wait_until": None, "wait_reason": None,
+          "voice_queue": []}  # 음성 대기열: [{"pid", "path"(자동 진행 영상이면), "params", "manual", "worker"}]
 _batch_threads = {}
+_voice_threads = {}
+_voice_fails = {"n": 0}
 
 
 def _batch_save():
@@ -555,17 +559,138 @@ def _batch_prep(path, st):
     raise RuntimeError("자막 읽기를 여러 번 했지만 문장 목록을 만들지 못했습니다")
 
 
-def _batch_voice(path, st):
-    pid = _project_of(path)
+def voice_enqueue(pid, params=None, manual=False, path=None):
+    """음성 대기열에 넣는다. 직접 누른 것(manual)은 자동 진행이 넣은 것들 앞(직접 누른 것끼리는 누른 순서)에 둔다.
+    - 이미 만드는 중이면 그대로 둔다.
+    - 이미 기다리는 중이면 자리는 그대로 두고 설정만 바꾼다. 다만 자동 진행으로 기다리던 것을 직접 누르면 앞으로 옮긴다."""
+    clean = {k: v for k, v in (params or {}).items() if k != "kind"}
+    with _glock:
+        q = _batch["voice_queue"]
+        e = next((x for x in q if x["pid"] == pid), None)
+        if e and e.get("worker"):
+            return e
+        if e and (not manual or e["manual"]):
+            if manual:
+                e["params"] = clean
+            e["path"] = e["path"] or path
+        else:
+            if e:
+                q.remove(e)
+            else:
+                e = {"pid": pid, "path": None, "params": clean, "manual": False, "worker": None, "queued": time.time()}
+            if manual:
+                e["params"] = clean
+            e["manual"] = e["manual"] or manual
+            e["path"] = e["path"] or path
+            if e["manual"]:
+                at = next((k for k, x in enumerate(q) if not x["manual"] and not x.get("worker")), len(q))
+                q.insert(at, e)
+            else:
+                q.append(e)
+    _batch_save()
+    voice_kick()
+    return e
+
+
+def voice_waiting(pid):
+    """대기열에서 기다리는 중이면 앞에 몇 편이 있는지, 아니면 None."""
+    with _glock:
+        waiting = [x["pid"] for x in _batch["voice_queue"] if not x.get("worker")]
+    return waiting.index(pid) if pid in waiting else None
+
+
+def voice_cancel(pid):
+    """아직 시작하지 않은 음성을 대기열에서 뺀다."""
+    with _glock:
+        e = next((x for x in _batch["voice_queue"] if x["pid"] == pid and not x.get("worker")), None)
+        if e:
+            _batch["voice_queue"].remove(e)
+    if e:
+        _batch_save()
+        # 서버가 꺼지기 전에 하던 음성이라 '진행 중' 표시가 남아 있으면 지운다(다시 켤 때 대기열에 돌아오지 않게)
+        j = _jobs.get(pid)
+        if not (j and not j.done):
+            p, lock = get_project(pid)
+            if (p.data.get("running_step") or {}).get("kind") in ("tts", "export"):
+                with lock:
+                    p.data.pop("running_step", None)
+                    p.save()
+    return bool(e)
+
+
+def queued_status(pid):
+    """대기열에서 기다리는 음성을 작업 상태처럼 보여 준다(화면은 진행 중으로 보고 '중단'으로 뺄 수 있다)."""
+    n = voice_waiting(pid)
+    if n is None:
+        return None
+    return {"kind": "tts", "progress": 0.0, "msg": f"음성 대기 중 (앞에 {n}편)" if n else "음성 대기 중 (다음 차례)",
+            "error": None, "done": False, "cancelled": False, "result": None, "running": True, "resumed": False,
+            "queued": True}
+
+
+def job_status(pid):
+    j = _jobs.get(pid)
+    if j and not j.done:
+        return j.status()
+    return queued_status(pid) or (j.status() if j else None)
+
+
+def _voice_run(e, st):
+    pid = e["pid"]
     p, _ = get_project(pid)
-    if not (p.data.get("last_export") and p.data.get("drive_export")):
-        st["msg"] = "음성을 만들고 내보내는 중"
-        _batch_step(pid, "tts", {})  # 음성이 끝나면 내보내기와 드라이브 올리기가 이어진다
+    if st and not e["manual"] and p.data.get("last_export") and p.data.get("drive_export"):
+        return  # 이미 끝난 영상
+    _batch_step(pid, "tts", e["params"])  # 음성이 끝나면 내보내기와 드라이브 올리기가 이어진다
+    if st:
         p, _ = get_project(pid)
-    if not p.data.get("last_export"):
-        raise RuntimeError("내보낸 파일이 없습니다")
-    if not p.data.get("drive_export"):
-        raise RuntimeError("구글 드라이브에 올리지 못했습니다")
+        if not p.data.get("last_export"):
+            raise RuntimeError("내보낸 파일이 없습니다")
+        if not p.data.get("drive_export"):
+            raise RuntimeError("구글 드라이브에 올리지 못했습니다")
+
+
+def _voice_worker(name):
+    """음성 줄 하나. 대기열 앞에서부터 하나씩 맡아 음성 -> 내보내기 -> 드라이브 올리기를 한다."""
+    while True:
+        with _glock:
+            e = next((x for x in _batch["voice_queue"] if not x.get("worker")), None)
+            if e:
+                e["worker"] = name
+        if not e:
+            time.sleep(3)
+            continue
+        st = _batch["items"].get(e.get("path")) if e.get("path") else None
+        if st:
+            st.update(stage="voice", msg="음성을 만들고 내보내는 중", error=None, started=time.time())
+        _batch_save()
+        try:
+            _voice_run(e, st)
+            if st:
+                st.update(stage="done", msg="")
+                _voice_fails["n"] = 0
+        except Exception as ex:  # noqa
+            traceback.print_exc()
+            if st:
+                st.update(stage="error", error=str(ex), msg="")
+                _voice_fails["n"] += 1
+                if _voice_fails["n"] >= BATCH_MAX_FAILS and _batch["on"]:
+                    batch_stop(f"음성이 {BATCH_MAX_FAILS}편 연달아 실패해 멈췄습니다. 실패 이유를 확인한 뒤 다시 시작하세요")
+        finally:
+            with _glock:
+                if e in _batch["voice_queue"]:
+                    _batch["voice_queue"].remove(e)
+                if st:
+                    st["finished"] = time.time()
+            _batch_save()
+
+
+def voice_kick():
+    for i in range(VOICE_WORKERS):
+        name = f"voice-{i}"
+        t = _voice_threads.get(name)
+        if not (t and t.is_alive()):
+            _voice_threads[name] = threading.Thread(target=_voice_worker, args=(name,), daemon=True)
+            _voice_threads[name].start()
 
 
 def _usage_pause():
@@ -579,48 +704,42 @@ def _usage_pause():
     return None
 
 
-def _batch_lane(lane):
-    """lane: "prep"(준비 줄) 또는 "voice-0", "voice-1"…(음성 줄). 대기열 순서대로 자기 차례인 영상을 하나씩 처리한다.
-    음성 줄은 여럿이 같이 돌므로 맡은 영상에 자기 이름(worker)을 붙여 서로 겹치지 않게 한다."""
-    kind = "prep" if lane == "prep" else "voice"
-    want, busy, after = {"prep": ("waiting", "prep", "ready"), "voice": ("ready", "voice", "done")}[kind]
+def _batch_lane():
+    """준비 줄. 대기열 순서대로 자막을 읽고 문장을 만든 뒤 음성 대기열에 넣는다."""
+    want, busy = "waiting", "prep"
     fails = 0
     while _batch["on"]:
         with _glock:
             items = [(p, _batch["items"][p]) for p in _batch["queue"]]
-            cur = next(((p, st) for p, st in items if st["stage"] == busy and st.get("worker") in (None, lane)), None) \
+            cur = next(((p, st) for p, st in items if st["stage"] == busy), None) \
                 or next(((p, st) for p, st in items if st["stage"] == want), None)
             if cur:
-                cur[1].update(stage=busy, error=None, started=time.time(), worker=lane)
+                cur[1].update(stage=busy, error=None, started=time.time())
         if not cur:
-            if all(st["stage"] in ("done", "error", "skipped") for _, st in items):
-                if kind == "voice" and items:
-                    _batch["on"] = False
-                    _batch_save()
-                return
-            time.sleep(15)
-            continue
+            with _glock:
+                _batch["on"] = False  # 자막 읽을 영상을 다 했다(음성은 사람이 검수하고 직접 시작한다)
+            _batch_save()
+            return
         path, st = cur
         _batch_save()
-        if kind == "prep":
-            pause = _usage_pause()
-            if pause:
-                until, why = pause
-                st.update(stage=want, msg="", worker=None)
-                _batch.update(wait_until=until, wait_reason=why)
-                _batch_save()
-                while _batch["on"] and time.time() < until:
-                    time.sleep(max(0.5, min(60, until - time.time())))
-                _batch.update(wait_until=None, wait_reason=None)
-                continue
+        pause = _usage_pause()
+        if pause:
+            until, why = pause
+            st.update(stage=want, msg="")
+            _batch.update(wait_until=until, wait_reason=why)
+            _batch_save()
+            while _batch["on"] and time.time() < until:
+                time.sleep(max(0.5, min(60, until - time.time())))
+            _batch.update(wait_until=None, wait_reason=None)
+            continue
         try:
-            (_batch_prep if kind == "prep" else _batch_voice)(path, st)
-            st.update(stage=after, msg="", worker=None)
+            _batch_prep(path, st)
+            st.update(stage="ready", msg="")  # 검수 대기: 음성은 화면에서 직접 "음성 만들기"를 눌러 시작한다
             fails = 0
         except ai.UsageLimit as e:
             # 풀리는 시각을 모르면 30분, 이미 지난 시각이면(오래된 정보) 잠깐 기다렸다가 다시 해 본다
             until = max(e.resets_at or time.time() + 1800, time.time() + LIMIT_MIN) + LIMIT_MARGIN
-            st.update(stage=want, worker=None, msg=f"Claude 사용량 한도: {time.strftime('%m월 %d일 %H:%M', time.localtime(until))}에 이어서 합니다")
+            st.update(stage=want, msg=f"Claude 사용량 한도: {time.strftime('%m월 %d일 %H:%M', time.localtime(until))}에 이어서 합니다")
             _batch.update(wait_until=until, wait_reason="Claude 사용량 한도에 걸려")
             _batch_save()
             while _batch["on"] and time.time() < until:
@@ -629,21 +748,22 @@ def _batch_lane(lane):
             continue
         except Exception as e:  # noqa
             traceback.print_exc()
-            st.update(stage="error", error=str(e), msg="", worker=None)
+            st.update(stage="error", error=str(e), msg="")
             fails += 1
             if fails >= BATCH_MAX_FAILS:  # 모든 영상에 걸리는 문제(드라이브 연결 등)면 줄줄이 실패로 넘기지 않고 멈춘다
-                _batch["on"] = False
-                _batch["stopped_reason"] = f"{BATCH_MAX_FAILS}편이 연달아 실패해 멈췄습니다. 실패 이유를 확인한 뒤 다시 시작하세요"
+                st["finished"] = time.time()
+                batch_stop(f"{BATCH_MAX_FAILS}편이 연달아 실패해 멈췄습니다. 실패 이유를 확인한 뒤 다시 시작하세요")
+                return
         st["finished"] = time.time()
         _batch_save()
 
 
 def batch_kick():
-    for lane in ["prep"] + [f"voice-{i}" for i in range(VOICE_WORKERS)]:
-        t = _batch_threads.get(lane)
-        if not (t and t.is_alive()):
-            _batch_threads[lane] = threading.Thread(target=_batch_lane, args=(lane,), daemon=True)
-            _batch_threads[lane].start()
+    voice_kick()
+    t = _batch_threads.get("prep")
+    if _batch["on"] and not (t and t.is_alive()):
+        _batch_threads["prep"] = threading.Thread(target=_batch_lane, daemon=True)
+        _batch_threads["prep"].start()
 
 
 def _same_video_key(path):
@@ -701,9 +821,12 @@ def batch_start(voice=None):
     batch_kick()
 
 
-def batch_stop():
-    """새 영상은 더 시작하지 않는다. 지금 하던 단계는 끝까지 한다."""
-    _batch["on"] = False
+def batch_stop(reason=None):
+    """새 영상은 더 시작하지 않는다. 지금 하던 단계는 끝까지 한다. (예전에 자동으로 넣은 음성이 남아 있으면 뺀다)"""
+    with _glock:
+        _batch["on"] = False
+        _batch["stopped_reason"] = reason
+        _batch["voice_queue"] = [x for x in _batch["voice_queue"] if x["manual"] or x.get("worker")]
     _batch_save()
 
 
@@ -713,9 +836,13 @@ def batch_status():
     for _, st in items:
         count[st["stage"]] = count.get(st["stage"], 0) + 1
     name = lambda p: os.path.splitext(posixpath.basename(p))[0]  # noqa
+    vq = list(_batch["voice_queue"])
     cur = {"prep": next(({"name": name(p), "msg": st.get("msg")} for p, st in items if st["stage"] == "prep"), None),
-           "voice": [{"name": name(p), "msg": st.get("msg")} for p, st in items if st["stage"] == "voice"]}
+           "voice": [{"name": x["pid"], "msg": "음성을 만들고 내보내는 중" + (" (직접 넣음)" if x["manual"] else "")}
+                     for x in vq if x.get("worker")]}
     return {"on": _batch["on"], "voice": _batch["voice"], "count": count, "total": len(items), "current": cur,
+            "voice_waiting": sum(1 for x in vq if not x.get("worker")),
+            "voice_manual": sum(1 for x in vq if not x.get("worker") and x["manual"]),
             "stopped_reason": _batch.get("stopped_reason"),
             "wait_until": _batch["wait_until"], "wait_reason": _batch.get("wait_reason"),
             "errors": [{"name": name(p), "path": p, "error": st["error"]} for p, st in items if st["stage"] == "error"],
@@ -727,11 +854,17 @@ def batch_resume():
         with open(BATCH_STATE, encoding="utf-8") as f:
             _batch.update(json.load(f))
         _batch.update(wait_until=None, wait_reason=None)
+        _batch.setdefault("voice_queue", [])
+        for x in _batch["voice_queue"]:
+            x["worker"] = None  # 서버가 새로 켜지면 음성 줄이 다시 나눠 맡는다(하던 음성은 resume_all이 이어 간다)
+
         for st in _batch["items"].values():
-            st["worker"] = None  # 서버가 새로 켜지면 음성 줄이 맡은 영상을 다시 나눠 맡는다
+            st.pop("worker", None)
+    # 음성은 직접 요청한 것만 만든다: 예전에 자동 진행이 넣고 아직 시작하지 않은 음성은 뺀다
+    _batch["voice_queue"] = [x for x in _batch["voice_queue"] if x["manual"]]
     if _batch["on"]:
-        print("자동 진행 대기열을 이어 갑니다:", batch_status()["count"], flush=True)
-        batch_kick()
+        print("자동 진행 대기열을 이어 갑니다:", batch_status()["count"], "음성 대기", batch_status()["voice_waiting"], flush=True)
+    batch_kick()
 
 
 def yt_resume():
@@ -810,11 +943,17 @@ def resume_all():
             params = json.load(f)
         print("구글 드라이브에서 받던 영상을 처음부터 다시 받습니다:", params.get("path"), flush=True)
         start_import(params, resumed=True)
+    voice = []  # 끊긴 음성(내보내기 포함)은 바로 시작하지 않고 음성 대기열에 넣는다(동시에 VOICE_WORKERS개까지)
     for it in prj.list_projects():
         pid = it["dir"]
         p, lock = get_project(pid)
         run = p.data.get("running_step")
         if not run:
+            continue
+        if run["kind"] in ("tts", "export"):
+            print(f"{pid}: 꺼지기 전에 하던 음성을 음성 대기열에 넣습니다", flush=True)
+            voice.append((pid, {k: v for k, v in (run.get("params") or {}).items() if k == "force"},
+                          (p.data.get("drive") or {}).get("path")))
             continue
         restarts = run.get("restarts", 0) + 1
         if restarts > MAX_RESUME:
@@ -825,6 +964,7 @@ def resume_all():
             continue
         print(f"{pid}: 꺼지기 전에 하던 {run['kind']} 단계를 처음부터 다시 합니다", flush=True)
         start_step(pid, p, lock, run["kind"], run.get("params") or {}, restarts)
+    return voice
 
 
 def run_pipeline_job(p, lock, kind, job, params):
@@ -1052,7 +1192,7 @@ class Handler(BaseHTTPRequestHandler):
             items = prj.list_projects()
             for it in items:
                 j = _jobs.get(it["dir"])
-                it["job"] = j.status() if j and not j.done else None
+                it["job"] = j.status() if j and not j.done else queued_status(it["dir"])
             return self._json(items)
         if path == "/api/library":
             return self._json(library(force=bool(q.get("refresh"))))
@@ -1129,7 +1269,7 @@ class Handler(BaseHTTPRequestHandler):
         if rest == "" and method == "GET":
             d = dict(p.data)
             d["sentences"] = [dict(s, reading_auto=p.reading_of(s)) for s in p.data["sentences"]]
-            d["job"] = job.status() if job else None
+            d["job"] = job_status(pid)
             d["id"] = pid
             return self._json(d)
         if rest == "/video":
@@ -1144,15 +1284,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._bytes(frame_jpeg(p.data["video"], t, roi), "image/jpeg")
         if rest == "/job":
             if method == "GET":
-                return self._json(job.status() if job else None)
+                return self._json(job_status(pid))
             body = self._body()
             kind = body.get("kind")
+            if kind == "tts":  # 음성은 바로 시작하지 않고 음성 대기열에 넣는다(직접 누른 것이 앞)
+                drive = (p.data.get("drive") or {}).get("path")
+                voice_enqueue(pid, body, manual=True, path=drive if drive in _batch["items"] else None)
+                return self._json(job_status(pid))
             try:
                 j = start_step(pid, p, lock, kind, body)
             except RuntimeError as e:
                 return self._json({"error": str(e)}, 409)
             return self._json(j.status())
         if rest == "/job/cancel" and method == "POST":
+            if voice_cancel(pid):
+                return self._json(job_status(pid))
             if job and not job.done:
                 job.cancelled = True
                 job.msg = "중단하는 중 (진행 중인 AI 호출이 끝나면 멈춥니다. 최대 5분)"
@@ -1248,9 +1394,11 @@ def main():
     os.makedirs(prj.ROOT, exist_ok=True)
     _root_lock = lock_root()  # noqa
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
-    resume_all()
+    voice = resume_all()
     yt_resume()
     batch_resume()
+    for pid, params, path in voice:  # 음성 대기열을 불러온 뒤에 넣는다. 하던 음성은 직접 요청했던 것이다
+        voice_enqueue(pid, params, manual=True, path=path if path in _batch["items"] else None)
     httpd.daemon_threads = True
     url = f"http://127.0.0.1:{PORT}/"
     print("설교 영상 한국어 더빙:", url, "· 프로젝트 폴더:", prj.ROOT, flush=True)
