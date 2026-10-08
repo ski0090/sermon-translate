@@ -20,6 +20,28 @@ def _slug(name):
     return s[:60] or "project"
 
 
+_summary_cache = {}  # project.json 경로 -> (수정 시각, 크기, 요약). 바뀐 파일만 다시 읽는다
+
+
+def _summary(d, p):
+    st = os.stat(p)
+    hit = _summary_cache.get(p)
+    if hit and hit[0] == st.st_mtime and hit[1] == st.st_size:
+        return hit[2]
+    with open(p, encoding="utf-8") as f:
+        j = json.load(f)
+    caps = j.get("captions", [])
+    sents = j.get("sentences", [])
+    out = {"dir": d, "name": j.get("name", d), "video": j.get("video"), "step": j.get("step"),
+           "updated": st.st_mtime, "duration": j.get("info", {}).get("duration"),
+           "captions": len(caps), "read": sum(1 for c in caps if c.get("text")),
+           "sentences": len(sents), "tts": sum(1 for s in sents if s.get("tts")),
+           "cuts": len(j.get("cuts", [])), "exported": bool(j.get("last_export")),
+           "drive": (j.get("drive") or {}).get("path")}
+    _summary_cache[p] = (st.st_mtime, st.st_size, out)
+    return out
+
+
 def list_projects():
     out = []
     if not os.path.isdir(ROOT):
@@ -28,16 +50,7 @@ def list_projects():
         p = os.path.join(ROOT, d, "project.json")
         if os.path.exists(p):
             try:
-                with open(p, encoding="utf-8") as f:
-                    j = json.load(f)
-                caps = j.get("captions", [])
-                sents = j.get("sentences", [])
-                out.append({"dir": d, "name": j.get("name", d), "video": j.get("video"), "step": j.get("step"),
-                            "updated": os.path.getmtime(p), "duration": j.get("info", {}).get("duration"),
-                            "captions": len(caps), "read": sum(1 for c in caps if c.get("text")),
-                            "sentences": len(sents), "tts": sum(1 for s in sents if s.get("tts")),
-                            "cuts": len(j.get("cuts", [])), "exported": bool(j.get("last_export")),
-                            "drive": (j.get("drive") or {}).get("path")})
+                out.append(dict(_summary(d, p)))
             except Exception:
                 pass
     out.sort(key=lambda x: -x["updated"])

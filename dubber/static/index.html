@@ -25,10 +25,13 @@ header h1{font-size:16px;margin:0;white-space:nowrap}
 #start{max-width:760px;margin:40px auto;padding:0 16px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
 .plist{list-style:none;margin:12px 0 0;padding:0}
-.plist li{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-top:1px solid var(--line);cursor:pointer}
+.plist li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border-top:1px solid var(--line);cursor:pointer}
+.plist li>.pleft{flex:1 1 45%;min-width:14em}
+.plist li>.pright{flex:0 1 auto;min-width:0;max-width:55%}
 .plist li:hover{background:#f7f8fa}
-.pjob{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--accent);justify-content:flex-end}
-.pjob .bar{width:160px;height:6px;background:#e5e9f2;border-radius:3px;overflow:hidden}
+.pjob{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--accent);justify-content:flex-end;min-width:0}
+.pjob>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.pjob .bar{flex:0 0 120px;height:6px;background:#e5e9f2;border-radius:3px;overflow:hidden}
 .pjob .bar i{display:block;height:100%;background:var(--accent)}
 .muted{color:var(--muted);font-size:12px}
 #work{display:none;grid-template-columns:minmax(360px,42%) 1fr;grid-template-rows:1fr auto;height:calc(100vh - 53px)}
@@ -194,7 +197,9 @@ async function showStart(){
   $("#start").style.display="block";$("#work").style.display="none";$("#steps").innerHTML="";$("#title").textContent="설교 영상 한국어 더빙";
   await renderList();
   if(S.listPoll)clearInterval(S.listPoll);
-  S.listPoll=setInterval(async()=>{if(S.pid){clearInterval(S.listPoll);S.listPoll=null;return;}await renderList();},2000);
+  // 앞 요청이 아직 안 끝났으면 건너뛴다(서버가 바쁠 때 요청이 쌓이지 않게)
+  S.listPoll=setInterval(async()=>{if(S.pid){clearInterval(S.listPoll);S.listPoll=null;return;}
+    if(S.listBusy)return;S.listBusy=true;try{await renderList();}catch(e){}finally{S.listBusy=false;}},2000);
 }
 function progressText(p){
   const parts=[];
@@ -205,18 +210,20 @@ function progressText(p){
   if(p.exported)parts.push("내보내기 완료");
   return parts.join(" · ")||"아직 자막을 읽지 않음";
 }
-const jobMsg=j=>esc(j.msg||"작업 중")+(j.resumed?" · 서버가 다시 켜져 이 단계를 처음부터 다시 하는 중":"");
-function jobBar(j){return `<div class="pjob"><span>${jobMsg(j)}</span><div class="bar"><i style="width:${Math.round(j.progress*100)}%"></i></div><span class="time">${Math.round(j.progress*100)}%</span></div>`;}
+const jobMsg=j=>esc(j.msg||"작업 중")+(j.resumed?" · 재시작 후 다시 하는 중":"");
+function jobBar(j){return `<div class="pjob"><span title="${jobMsg(j)}">${jobMsg(j)}</span><div class="bar"><i style="width:${Math.round(j.progress*100)}%"></i></div><span class="time">${Math.round(j.progress*100)}%</span></div>`;}
 function projectRow(p){
   const j=p.job;
   const right=j?jobBar(j):`<div class="muted" style="text-align:right">${progressText(p)}</div>`;
-  return `<li data-id="${esc(p.dir)}"><div style="min-width:0"><div>${esc(p.name)} <span class="badge ${j?"ok":""}">${j?"진행 중 · ":""}${stepName(p.step)}</span></div><div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.drive||p.video||"")}</div></div>
-    <div style="flex:0 0 auto;margin-left:12px">${right}<div class="muted" style="text-align:right">${p.duration?fmt(p.duration):""} · ${new Date(p.updated*1000).toLocaleString("ko-KR")}</div></div></li>`;
+  return `<li data-id="${esc(p.dir)}"><div class="pleft"><div>${esc(p.name)} <span class="badge ${j?"ok":""}">${j?"진행 중 · "+jobName(j):stepName(p.step)}</span></div><div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.drive||p.video||"")}</div></div>
+    <div class="pright">${right}<div class="muted" style="text-align:right">${p.duration?fmt(p.duration):""} · ${new Date(p.updated*1000).toLocaleString("ko-KR")}</div></div></li>`;
 }
+// 지금 돌고 있는 작업 이름(프로젝트 단계가 아니라)
+const jobName=j=>({scan:"자막 읽기",read:"자막 읽기",tidy:"문장 정리",tts:"음성",export:"내보내기"})[j.kind]||"작업";
 // 드라이브 영상 하나의 상태: 진행 중 > 내려받는 중 > 이 PC의 프로젝트 > 드라이브의 결과 > 이전 작업 > 시작 전
 function libState(it){
   const p=it.project;
-  if(p&&p.job)return ["run","진행 중 · "+stepName(p.step),"ok",jobBar(p.job)];
+  if(p&&p.job)return ["run","진행 중 · "+jobName(p.job),"ok",jobBar(p.job)];
   if(it.importing)return ["run","내려받는 중","ok",jobBar(it.importing)];
   if(p&&p.exported)return ["done","완료","ok",progressText(p)];
   if(p)return ["run",stepName(p.step),"warn",progressText(p)];
@@ -232,8 +239,8 @@ async function renderList(refresh){
   const html=lib.error?`<li class="err">${esc(lib.error)}</li>`
     :lib.items.length?lib.items.map((it,i)=>{const [,label,cls,right]=st[i];
       const auto={waiting:"자동 대기",ready:"자동 · 음성 대기",skipped:"같은 영상이라 건너뜀"}[it.batch];
-      return `<li data-i="${i}"><div style="min-width:0"><div>${esc(it.name)} <span class="badge ${cls}">${esc(label)}</span>${auto&&!(it.project&&it.project.job)?` <span class="badge">${auto}</span>`:""}</div></div>
-        <div style="flex:0 0 auto;margin-left:12px">${right.startsWith("<")?right:`<div class="muted" style="text-align:right">${esc(right)}</div>`}${ytCell(it,i)}</div></li>`;}).join("")
+      return `<li data-i="${i}"><div class="pleft"><div>${esc(it.name)} <span class="badge ${cls}">${esc(label)}</span>${auto&&!(it.project&&it.project.job)?` <span class="badge">${auto}</span>`:""}</div></div>
+        <div class="pright">${right.startsWith("<")?right:`<div class="muted" style="text-align:right">${esc(right)}</div>`}${ytCell(it,i)}</div></li>`;}).join("")
     :`<li class="muted">${lib.loading?"불러오는 중…":"영상이 없습니다."}</li>`;
   if($("#plist").innerHTML!==html)$("#plist").innerHTML=html;
   document.querySelectorAll("#plist li[data-i]").forEach(li=>li.onclick=()=>openLibItem(lib.items[+li.dataset.i]));
