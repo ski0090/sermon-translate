@@ -826,7 +826,8 @@ BATCH_STATE = os.path.join(prj.ROOT, "_batch.json")
 SCHEDULE_STATE = os.path.join(prj.ROOT, "_schedule.json")
 SCHEDULE_DEFAULT = {"five_hour": 50, "seven_day": 50}  # 자동 작업이 쓸 수 있는 Claude 사용량(%)
 USAGE_NAMES = {"five_hour": "5시간", "seven_day": "주간"}
-_sched = {"default": dict(SCHEDULE_DEFAULT), "days": {}}  # days: {"2026-10-10": {"five_hour": 90, "seven_day": 90}}
+_sched = {"default": dict(SCHEDULE_DEFAULT), "days": {},  # days: {"2026-10-10": {"five_hour": 90, "seven_day": 90}}
+          "fable": {"on": True, "limit": 100}}  # 기본 사용량을 다 쓰면 Fable의 별도 몫을 limit%까지 쓴다
 # 음성 줄을 몇 개 동시에 돌릴지(tts.THREADS와 곱해 코어 수쯤)
 VOICE_WORKERS = int(os.environ.get("DUBBER_VOICE_WORKERS", "4"))
 BATCH_MAX_FAILS = 3
@@ -1079,6 +1080,11 @@ def schedule_load():
     if os.path.exists(SCHEDULE_STATE):
         with open(SCHEDULE_STATE, encoding="utf-8") as f:
             _sched.update(json.load(f))
+    _fable_apply()
+
+
+def _fable_apply():
+    ai.FALLBACK_MODEL = "fable" if _sched["fable"].get("on") else None
 
 
 def schedule_set(body):
@@ -1086,6 +1092,11 @@ def schedule_set(body):
     def pct(v):
         return min(100, max(0, int(round(float(v)))))
     with _glock:
+        if body.get("fable"):
+            f = body["fable"]
+            _sched["fable"] = {"on": bool(f.get("on", _sched["fable"]["on"])),
+                               "limit": pct(f.get("limit", _sched["fable"]["limit"]))}
+            _fable_apply()
         if body.get("default"):
             _sched["default"] = {k: pct(body["default"].get(k, _sched["default"].get(k, v)))
                                  for k, v in SCHEDULE_DEFAULT.items()}
@@ -1109,7 +1120,8 @@ def schedule_view():
     pause = _usage_pause()
     return {"default": _sched["default"], "days": _sched["days"], "today": _day(), "limits": usage_limits(),
             "usage": {k: {"utilization": (wins.get(k) or {}).get("utilization"), "resetsAt": (wins.get(k) or {}).get("resetsAt")}
-                      for k in SCHEDULE_DEFAULT},
+                      for k in list(SCHEDULE_DEFAULT) + [ai.FALLBACK_WINDOW]},
+            "fable": _sched["fable"], "fable_now": time.time() < ai._main_out["until"],
             "usage_t": u.get("t"), "pause": {"until": pause[0], "reason": pause[1]} if pause else None}
 
 
@@ -1126,10 +1138,20 @@ def _usage_pause():
             m = _next_midnight(m + 1)
         return m + 5, "스케줄에서 오늘은 자동 작업을 쉬도록 정해"
     info = ai.load_usage().get("info") or {}
+    wins = info.get("unifiedWindows") or {}
+    fw = wins.get(ai.FALLBACK_WINDOW) or {}
+    fable = _sched["fable"]
+    fable_left = (fw.get("utilization") or 0) < fable["limit"] / 100 or (fw.get("resetsAt") or 0) <= now
     for k in SCHEDULE_DEFAULT:
-        w = (info.get("unifiedWindows") or {}).get(k) or {}
+        w = wins.get(k) or {}
         used, reset = w.get("utilization", 0) or 0, w.get("resetsAt", 0) or 0
+        if used >= lim[k] / 100 and reset > now and lim[k] >= 100 and fable["on"] and fable_left:
+            continue  # 그날 다 써도 되는 날: 기본 사용량을 다 썼으면 Fable로 이어 간다
         if used >= lim[k] / 100 and reset > now:
+            if lim[k] >= 100 and fable["on"]:
+                fr = (fw.get("resetsAt") or 0) + 120
+                return min(reset + 120, fr) if fr > now else reset + 120, \
+                    f"Claude {USAGE_NAMES[k]} 사용량과 Fable 추가 몫({fable['limit']}%)을 다 써"
             until = reset + 120
             m = _next_midnight(now)
             while m < until:

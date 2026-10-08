@@ -20,6 +20,12 @@ DIVIDER = 4
 FONTS = ["C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
          "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
 TIMEOUT = 300
+# 기본 모델이 사용량 한도에 걸리면 이어 쓸 모델(서버가 스케줄 설정으로 정한다. None이면 쓰지 않음).
+# Fable은 5시간·주간 사용량을 기본 모델과 함께 쓰지만, 그것을 다 쓴 뒤에 쓸 수 있는 별도 주간 몫
+# (seven_day_overage_included)이 있다.
+FALLBACK_MODEL = None
+FALLBACK_WINDOW = "seven_day_overage_included"
+_main_out = {"until": 0.0}  # 기본 모델이 한도에 걸려 풀리는 시각. 그때까지는 바로 FALLBACK_MODEL로 부른다
 # claude 호출마다 받은 플랜 사용량(5시간·주간 한도의 사용률과 초기화 시각)을 남겨 화면에 보여 준다
 USAGE = os.path.join(os.environ.get("DUBBER_PROJECTS") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "projects"),
                      "_usage.json")
@@ -135,12 +141,17 @@ def _claude_result(raw):
             text, is_error = j.get("result") or "", bool(j.get("is_error"))
     if info:
         save_usage(info)
-    if (info and info.get("status") == "rejected") or (is_error and _LIMIT_TEXT.search(text)):
+    # 상태가 rejected여도 답이 왔으면 쓴다(추가 몫으로 처리된 호출)
+    rejected = info and info.get("status") == "rejected" and (is_error or not text.strip())
+    if rejected or (is_error and _LIMIT_TEXT.search(text)):
         raise UsageLimit((info or {}).get("resetsAt"))
     return text
 
 
 def save_usage(info):
+    """마지막 사용량 정보를 저장한다. 이번 호출에 없는 창(기본 모델로 부르면 Fable 몫이 없다)은 전에 받은 값을 둔다."""
+    old = (load_usage().get("info") or {}).get("unifiedWindows") or {}
+    info = dict(info, unifiedWindows=dict(old, **(info.get("unifiedWindows") or {})))
     os.makedirs(os.path.dirname(USAGE), exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(USAGE), suffix=".tmp")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -177,12 +188,27 @@ def run_tool(prompt, tool="claude", image=None, cwd=None, timeout=TIMEOUT):
             out = f.read()
         os.unlink(last)
         return out
+    fb = FALLBACK_MODEL
+    model = fb if fb and time.time() < _main_out["until"] else None
+    try:
+        return _claude(prompt, image, cwd, env, timeout, model)
+    except UsageLimit as e:
+        if model or not fb:
+            raise
+        # 기본 사용량을 다 썼다: 풀릴 때까지 Fable로 부른다
+        _main_out["until"] = max(e.resets_at or 0, time.time() + 1800)
+        return _claude(prompt, image, cwd, env, timeout, fb)
+
+
+def _claude(prompt, image, cwd, env, timeout, model=None):
     cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose", "--max-turns", "4",
            "--allowedTools", "Read" if image else ""]
+    if model:
+        cmd += ["--model", model]
     code, raw, err = _run(cmd, prompt, cwd, env, timeout)
     out = _claude_result(raw)
     if code != 0 and not out.strip():
-        raise RuntimeError(f"{tool} 실패: {err.strip()[:300]}")
+        raise RuntimeError(f"claude 실패: {err.strip()[:300]}")
     return out
 
 

@@ -24,6 +24,12 @@ function scTopRender(){
   const d=SC.d,L=d.limits,u=d.usage;
   const pct=x=>x==null?"모름":Math.round(x*100)+"%";
   const age=d.usage_t?Math.round((Date.now()/1000-d.usage_t)/60):null;
+  const fu=u.seven_day_overage_included||{},F=d.fable;
+  const fableRow=`<div class="row" style="margin-top:4px"><label><input type="checkbox" id="scFbOn" ${F.on?"checked":""}> 기본 사용량을 다 쓰면 Fable로 이어 하기</label>
+      <label>Fable 추가 몫 한도 <input type="number" min="0" max="100" step="5" id="scFbLim" value="${F.limit}" style="width:70px">%</label>
+      <button class="small" id="scFbSave">저장</button>
+      <span class="muted">Fable 추가 몫 지금 ${pct(fu.utilization)} 사용${fu.resetsAt?` · ${when(fu.resetsAt)} 초기화`:""}</span>${d.fable_now?' <span class="badge ok">지금 Fable로 작업 중</span>':""}</div>
+    <div class="muted">Fable은 5시간·주간 사용량을 기본 모델과 함께 쓰고, 그것을 다 쓴 뒤에 쓸 수 있는 별도 주간 몫이 있습니다. 한도가 100%인 날의 자동 작업은 기본 사용량을 다 쓰면 Fable로 이어 가고, 화면에서 직접 누른 작업은 날과 상관없이 한도에 걸리면 Fable로 이어 갑니다.</div>`;
   const st=d.pause?`<span class="badge warn">자동 작업 쉬는 중</span> <span class="muted">${esc(d.pause.reason)} ${when(d.pause.until)}까지</span>`
     :`<span class="badge ok">자동 작업 가능</span>`;
   const html=`<div class="row" style="justify-content:space-between;margin:0"><strong>오늘 ${scLabel(d.today)} 한도: 5시간 ${L.five_hour}% · 주간 ${L.seven_day}%</strong>
@@ -32,9 +38,11 @@ function scTopRender(){
     <div class="muted">자동 진행(자막 읽기·문장 정리)과 쇼츠 자동 후보 고르기는 그날의 Claude 사용량이 한도에 닿으면 쉬고, 사용량이 초기화되거나 한도가 더 높은 날이 되면 이어 갑니다. 0%로 정한 날은 자동 작업을 하지 않습니다. 화면에서 직접 누른 작업은 한도와 상관없이 합니다. 사용량은 마지막 Claude 호출 때의 값입니다(위의 "확인"으로 새로 읽습니다).</div>
     <div class="row" style="margin-top:10px">기본 한도 <label>5시간 <input type="number" min="0" max="100" step="5" id="scDef5" value="${d.default.five_hour}" style="width:70px">%</label>
       <label>주간 <input type="number" min="0" max="100" step="5" id="scDef7" value="${d.default.seven_day}" style="width:70px">%</label>
-      <button class="small" id="scDefSave">기본값 저장</button><span class="muted">달력에서 정하지 않은 날에 씁니다.</span></div>`;
-  const a=document.activeElement;if(a&&(a.id==="scDef5"||a.id==="scDef7"))return;  // 입력 중이면 덮지 않는다
+      <button class="small" id="scDefSave">기본값 저장</button><span class="muted">달력에서 정하지 않은 날에 씁니다.</span></div>${fableRow}`;
+  const a=document.activeElement;if(a&&["scDef5","scDef7","scFbLim"].includes(a.id))return;  // 입력 중이면 덮지 않는다
   $("#scTop").innerHTML=html;
+  $("#scFbSave").onclick=async()=>{try{SC.d=await api("/api/schedule","POST",{fable:{on:$("#scFbOn").checked,limit:+$("#scFbLim").value}});scRender();}catch(e){alert(e.message);}};
+  $("#scFbOn").onchange=()=>$("#scFbSave").click();
   $("#scDefSave").onclick=async()=>{try{SC.d=await api("/api/schedule","POST",{default:{five_hour:+$("#scDef5").value,seven_day:+$("#scDef7").value}});scRender();}catch(e){alert(e.message);}};
 }
 // 주간 사용량이 초기화되는 날(다음 초기화 시각부터 7일마다)

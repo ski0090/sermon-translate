@@ -398,8 +398,8 @@ async function renderUsage(){
       const c=left<20?"var(--bad)":left<40?"var(--warn)":"var(--text)";
       return `<span title="${when(w[k].resetsAt)}에 초기화">${label} <b style="color:${c}">${left}%</b></span>`;};
     const age=Math.round((Date.now()/1000-u.t)/60);
-    html=`Claude 남은 사용량: ${[part("five_hour","5시간"),part("seven_day","주간")].filter(Boolean).join(" · ")}`
-      +(i.status&&i.status!=="allowed"?` <b style="color:var(--bad)">한도 도달 (${when(i.resetsAt)}까지)</b>`:"")
+    html=`Claude 남은 사용량: ${[part("five_hour","5시간"),part("seven_day","주간"),part("seven_day_overage_included","Fable 추가")].filter(Boolean).join(" · ")}`
+      +(i.status==="rejected"?` <b style="color:var(--bad)">한도 도달 (${when(i.resetsAt)}까지)</b>`:"")
       +` <span title="AI를 부를 때마다 갱신됩니다">(${age<1?"방금":age<60?age+"분 전":Math.round(age/60)+"시간 전"} 기준)</span> <button class="small" id="btnUsage">확인</button>`;
   }
   if($("#usage").innerHTML!==html){$("#usage").innerHTML=html;
