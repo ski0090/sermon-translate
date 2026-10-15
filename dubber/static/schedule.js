@@ -4,6 +4,8 @@
 const SC={d:null,y:null,m:null,sel:new Set(),last:null,poll:null};
 const scPad=n=>String(n).padStart(2,"0");
 const scKey=(y,m,d)=>`${y}-${scPad(m+1)}-${scPad(d)}`;
+const scTool=t=>t==="codex"?"Codex":"Claude";
+const scToolSel=(id,v)=>`<select id="${id}"><option value="claude" ${v!=="codex"?"selected":""}>Claude</option><option value="codex" ${v==="codex"?"selected":""}>Codex</option></select>`;
 const scLabel=k=>{const [y,m,d]=k.split("-").map(Number);const w="일월화수목금토"[new Date(y,m-1,d).getDay()];return `${m}/${d}(${w})`;};
 
 async function showSchedule(){
@@ -32,18 +34,18 @@ function scTopRender(){
     <div class="muted">Fable은 5시간·주간 사용량을 기본 모델과 함께 쓰고, 그것을 다 쓴 뒤에 쓸 수 있는 별도 주간 몫이 있습니다. 한도가 100%인 날의 자동 작업은 기본 사용량을 다 쓰면 Fable로 이어 가고, 화면에서 직접 누른 작업은 날과 상관없이 한도에 걸리면 Fable로 이어 갑니다.</div>`;
   const st=d.pause?`<span class="badge warn">자동 작업 쉬는 중</span> <span class="muted">${esc(d.pause.reason)} ${when(d.pause.until)}까지</span>`
     :`<span class="badge ok">자동 작업 가능</span>`;
-  const html=`<div class="row" style="justify-content:space-between;margin:0"><strong>오늘 ${scLabel(d.today)} 한도: 5시간 ${L.five_hour}% · 주간 ${L.seven_day}%</strong>
+  const html=`<div class="row" style="justify-content:space-between;margin:0"><strong>오늘 ${scLabel(d.today)}: ${scTool(d.today_tool)}${d.today_tool==="codex"?"로 자동 작업 (Claude 한도는 보지 않음)":` · 한도 5시간 ${L.five_hour}% · 주간 ${L.seven_day}%`}</strong>
       <span class="muted">지금 사용량: 5시간 ${pct(u.five_hour.utilization)} · 주간 ${pct(u.seven_day.utilization)}${age!=null?` (${age<1?"방금":age<60?age+"분 전":Math.round(age/60)+"시간 전"} 기준)`:""}</span></div>
     <div class="row">${st}</div>
-    <div class="muted">자동 진행(자막 읽기·문장 정리)과 쇼츠 자동 후보 고르기는 그날의 Claude 사용량이 한도에 닿으면 쉬고, 사용량이 초기화되거나 한도가 더 높은 날이 되면 이어 갑니다. 0%로 정한 날은 자동 작업을 하지 않습니다. 화면에서 직접 누른 작업은 한도와 상관없이 합니다. 사용량은 마지막 Claude 호출 때의 값입니다(위의 "확인"으로 새로 읽습니다).</div>
-    <div class="row" style="margin-top:10px">기본 한도 <label>5시간 <input type="number" min="0" max="100" step="5" id="scDef5" value="${d.default.five_hour}" style="width:70px">%</label>
+    <div class="muted">자동 진행(자막 읽기·문장 정리)과 쇼츠 자동 후보 고르기는 그날의 Claude 사용량이 한도에 닿으면 쉬고, 사용량이 초기화되거나 한도가 더 높은 날이 되면 이어 갑니다. 0%로 정한 날은 자동 작업을 하지 않습니다. 화면에서 직접 누른 작업은 한도와 상관없이 프로젝트 설정의 AI 도구로 합니다. Codex로 정한 날은 자동 작업을 Codex로 하고 Claude 한도(5시간·주간 %)는 보지 않습니다(0%면 쉼). 사용량은 마지막 Claude 호출 때의 값입니다(위의 "확인"으로 새로 읽습니다).</div>
+    <div class="row" style="margin-top:10px">기본 도구 ${scToolSel("scDefTool",d.tool)} 기본 한도 <label>5시간 <input type="number" min="0" max="100" step="5" id="scDef5" value="${d.default.five_hour}" style="width:70px">%</label>
       <label>주간 <input type="number" min="0" max="100" step="5" id="scDef7" value="${d.default.seven_day}" style="width:70px">%</label>
       <button class="small" id="scDefSave">기본값 저장</button><span class="muted">달력에서 정하지 않은 날에 씁니다.</span></div>${fableRow}`;
   const a=document.activeElement;if(a&&["scDef5","scDef7","scFbLim"].includes(a.id))return;  // 입력 중이면 덮지 않는다
   $("#scTop").innerHTML=html;
   $("#scFbSave").onclick=async()=>{try{SC.d=await api("/api/schedule","POST",{fable:{on:$("#scFbOn").checked,limit:+$("#scFbLim").value}});scRender();}catch(e){alert(e.message);}};
   $("#scFbOn").onchange=()=>$("#scFbSave").click();
-  $("#scDefSave").onclick=async()=>{try{SC.d=await api("/api/schedule","POST",{default:{five_hour:+$("#scDef5").value,seven_day:+$("#scDef7").value}});scRender();}catch(e){alert(e.message);}};
+  $("#scDefSave").onclick=async()=>{try{SC.d=await api("/api/schedule","POST",{tool:$("#scDefTool").value,default:{five_hour:+$("#scDef5").value,seven_day:+$("#scDef7").value}});scRender();}catch(e){alert(e.message);}};
 }
 // 주간 사용량이 초기화되는 날(다음 초기화 시각부터 7일마다)
 function scResets(){
@@ -59,7 +61,7 @@ function scCalRender(){
     const k=scKey(y,m,day),v=d.days[k],lim=v||d.default,wd=(first+day-1)%7;
     const cls=["cd",wd===0?"sun":wd===6?"sat":"",k<d.today?"past":"",k===d.today?"today":"",v?"set":"",SC.sel.has(k)?"sel":""].join(" ");
     cells+=`<div class="${cls}" data-day="${k}"><div class="cdn">${day}${k===d.today?' <span class="badge ok">오늘</span>':""}</div>
-      <div class="cdv">5시간 ${lim.five_hour}%<br>주간 ${lim.seven_day}%</div>${resets[k]?`<div class="cdr" title="Claude 주간 사용량이 초기화되는 시각">↻ 주간 초기화 ${resets[k]}</div>`:""}</div>`;
+      <div class="cdv">${(v&&v.tool||d.tool)==="codex"?'<b style="color:#047857">Codex</b>':"Claude"}<br>5시간 ${lim.five_hour}%<br>주간 ${lim.seven_day}%</div>${resets[k]?`<div class="cdr" title="Claude 주간 사용량이 초기화되는 시각">↻ 주간 초기화 ${resets[k]}</div>`:""}</div>`;
   }
   $("#scCal").innerHTML=`<div class="row" style="justify-content:space-between;margin:0">
       <span class="row" style="margin:0"><button class="small" id="scPrev">◀</button><strong style="min-width:7em;text-align:center">${y}년 ${m+1}월</strong><button class="small" id="scNext">▶</button><button class="small" id="scToday">이번 달</button></span>
@@ -80,11 +82,11 @@ function scSelRender(){
   if(!days.length){$("#scSel").innerHTML=`<span class="muted">날짜를 누르면 고릅니다. Shift를 누른 채 누르면 그 사이의 날을 모두 고릅니다. 고른 날의 한도를 정하고 "적용"을 누르세요.</span>`;return;}
   const v=SC.d.days[days[0]]||SC.d.default;
   $("#scSel").innerHTML=`<div class="row" style="margin:0"><strong>고른 날 ${days.length}일</strong><span class="muted">${days.slice(0,8).map(scLabel).join(", ")}${days.length>8?" …":""}</span></div>
-    <div class="row"><label>5시간 <input type="number" min="0" max="100" step="5" id="scV5" value="${v.five_hour}" style="width:70px">%</label>
+    <div class="row">도구 ${scToolSel("scVTool",v.tool||SC.d.tool)} <label>5시간 <input type="number" min="0" max="100" step="5" id="scV5" value="${v.five_hour}" style="width:70px">%</label>
       <label>주간 <input type="number" min="0" max="100" step="5" id="scV7" value="${v.seven_day}" style="width:70px">%</label>
       <button class="primary small" id="scApply">적용</button><button class="small" id="scReset">기본값으로</button><button class="small" id="scClear">고르기 취소</button></div>`;
   const send=async days2=>{try{SC.d=await api("/api/schedule","POST",{days:days2});SC.sel.clear();scRender();}catch(e){alert(e.message);}};
-  $("#scApply").onclick=()=>send(Object.fromEntries(days.map(k=>[k,{five_hour:+$("#scV5").value,seven_day:+$("#scV7").value}])));
+  $("#scApply").onclick=()=>send(Object.fromEntries(days.map(k=>[k,{tool:$("#scVTool").value,five_hour:+$("#scV5").value,seven_day:+$("#scV7").value}])));
   $("#scReset").onclick=()=>send(Object.fromEntries(days.map(k=>[k,null])));
   $("#scClear").onclick=()=>{SC.sel.clear();scCalRender();scSelRender();};
 }

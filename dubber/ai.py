@@ -183,10 +183,14 @@ def run_tool(prompt, tool="claude", image=None, cwd=None, timeout=TIMEOUT):
         if image:
             cmd += ["-i", image]
         cmd += ["-"]
-        _run(cmd, prompt, cwd, env, timeout)
+        code, raw, err = _run(cmd, prompt, cwd, env, timeout)
         with open(last, encoding="utf-8", errors="replace") as f:
             out = f.read()
         os.unlink(last)
+        if code != 0 and not out.strip():
+            if _LIMIT_TEXT.search(raw + err):
+                raise UsageLimit()  # 풀리는 시각을 모르면 자동 진행이 30분 뒤에 다시 해 본다
+            raise RuntimeError(f"codex 실패: {(err or raw).strip()[-300:]}")
         return out
     fb = FALLBACK_MODEL
     model = fb if fb and time.time() < _main_out["until"] else None

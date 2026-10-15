@@ -547,7 +547,8 @@ def _sh_suggest(x):
     shorts.change(d, lambda st: st["suggest"].update(status="running", error=None))
     try:
         taken = [(i["start"], i["end"]) for i in shorts.load(d)["items"]]
-        got = shorts.suggest(p, SHORTS_N, p.data["settings"].get("tool", "claude"), taken)
+        tool = day_tool() if x["auto"] else p.data["settings"].get("tool", "claude")
+        got = shorts.suggest(p, SHORTS_N, tool, taken)
     except Exception as e:  # noqa  사용량 한도도 여기서 실패로 남긴다(화면에서 다시 누른다)
         traceback.print_exc()
         msg = str(e)
@@ -827,7 +828,9 @@ SCHEDULE_STATE = os.path.join(prj.ROOT, "_schedule.json")
 SCHEDULE_DEFAULT = {"five_hour": 50, "seven_day": 50}  # 자동 작업이 쓸 수 있는 Claude 사용량(%)
 USAGE_NAMES = {"five_hour": "5시간", "seven_day": "주간"}
 _sched = {"default": dict(SCHEDULE_DEFAULT), "days": {},  # days: {"2026-10-10": {"five_hour": 90, "seven_day": 90}}
-          "fable": {"on": True, "limit": 100}}  # 기본 사용량을 다 쓰면 Fable의 별도 몫을 limit%까지 쓴다
+          "fable": {"on": True, "limit": 100},
+          "tool": "claude"}  # 날을 따로 정하지 않았을 때 자동 작업이 쓰는 AI 도구(날마다 days[...]["tool"])
+TOOLS = ("claude", "codex")  # 기본 사용량을 다 쓰면 Fable의 별도 몫을 limit%까지 쓴다
 # 음성 줄을 몇 개 동시에 돌릴지(tts.THREADS와 곱해 코어 수쯤)
 VOICE_WORKERS = int(os.environ.get("DUBBER_VOICE_WORKERS", "4"))
 BATCH_MAX_FAILS = 3
@@ -890,6 +893,11 @@ def _batch_prep(path, st):
         pid = os.path.basename(p.dir)
     st["pid"] = pid
     for _ in range(6):
+        p, lock = get_project(pid)
+        if p.data["settings"].get("tool") != day_tool():  # 자동 진행은 그날 스케줄의 AI 도구로 한다
+            with lock:
+                p.data["settings"]["tool"] = day_tool()
+                p.save()
         j = _jobs.get(pid)
         if j and not j.done and j.kind in ("tts", "export"):
             # 음성이나 내보내기가 돌고 있으면(사람이 직접 시작한 것 등) 자막은 이미 다 읽은 것이다
@@ -1076,6 +1084,11 @@ def usage_limits(day=None):
     return {k: int(d.get(k, _sched["default"].get(k, v))) for k, v in SCHEDULE_DEFAULT.items()}
 
 
+def day_tool(day=None):
+    """그날 자동 작업이 쓰는 AI 도구(claude 또는 codex)."""
+    return (_sched["days"].get(day or _day()) or {}).get("tool") or _sched.get("tool") or "claude"
+
+
 def schedule_load():
     if os.path.exists(SCHEDULE_STATE):
         with open(SCHEDULE_STATE, encoding="utf-8") as f:
@@ -1097,6 +1110,8 @@ def schedule_set(body):
             _sched["fable"] = {"on": bool(f.get("on", _sched["fable"]["on"])),
                                "limit": pct(f.get("limit", _sched["fable"]["limit"]))}
             _fable_apply()
+        if body.get("tool") in TOOLS:
+            _sched["tool"] = body["tool"]
         if body.get("default"):
             _sched["default"] = {k: pct(body["default"].get(k, _sched["default"].get(k, v)))
                                  for k, v in SCHEDULE_DEFAULT.items()}
@@ -1107,6 +1122,9 @@ def schedule_set(body):
                 _sched["days"].pop(day, None)
             else:
                 _sched["days"][day] = {k: pct(v.get(k, usage_limits(day)[k])) for k in SCHEDULE_DEFAULT}
+                tool = v.get("tool") if v.get("tool") in TOOLS else day_tool(day)
+                if tool != (_sched.get("tool") or "claude"):
+                    _sched["days"][day]["tool"] = tool
         old = _day(time.time() - 90 * 86400)  # 석 달 지난 날은 지운다
         _sched["days"] = {d: v for d, v in sorted(_sched["days"].items()) if d >= old}
         tmp = SCHEDULE_STATE + ".tmp"
@@ -1122,6 +1140,7 @@ def schedule_view():
             "usage": {k: {"utilization": (wins.get(k) or {}).get("utilization"), "resetsAt": (wins.get(k) or {}).get("resetsAt")}
                       for k in list(SCHEDULE_DEFAULT) + [ai.FALLBACK_WINDOW]},
             "fable": _sched["fable"], "fable_now": time.time() < ai._main_out["until"],
+            "tool": _sched.get("tool") or "claude", "today_tool": day_tool(),
             "usage_t": u.get("t"), "pause": {"until": pause[0], "reason": pause[1]} if pause else None}
 
 
@@ -1137,6 +1156,8 @@ def _usage_pause():
                 break
             m = _next_midnight(m + 1)
         return m + 5, "스케줄에서 오늘은 자동 작업을 쉬도록 정해"
+    if day_tool() != "claude":
+        return None  # Codex로 하는 날은 Claude 사용량을 보지 않는다(Codex 한도에 걸리면 그때 기다린다)
     info = ai.load_usage().get("info") or {}
     wins = info.get("unifiedWindows") or {}
     fw = wins.get(ai.FALLBACK_WINDOW) or {}
