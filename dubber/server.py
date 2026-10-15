@@ -1217,6 +1217,7 @@ def _batch_lane():
                 _batch.update(wait_until=until, wait_reason=why)
             _batch.update(wait_until=None, wait_reason=None)
             continue
+        tool = day_tool()
         try:
             _batch_prep(path, st)
             st.update(stage="ready", msg="")  # 검수 대기: 음성은 화면에서 직접 "음성 만들기"를 눌러 시작한다
@@ -1224,10 +1225,12 @@ def _batch_lane():
         except ai.UsageLimit as e:
             # 풀리는 시각을 모르면 30분, 이미 지난 시각이면(오래된 정보) 잠깐 기다렸다가 다시 해 본다
             until = max(e.resets_at or time.time() + 1800, time.time() + LIMIT_MIN) + LIMIT_MARGIN
-            st.update(stage=want, msg=f"Claude 사용량 한도: {time.strftime('%m월 %d일 %H:%M', time.localtime(until))}에 이어서 합니다")
-            _batch.update(wait_until=until, wait_reason="Claude 사용량 한도에 걸려")
+            name = "Codex" if tool == "codex" else "Claude"
+            st.update(stage=want, msg=f"{name} 사용량 한도: {time.strftime('%m월 %d일 %H:%M', time.localtime(until))}에 이어서 합니다")
+            _batch.update(wait_until=until, wait_reason=f"{name} 사용량 한도에 걸려")
             _batch_save()
-            while _batch["on"] and time.time() < until:
+            # 기다리는 동안 스케줄에서 그날 도구가 바뀌면(날이 바뀌거나 직접 바꿈) 바로 새 도구로 이어 간다
+            while _batch["on"] and time.time() < until and day_tool() == tool:
                 time.sleep(max(0.5, min(30, until - time.time())))
             _batch.update(wait_until=None, wait_reason=None)
             continue
