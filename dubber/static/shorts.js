@@ -27,8 +27,8 @@ async function shList(){
       :x.error?`<span class="badge bad">후보 고르기 실패</span>`
       :x.count?`<span class="badge">${x.done}/${x.count}개 완성${x.uploaded?` · 유튜브 ${x.uploaded}`:""}</span>`
       :`<span class="badge">아직 없음</span>`;
-    return `<li data-id="${esc(x.dir)}" class="${x.dir===SH.pid?"sel":""}"><div>${esc(x.name)}</div><div>${st}${x.voice_done?"":' <span class="badge warn">음성이 덜 됨</span>'}</div></li>`;}).join("")
-    :`<li class="muted">음성까지 만든 영상이 없습니다.</li>`;
+    return `<li data-id="${esc(x.dir)}" class="${x.dir===SH.pid?"sel":""}"><div>${esc(x.name)}</div><div>${st}${x.voice_done?"":''}</div></li>`;}).join("")
+    :`<li class="muted">문장 정리까지 끝난 영상이 없습니다.</li>`;
   if($("#shList").innerHTML!==html){$("#shList").innerHTML=html;
     document.querySelectorAll("#shList li[data-id]").forEach(li=>li.onclick=()=>shOpen(li.dataset.id));}
 }
@@ -91,7 +91,7 @@ function shVid(it){
 }
 function shStat(it){
   const len=it.invalid?`<span class="badge bad">${esc(it.invalid)}</span>`
-    :`<span class="time" title="더빙 영상에서의 시각">${fmt(it.at)} – ${fmt(it.at+it.len)} · ${Math.round(it.len)}초</span>${it.len>60?' <span class="badge warn" title="쇼츠는 3분까지 올릴 수 있지만 짧을수록 좋습니다">60초 넘음</span>':""}`;
+    :`<span class="time" title="원본 영상에서의 시각">${fmt(it.at)} – ${fmt(it.at+it.len)} · ${Math.round(it.len)}초</span>${it.len>60?' <span class="badge warn" title="쇼츠는 3분까지 올릴 수 있지만 짧을수록 좋습니다">60초 넘음</span>':""}`;
   let s;
   if(it.status==="rendering")s=`<span class="badge ok">만드는 중</span><span class="shbar"><i style="width:${Math.round((it.progress||0)*100)}%"></i></span><span class="muted">${esc(it.msg||"")}</span>`;
   else if(it.status==="queued")s=`<span class="badge">만들기 대기${it.ahead?` (앞에 ${it.ahead}개)`:""}</span>`;
@@ -164,7 +164,7 @@ $("#shMain").addEventListener("click",async e=>{
   try{
     if(t.id==="shSuggest")return await shAct(SP("/suggest"),"POST",{});
     if(t.id==="shOpenProj")return openProject(SH.pid);
-    if(t.id==="shNew"){const v=prompt("더빙 영상에서 쇼츠를 시작할 시각을 적으세요 (예: 12:30)");if(!v)return;
+    if(t.id==="shNew"){const v=prompt("원본 영상에서 쇼츠를 시작할 시각을 적으세요 (예: 12:30)");if(!v)return;
       const at=v.trim().split(":").reduce((a,x)=>a*60+Number(x),0);if(!isFinite(at))return alert("시각을 알아보지 못했습니다.");
       return await shAct(SP("/new"),"POST",{at});}
     if(!it)return;

@@ -633,7 +633,7 @@ def shorts_after_export(p):
 
 
 def shorts_new(pid, at):
-    """직접 추가: 더빙 영상의 at초에서 시작하는 문장부터 40초쯤을 새 쇼츠로 만든다(만들기 전 상태)."""
+    """직접 추가: 원본 영상의 at초에서 시작하는 문장부터 40초쯤을 새 쇼츠로 만든다(만들기 전 상태)."""
     p, _ = get_project(pid)
     tl = shorts.timeline(p)
     k = next((k for k, s in enumerate(tl) if s["t"] is not None and s["t"] + s["d"] > at), None)
@@ -730,7 +730,7 @@ def shorts_view(pid, lite=False):
 
 
 def shorts_list():
-    """쇼츠를 만들 수 있는 프로젝트(음성을 다 만든 것)와 쇼츠가 있는 프로젝트."""
+    """쇼츠를 만들 수 있는 프로젝트(문장 목록이 있는 것)와 쇼츠가 있는 프로젝트."""
     with _glock:
         busy = {x["pid"] for x in _sh_q}
     out = []
@@ -738,7 +738,7 @@ def shorts_list():
         d = _pdir(it["dir"])
         has = os.path.exists(os.path.join(d, shorts.STATE))
         voice_done = bool(it["sentences"]) and it["tts"] == it["sentences"]
-        if not (has or voice_done or it["exported"]):
+        if not (has or it["sentences"]):  # 원본 음성을 쓰므로 문장만 있으면 만들 수 있다
             continue
         st = shorts.load(d)
         items, sug = st["items"], st["suggest"]

@@ -14,7 +14,6 @@ import numpy as np
 
 import ai
 import export
-import tts
 
 W, H = 1080, 1920
 FG_Y = 470                  # 가운데 영상의 위쪽 끝
@@ -25,7 +24,7 @@ CAP_SIZE, CAP_WIDTH = 90, 9.0  # 자막 글자 크기와 한 줄 폭(한글 글�
 TITLE_SIZE = 84
 YELLOW, WHITE, FLASH = "&H4DD8FF&", "&HFFFFFF&", "&H0050FF&"
 CREDIT = os.environ.get("DUBBER_SHORTS_CREDIT", "조셉 프린스 설교 · {제목}")
-STYLE_VERSION = 1           # 화면 모양을 바꾸면 올린다(이미 만든 쇼츠가 '고친 내용 반영 안 됨'으로 보인다)
+STYLE_VERSION = 3           # 화면 모양을 바꾸면 올린다(이미 만든 쇼츠가 '고친 내용 반영 안 됨'으로 보인다)
 STATE = "shorts.json"
 
 SUGGEST_PROMPT = """다음은 한국어로 더빙한 설교 한 편의 문장 목록입니다. n은 문장 번호, t는 시작 시각(초), d는 길이(초)입니다.
@@ -90,19 +89,14 @@ def find(st, sid):
 
 # ---------- 문장과 구간 ----------
 def timeline(p):
-    """문장을 시간 순으로: [{"id", "text", "t", "d", "tempo"}]. t는 더빙 결과 영상 기준 시작, d는 음성 길이.
-    음성이 없는 문장은 t가 None이다."""
-    pl = {x["sid"]: x for x in export.plan(p)}
-    out = []
-    for s in sorted(p.data["sentences"], key=lambda s: s["start"]):
-        x = pl.get(s["id"])
-        out.append({"id": s["id"], "text": s["text"], "t": x["start"] if x else None, "d": x["dur"] if x else None,
-                    "tempo": x["tempo"] if x else 1.0})
-    return out
+    """문장을 시간 순으로: [{"id", "text", "t", "d"}]. 쇼츠는 원본 음성을 쓰므로 t, d는 원본 영상에서 그 문장
+    자막이 보이는 시작과 길이다(더빙 음성과 상관없다)."""
+    return [{"id": s["id"], "text": s["text"], "t": s["start"], "d": max(0.3, s["end"] - s["start"])}
+            for s in sorted(p.data["sentences"], key=lambda s: s["start"])]
 
 
 def segment(tl, item):
-    """구간의 문장들과 그 다음 문장. 문장이 없어졌거나 음성이 없는 문장이 끼어 있으면 ValueError."""
+    """구간의 문장들과 그 다음 문장. 문장이 없어졌으면 ValueError."""
     ids = [s["id"] for s in tl]
     if item["start"] not in ids or item["end"] not in ids:
         raise ValueError("구간의 문장을 찾지 못했습니다(문장을 합치거나 지웠을 수 있습니다)")
@@ -110,14 +104,12 @@ def segment(tl, item):
     if a > b:
         raise ValueError("시작 문장이 끝 문장보다 뒤에 있습니다")
     seg = tl[a:b + 1]
-    if any(s["t"] is None for s in seg):
-        raise ValueError("음성이 없는 문장이 구간에 있습니다")
     return seg, (tl[b + 1] if b + 1 < len(tl) else None)
 
 
 def span(seg, nxt):
-    """구간의 시작과 끝(결과 영상 시간). 앞은 조금 띄우고, 뒤는 다음 문장 음성이 들리기 전까지 여운을 둔다."""
-    t0 = max(0.0, seg[0]["t"] - 0.25)
+    """구간의 시작과 끝(원본 영상 시간). 앞은 조금 띄우고, 뒤는 다음 문장이 시작하기 전까지 여운을 둔다."""
+    t0 = max(0.0, seg[0]["t"] - 0.3)
     end = seg[-1]["t"] + seg[-1]["d"]
     t1 = end + 0.6
     if nxt and nxt["t"] is not None:
@@ -136,15 +128,14 @@ def info(p, item, tl=None):
 
 
 def signature(p, item, tl=None):
-    """만든 영상과 지금 설정이 같은지 비교하는 값. 구간, 제목, 강조, 위치, 문장 글과 음성이 들어간다."""
+    """만든 영상과 지금 설정이 같은지 비교하는 값. 구간, 제목, 강조, 위치, 문장 글과 시간이 들어간다."""
     try:
         seg, _ = segment(tl or timeline(p), item)
     except ValueError:
         return None
-    tts_of = {s["id"]: s.get("tts") for s in p.data["sentences"]}
     emph = item.get("emph") or {}
     key = [STYLE_VERSION, item["start"], item["end"], item.get("title"), item.get("xpos", 0.5),
-           [(s["text"], tts_of.get(s["id"]), round(s["t"], 2), emph.get(str(s["id"]))) for s in seg]]
+           [(s["text"], round(s["t"], 2), round(s["d"], 2), emph.get(str(s["id"]))) for s in seg]]
     return hashlib.md5(json.dumps(key, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:12]
 
 
@@ -383,29 +374,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
     return "\n".join(out) + "\n"
 
 
-def build_audio(p, seg, t0, dur, out):
-    """구간의 더빙 음성. 더빙 결과 영상과 같은 자리·같은 빠르기로 놓는다."""
-    tts_of = {s["id"]: s.get("tts") for s in p.data["sentences"]}
-    buf = np.zeros(int(dur * tts.SR) + 1, dtype=np.float32)
-    tmp = out + ".tempo.wav"
-    for s in seg:
-        path = os.path.join(p.dir, "tts", tts_of[s["id"]])
-        x = export._tempo_clip(path, s["tempo"], tmp) if s["tempo"] > 1.001 else tts.read_wav(path)[0]
-        a = int((s["t"] - t0) * tts.SR)
-        b = min(a + len(x), len(buf))
-        if a < len(buf):
-            buf[a:b] += x[:b - a]
-    if os.path.exists(tmp):
-        os.remove(tmp)
-    peak = float(np.abs(buf).max()) or 1.0
-    if peak > 0.95:
-        buf *= 0.95 / peak
-    fade = int(0.3 * tts.SR)
-    if len(buf) > 2 * fade:
-        buf[-fade:] *= np.linspace(1, 0, fade, dtype=np.float32)
-    tts.write_wav(out, buf)
-
-
 def render(p, item, out, box, progress=None, cancel=None):
     """쇼츠 영상 하나를 만든다. 다 만들면 out에 두고 True, 중단하면 False."""
     tl = timeline(p)
@@ -416,17 +384,15 @@ def render(p, item, out, box, progress=None, cancel=None):
         raise ValueError("쇼츠는 3분을 넘을 수 없습니다")
     work = p.sub("work")
     tag = f"short_{item['id']}"
-    wav, ass = os.path.join(work, tag + ".wav"), os.path.join(work, tag + ".ass")
-    build_audio(p, seg, t0, dur, wav)
+    ass = os.path.join(work, tag + ".ass")
     fg = layout(p, box, item.get("xpos", 0.5))
     with open(ass, "w", encoding="utf-8") as f:
         f.write(build_ass(p, item, seg, t0, dur, cap_pos(fg)))
-    # 원본 시간으로 바꾸고, 구간 안의 잘라내기는 빼고 잇는다
-    o0, o1 = orig_time(p, t0), orig_time(p, t1)
-    inside = [(max(c["start"], o0) - o0, min(c["end"], o1) - o0) for c in p.data["cuts"] if c["end"] > o0 and c["start"] < o1]
-    sel = ("select='not(" + "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in inside) + ")',setpts=N/FRAME_RATE/TB,"
-           if inside else "")
-    fc = _graph(box, fg, os.path.basename(ass), sel, ",fps=30")
+    # 소리는 원본 음성(설교자 목소리)을 쇼츠 표준 크기(-14 LUFS)로 맞추고 끝을 0.4초 줄여 끝낸다
+    fade = f"afade=t=out:st={max(0.0, dur - 0.4):.3f}:d=0.4"
+    audio = (f"[0:a]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,{fade}[a]" if p.data["info"].get("has_audio", True)
+             else f"anullsrc=r=48000:cl=mono,atrim=0:{dur:.3f}[a]")
+    fc = _graph(box, fg, os.path.basename(ass), "", ",fps=30") + ";" + audio
     # 임시 파일 이름에 서버 프로세스 번호를 넣는다(꺼진 서버가 남긴 ffmpeg가 같은 파일에 쓰지 않게). 예전 조각은 지운다
     base = os.path.basename(out)[:-4]
     if os.path.isdir(os.path.dirname(out)):
@@ -436,8 +402,8 @@ def render(p, item, out, box, progress=None, cancel=None):
     os.makedirs(os.path.dirname(out), exist_ok=True)
     tmp = out[:-4] + f".{os.getpid()}.part.mp4"
     cmd = ["ffmpeg", "-v", "error", "-y", "-nostdin", "-progress", "pipe:1",
-           "-ss", f"{o0:.3f}", "-t", f"{o1 - o0:.3f}", "-i", p.data["video"], "-i", wav,
-           "-filter_complex", fc, "-map", "[v]", "-map", "1:a",
+           "-ss", f"{t0:.3f}", "-t", f"{dur:.3f}", "-i", p.data["video"],
+           "-filter_complex", fc, "-map", "[v]", "-map", "[a]",
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-threads", "4",
            "-c:a", "aac", "-b:a", "160k", "-t", f"{dur:.3f}", "-movflags", "+faststart", tmp]
     if os.name != "nt" and shutil.which("nice"):
@@ -455,9 +421,8 @@ def render(p, item, out, box, progress=None, cancel=None):
             break
     proc.wait()
     err = proc.stderr.read()
-    for f in (wav, ass):
-        if os.path.exists(f):
-            os.remove(f)
+    if os.path.exists(ass):
+        os.remove(ass)
     if cancel and cancel():
         if os.path.exists(tmp):
             os.remove(tmp)
@@ -502,7 +467,7 @@ def preview(p, item, box, t=None):
     with open(os.path.join(work, name), "w", encoding="utf-8") as f:
         f.write(build_ass(p, item, seg, t0, dur, cap_pos(fg)))
     try:
-        r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-ss", f"{orig_time(p, t0 + t):.3f}", "-i", p.data["video"],
+        r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-ss", f"{t0 + t:.3f}", "-i", p.data["video"],
                             "-filter_complex", _graph(box, fg, name, post=f",setpts=PTS+{t:.3f}/TB"), "-map", "[v]",
                             "-frames:v", "1", "-f", "image2", "-c:v", "mjpeg", "-q:v", "4", "pipe:1"],
                            cwd=work, capture_output=True)
@@ -525,18 +490,13 @@ if __name__ == "__main__":
             self.data = {"cuts": [{"start": 50.0, "end": 60.0}], "sentences": []}
     pp = P()
     assert orig_time(pp, 45) == 45 and orig_time(pp, 55) == 65 and orig_time(pp, 50) == 60
-    tl = [{"id": 1, "text": "가", "t": 0.0, "d": 10.0, "tempo": 1}, {"id": 2, "text": "나 다", "t": 10.0, "d": 20.0, "tempo": 1},
-          {"id": 3, "text": "라", "t": None, "d": None, "tempo": 1}, {"id": 4, "text": "마", "t": 40.0, "d": 25.0, "tempo": 1},
-          {"id": 5, "text": "바 사", "t": 65.2, "d": 30.0, "tempo": 1}]
+    tl = [{"id": 1, "text": "가", "t": 0.0, "d": 10.0}, {"id": 2, "text": "나 다", "t": 10.0, "d": 20.0},
+          {"id": 3, "text": "라", "t": 31.0, "d": 5.0}, {"id": 4, "text": "마", "t": 40.0, "d": 25.0},
+          {"id": 5, "text": "바 사", "t": 65.2, "d": 30.0}]
     seg, nxt = segment(tl, {"start": 1, "end": 2})
     assert [s["id"] for s in seg] == [1, 2] and nxt["id"] == 3
     assert span(seg, nxt) == (0.0, 30.6)
-    try:
-        segment(tl, {"start": 2, "end": 4})
-        raise AssertionError("음성 없는 문장")
-    except ValueError:
-        pass
-    assert span(*segment(tl, {"start": 4, "end": 4})) == (39.75, 65.15)  # 다음 문장 바로 앞에서 끊는다
+    assert span(*segment(tl, {"start": 4, "end": 4})) == (39.7, 65.15)  # 다음 문장 바로 앞에서 끊는다
     taken = []
     c = _clean(tl, {"start": 1, "end": 2, "title": ["하나", "둘"], "emph": {"2": ["나 다", "없는 말", "다"]}}, taken)
     assert c["emph"] == {"2": ["나 다"]} and c["title"] == ["하나", "둘"] and taken == [(1, 2)], c
