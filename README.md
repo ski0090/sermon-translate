@@ -115,6 +115,7 @@ rclone의 공용 client_id는 2026년 중 사용이 중단되므로 본인 clien
 - 도구마다 설치·버전, 로그인 상태, 인식된 플랜(Claude는 `claude auth status`, Codex는 로그인 정보의 ChatGPT 플랜), 지금 쓰는 모델(정해 둔 모델, 없으면 마지막 호출에서 본 모델)을 보여 줍니다.
 - **사용** 체크를 끄면 그 도구는 쓰지 않습니다. 스케줄에서 끈 도구로 정한 날은 켜진 도구로 대신하고, 모두 끄면 자동 작업이 쉽니다.
 - **모델**: Claude는 기본/Opus/Sonnet/Haiku/Fable, Codex는 `codex debug models`의 목록, Antigravity는 `agy models`의 목록에서 고르거나 이름을 적습니다. 비워 두면 도구의 기본 모델입니다.
+- **모델별 사용 가능 여부와 쓴 한도**: 모델 목록은 쓸 수 있는 모델을 먼저 보여 주고, 쓸 수 없는 모델(로그인 안 됨, 한도를 다 씀)은 고를 수 없습니다. 그 아래 표에 모델마다 쓴 한도를 보여 줍니다. Claude는 기본·Opus·Sonnet·Haiku가 5시간·주간 한도를 함께 쓰고 Fable은 그걸 다 쓰면 Fable 추가 몫으로 이어 씁니다. Codex는 계정 한도 하나를 모든 모델이 같이 쓰고, 새 모델이 나온 이전 모델에는 그 이름을 붙입니다. Antigravity는 `agy -p /usage`의 묶음 공용 한도(Gemini, Claude·GPT)와 모델 전용 한도를 붙입니다. `/usage`는 한 번에 30~40초 걸려 화면을 열면 뒤에서 읽고(5분마다), 다 읽으면 표가 채워집니다.
 - **로그인·로그아웃(설정 해제)**: Codex는 화면의 "로그인"이 보여 주는 주소와 코드로 아무 기기에서 로그인합니다. `codex login`은 시작할 때 지금 로그인을 지우므로, 화면은 먼저 백업해 두고 새 로그인을 끝내지 않으면(취소, 15분 지남) 되살립니다. Codex와 Antigravity는 화면에서 로그아웃할 수 있습니다. Claude 로그아웃은 이 PC의 Claude Code도 같이 로그아웃되어 화면에서는 하지 않습니다(사용만 끔).
 - **연결 시험**: 아주 짧게 한 번 불러 봅니다(토큰이 조금 듭니다).
 - **Antigravity**: 서버 PC 터미널에서 `curl -fsSL https://antigravity.google/cli/install.sh | bash`로 설치하고 `agy`를 한 번 실행해 Google OAuth로 로그인합니다. 헤드리스로 `agy -p ... --output-format json`을 부릅니다.

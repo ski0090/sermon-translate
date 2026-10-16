@@ -1,5 +1,6 @@
 // 설정 > AI 도구 화면: Claude, Codex, Antigravity마다 설치·로그인·플랜, 사용 켜기/끄기, 모델 고르기, 지금 쓰는 모델,
-// 로그인·로그아웃·연결 시험. Codex 로그인 중에만 2초마다 새로 읽고, 고르는 중인 모델 칸은 덮지 않는다
+// 로그인·로그아웃·연결 시험, 모델별 사용 가능 여부와 쓴 한도. Codex 로그인 중이나 한도를 읽는 중에만 2초마다 새로 읽고,
+// 고르는 중인 모델 칸은 덮지 않는다
 import {computed,onMounted,onUnmounted,ref,watch} from "./vendor/vue.esm-browser.prod.js";
 import {api,every,when,TOOLS} from "./lib.js";
 
@@ -8,13 +9,18 @@ const ToolCard={
   setup(props,{emit}){
     const sel=ref(props.x.model||""),text=ref(""),testing=ref(false);
     watch(()=>props.x.model,v=>{sel.value=v||"";});
-    // 목록에 없는 모델을 직접 골라 두었으면 그것도 보인다
+    // 서버가 쓸 수 있는 모델부터 정렬해 준다. 쓸 수 없는 모델은 고르지 못하게 하고, 목록에 없는 모델을 직접 골라 두었으면 그것도 보인다
+    const info=v=>(props.x.model_info||{})[v]||{};
     const opts=computed(()=>{const ms=props.x.models||[],m=props.x.model;
-      return ms.map(([v,l])=>({v,t:l+(v&&v!==l?" ("+v+")":"")})).concat(m&&!ms.some(([v])=>v===m)?[{v:m,t:m}]:[]);});
+      return ms.map(([v,l])=>{const i=info(v);return {v,t:l+(v&&v!==l?" ("+v+")":"")+(i.ok===false?" — 사용 불가":""),off:i.ok===false&&v!==m};})
+        .concat(m&&!ms.some(([v])=>v===m)?[{v:m,t:m,off:false}]:[]);});
+    const rows=computed(()=>(props.x.models||[]).map(([v,l])=>({v,l,ok:info(v).ok,why:info(v).why||info(v).note,limits:info(v).limits||[]})));
+    const count=computed(()=>({ok:rows.value.filter(r=>r.v&&r.ok===true).length,no:rows.value.filter(r=>r.v&&r.ok===false).length}));
     const lg=computed(()=>props.x.login);
     async function call(path,body,fresh){try{await api(path,"POST",body);}catch(e){alert(e.message);}emit("reload",fresh);}
     const t=()=>props.x.tool;
-    return {sel,text,testing,opts,lg,when,
+    return {sel,text,testing,opts,rows,count,lg,when,
+      pct:u=>Math.round(u*100)+"%",col:u=>u>=0.9?"var(--bad)":u>=0.7?"var(--warn)":"var(--text)",
       setEnabled:on=>call("/api/tools",{tool:t(),enabled:on}),
       saveModel(){const model=text.value.trim()||sel.value;text.value="";document.activeElement.blur();call("/api/tools",{tool:t(),model});},
       async test(){testing.value=true;await call(`/api/tools/${t()}/test`,{},true);testing.value=false;},
@@ -40,8 +46,20 @@ const ToolCard={
       </div>
       <div class="row">지금 쓰는 모델: <b>{{x.active_model||"도구 기본"}}</b><span v-if="x.model" class="badge">직접 고름</span>
         <span class="muted">· 마지막 호출: <template v-if="x.seen_model">{{x.seen_model}}{{x.seen_t?" ("+when(x.seen_t)+" 호출 기준)":""}}</template><template v-else>아직 호출 기록 없음</template></span></div>
-      <div class="row">모델 <select v-model="sel"><option v-for="o in opts" :key="o.v" :value="o.v">{{o.t}}</option></select>
+      <div class="row">모델 <select v-model="sel"><option v-for="o in opts" :key="o.v" :value="o.v" :disabled="o.off">{{o.t}}</option></select>
         <input v-if="x.tool!=='claude'" v-model="text" placeholder="목록에 없으면 이름 입력" style="width:200px"><button class="small" @click="saveModel">모델 저장</button></div>
+      <details v-if="x.model_info" class="mlist" :open="x.enabled">
+        <summary class="muted">모델별 사용 가능 여부와 쓴 한도 (사용 가능 {{count.ok}} · 사용 불가 {{count.no}}){{x.usage_busy?" · 한도를 읽는 중…":""}}</summary>
+        <table class="mtab">
+          <tr><th>상태</th><th>모델</th><th>쓴 한도</th><th></th></tr>
+          <tr v-for="o in rows" :key="o.v">
+            <td><span class="badge" :class="o.ok===true?'ok':o.ok===false?'bad':''">{{o.ok===true?"사용 가능":o.ok===false?"사용 불가":"확인 전"}}</span></td>
+            <td>{{o.l}}<span v-if="o.v===x.model" class="badge" style="margin-left:4px">고름</span></td>
+            <td><span v-for="u in o.limits" :key="u.label" class="mu" :title="u.resets?when(u.resets)+' 초기화':''" :style="{color:col(u.used)}">{{u.label}} {{pct(u.used)}}</span><span v-if="!o.limits.length" class="muted">-</span></td>
+            <td class="muted">{{o.why}}</td>
+          </tr>
+        </table>
+      </details>
       <div v-if="x.tool==='claude'" class="muted">사용량을 다 쓰면 Fable로 이어 하기: <b>{{x.fallback?"켜짐":"꺼짐"}}</b><span v-if="x.fallback_now" class="badge ok">지금 Fable로 작업 중</span> (설정 &gt; 스케줄에서 바꿈)</div>
       <div v-if="x.logged_in===false" class="muted">로그인: {{x.login_help}}</div>
       <div v-if="x.tool==='claude'" class="muted">Claude 로그아웃은 이 PC의 Claude Code도 같이 로그아웃되어 화면에서는 하지 않습니다. 쓰지 않으려면 "사용"을 끄세요.</div>
@@ -73,7 +91,8 @@ export default {
     let stop;
     onMounted(()=>{
       load(true);
-      stop=every(2000,async()=>{if(r.value&&r.value.tools.some(x=>x.login&&x.login.running))await load();});
+      // Codex 로그인 중이거나 Antigravity 한도를 뒤에서 읽는 중에만 자주 새로 읽는다
+      stop=every(2000,async()=>{if(r.value&&r.value.tools.some(x=>(x.login&&x.login.running)||x.usage_busy))await load();});
     });
     onUnmounted(()=>stop());
     return {r,err,load,TOOLS};

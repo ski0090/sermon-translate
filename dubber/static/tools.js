@@ -1,5 +1,6 @@
 /* ---------- 설정 > AI 도구 ----------
-   Claude, Codex, Antigravity마다 설치·로그인·플랜, 사용 켜기/끄기, 모델 고르기, 지금 쓰는 모델, 로그인·로그아웃·연결 시험.
+   Claude, Codex, Antigravity마다 설치·로그인·플랜, 사용 켜기/끄기, 모델 고르기, 지금 쓰는 모델, 로그인·로그아웃·연결 시험,
+   모델별 사용 가능 여부와 쓴 한도(서버가 쓸 수 있는 모델부터 정렬해 준다).
    index.html의 $, api, esc, S, showView, stopPoll, when을 쓴다. */
 const TL={d:null,poll:null};
 
@@ -11,8 +12,8 @@ async function showTools(){
   await tlLoad(true);
   clearInterval(TL.poll);
   TL.poll=setInterval(async()=>{if(S.view!=="toolsv"){clearInterval(TL.poll);TL.poll=null;return;}
-    // Codex 로그인 중에만 자주 새로 읽는다
-    if((TL.d||[]).some(x=>x.login&&x.login.running))try{await tlLoad();}catch(e){}},2000);
+    // Codex 로그인 중이거나 Antigravity 한도를 뒤에서 읽는 중에만 자주 새로 읽는다
+    if((TL.d||[]).some(x=>(x.login&&x.login.running)||x.usage_busy))try{await tlLoad();}catch(e){}},2000);
 }
 
 async function tlLoad(fresh){
@@ -25,6 +26,18 @@ async function tlLoad(fresh){
   const a=document.activeElement;if(a&&a.closest&&a.closest("#tlList")&&a.matches("input,select"))return;  // 고르는 중이면 덮지 않는다
   $("#tlList").innerHTML=r.tools.map(tlCard).join("");
 }
+// 모델별 사용 가능 여부와 그 모델이 쓰는 한도(쓴 비율). 꺼 둔 도구는 접어 둔다
+function tlModels(x,mi){
+  if(!x.model_info)return "";
+  const ms=x.models||[],n=k=>ms.filter(([v])=>v&&mi(v).ok===k).length;
+  const col=u=>u>=0.9?"var(--bad)":u>=0.7?"var(--warn)":"var(--text)";
+  const rows=ms.map(([v,l])=>{const i=mi(v),ok=i.ok;
+    const lim=(i.limits||[]).map(u=>`<span class="mu" title="${u.resets?when(u.resets)+" 초기화":""}" style="color:${col(u.used)}">${esc(u.label)} ${Math.round(u.used*100)}%</span>`).join("")||'<span class="muted">-</span>';
+    return `<tr><td><span class="badge ${ok===true?"ok":ok===false?"bad":""}">${ok===true?"사용 가능":ok===false?"사용 불가":"확인 전"}</span></td>
+      <td>${esc(l)}${v===x.model?' <span class="badge">고름</span>':""}</td><td>${lim}</td><td class="muted">${esc(i.why||i.note||"")}</td></tr>`;}).join("");
+  return `<details class="mlist" ${x.enabled?"open":""}><summary class="muted">모델별 사용 가능 여부와 쓴 한도 (사용 가능 ${n(true)} · 사용 불가 ${n(false)})${x.usage_busy?" · 한도를 읽는 중…":""}</summary>
+    <table class="mtab"><tr><th>상태</th><th>모델</th><th>쓴 한도</th><th></th></tr>${rows}</table></details>`;
+}
 function tlCard(x){
   const yes=(v,y,n,u)=>v===true?`<span class="badge ok">${y}</span>`:v===false?`<span class="badge bad">${n}</span>`:`<span class="badge">${u||"모름"}</span>`;
   const head=`<div class="row" style="justify-content:space-between;margin:0"><strong style="font-size:15px">${esc(x.name)}</strong>
@@ -36,7 +49,8 @@ function tlCard(x){
   const plan=x.plan?`<span class="badge ok">플랜 ${esc(x.plan)}</span>`:"";
   const acct=x.account?` <span class="muted">${esc(x.account)}</span>`:"";
   const seen=x.seen_model?`${esc(x.seen_model)}${x.seen_t?` <span class="muted">(${when(x.seen_t)} 호출 기준)</span>`:""}`:"<span class=muted>아직 호출 기록 없음</span>";
-  const opts=(x.models||[]).map(([v,l])=>`<option value="${esc(v)}" ${v===x.model?"selected":""}>${esc(l)}${v&&v!==l?` (${esc(v)})`:""}</option>`).join("")
+  const mi=v=>(x.model_info||{})[v]||{};
+  const opts=(x.models||[]).map(([v,l])=>`<option value="${esc(v)}" ${v===x.model?"selected":""} ${mi(v).ok===false&&v!==x.model?"disabled":""}>${esc(l)}${v&&v!==l?` (${esc(v)})`:""}${mi(v).ok===false?" — 사용 불가":""}</option>`).join("")
     +(x.model&&!(x.models||[]).some(([v])=>v===x.model)?`<option value="${esc(x.model)}" selected>${esc(x.model)}</option>`:"");
   const fb=x.tool==="claude"?`<div class="muted">사용량을 다 쓰면 Fable로 이어 하기: <b>${x.fallback?"켜짐":"꺼짐"}</b>${x.fallback_now?' <span class="badge ok">지금 Fable로 작업 중</span>':""} (설정 &gt; 스케줄에서 바꿈)</div>`:"";
   const lg=x.login;
@@ -53,6 +67,7 @@ function tlCard(x){
     <div class="row">지금 쓰는 모델: <b>${x.active_model?esc(x.active_model):"도구 기본"}</b>${x.model?' <span class="badge">직접 고름</span>':""} <span class="muted">· 마지막 호출: ${seen}</span></div>
     <div class="row">모델 <select data-model="${x.tool}">${opts}</select>
       ${x.tool!=="claude"?`<input data-mtext="${x.tool}" placeholder="목록에 없으면 이름 입력" style="width:200px" value="">`:""}<button class="small" data-msave="${x.tool}">모델 저장</button></div>
+    ${tlModels(x,mi)}
     ${fb}${x.logged_in===false?`<div class="muted">로그인: ${esc(x.login_help)}</div>`:""}${x.tool==="claude"?`<div class="muted">Claude 로그아웃은 이 PC의 Claude Code도 같이 로그아웃되어 화면에서는 하지 않습니다. 쓰지 않으려면 "사용"을 끄세요.</div>`:""}
     ${login}<div class="row">${btns} ${ts}</div></div>`;
 }
