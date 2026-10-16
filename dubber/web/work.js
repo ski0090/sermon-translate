@@ -3,6 +3,7 @@
 import {computed,inject,nextTick,onMounted,onUnmounted,provide,reactive,ref,watch} from "./vendor/vue.esm-browser.prod.js";
 import {api,store,fmt,jobMsg,openOld} from "./lib.js";
 import ScanPanel from "./work-scan.js";
+import ReviewPanel from "./work-review.js";
 
 const STEPS=[["scan","자막 읽기"],["review","정리와 검수"],["tts","음성"],["export","내보내기"]];
 const ORDER=["load","scan","review","tts","export"];
@@ -47,7 +48,7 @@ const SettingsModal={
 
 export default {
   props:["pid"],
-  components:{ScanPanel,OldPanel,SettingsModal},
+  components:{ScanPanel,ReviewPanel,OldPanel,SettingsModal},
   setup(props){
     const video=ref(null),audio=ref(null),canvas=ref(null);
     const W=reactive({pid:props.pid,d:null,plan:[],step:"scan",filter:"all",preview:false,cur:0,cursent:null,sel:null,err:null,exportFiles:null,settings:false,
@@ -95,7 +96,7 @@ export default {
     const steps=computed(()=>{const d=W.d;if(!d)return [];const furthest=ORDER.indexOf(d.step);
       return STEPS.map(([k,n],i)=>{const idx=i+1;
         return {k,n,idx,done:idx<=furthest,avail:idx<=Math.max(furthest,1)||(k==="review"&&d.sentences.length)||(k==="tts"&&d.sentences.length)||(k==="export"&&d.sentences.some(s=>s.tts))};});});
-    const panel=computed(()=>({scan:"ScanPanel"})[W.step]||"OldPanel");
+    const panel=computed(()=>({scan:"ScanPanel",review:"ReviewPanel"})[W.step]||"OldPanel");
 
     /* ----- 영상 ----- */
     function onMeta(){if(video.value.currentTime<0.1)video.value.currentTime=first;}
