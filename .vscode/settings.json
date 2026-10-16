@@ -1,5 +1,0 @@
-{
-  "rust-analyzer.linkedProjects": [
-    "./caption_extractor/rust/Cargo.toml"
-  ]
-}

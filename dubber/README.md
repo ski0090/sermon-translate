@@ -53,5 +53,3 @@ GPU 없는 개인 PC에서 사용료 없이 한국어 음성을 쉽게 만들 �
 | `static/index.html` | 화면(왼쪽 메뉴와 단계별 거르기, 프로젝트 목록, 프로젝트 작업) |
 | `static/shorts.js` | 쇼츠 화면 |
 | `static/schedule.js` | 스케줄 화면(날마다 자동 작업이 쓸 Claude 사용량, `projects/_schedule.json`) |
-
-`caption_extractor/`는 이전 구현(Flutter + Rust + PaddleOCR)이며 더 이상 쓰지 않습니다.

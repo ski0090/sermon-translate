@@ -5,7 +5,6 @@ Windows 또는 Ubuntu PC에서 혼자 쓰는 로컬 웹 프로그램이며 GPU�
 
 - 기획 문서: [reports/issue-0-1.md](reports/issue-0-1.md)
 - 코드와 모듈 설명: [dubber/README.md](dubber/README.md)
-- `caption_extractor/`는 이전 구현(Flutter + Rust + PaddleOCR)이며 더 이상 쓰지 않습니다.
 
 ## 준비물 (한 번만)
 
