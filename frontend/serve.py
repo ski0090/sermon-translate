@@ -29,7 +29,7 @@ GONE = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)  # 브라
 
 
 def quiet(path):
-    """몇 초마다 부르는 요청은 기록하지 않는다(서버 server.py의 기록 규칙과 같다)."""
+    """몇 초마다 부르는 요청은 기록하지 않는다(API 서버의 기록 규칙과 같다)."""
     return (("/api/p/" in path and "/job" in path) or "/api/drive/status" in path or "/api/library" in path
             or "/api/usage" in path)
 
