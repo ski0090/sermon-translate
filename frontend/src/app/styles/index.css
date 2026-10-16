@@ -1,0 +1,11 @@
+/* 화면(Vue)의 모양. 영역별 파일을 이 차례로 부른다(뒤에 오는 규칙이 이기므로 차례를 바꾸지 않는다) */
+@import "./base.css";
+@import "./layout.css";
+@import "./common.css";
+@import "./projects.css";
+@import "./shorts.css";
+@import "./sleep.css";
+@import "./work.css";
+@import "./sentences.css";
+@import "./usage-tools.css";
+@import "./schedule.css";

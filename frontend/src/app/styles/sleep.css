@@ -1,0 +1,17 @@
+/* 음성 영상 */
+.sleepv {
+  max-width: 980px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+.sleepv .plist li {
+  cursor: default;
+  flex-wrap: wrap;
+}
+.sleepv video {
+  width: 100%;
+  max-width: 640px;
+  margin-top: 8px;
+  border-radius: 8px;
+  background: #000;
+}

@@ -1,0 +1,64 @@
+/* 문장 목록(정리와 검수, 음성) */
+.sent {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+.sent.cur {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent2);
+}
+.sent .crops img {
+  width: 100%;
+  display: block;
+  border-radius: 3px;
+  margin-bottom: 3px;
+  cursor: pointer;
+}
+.sent .crops .cap {
+  position: relative;
+}
+.sent .crops .cap button {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  font-size: 11px;
+  padding: 0 6px;
+  display: none;
+}
+.sent .crops .cap:hover button {
+  display: block;
+}
+.sent textarea {
+  width: 100%;
+  min-height: 38px;
+  resize: vertical;
+}
+.sent .tools {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.diff mark {
+  background: #ffe08a;
+  padding: 0 1px;
+}
+.reading {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.reading input {
+  width: 100%;
+  font-size: 12px;
+}
+.files li {
+  margin: 4px 0;
+}

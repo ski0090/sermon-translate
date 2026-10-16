@@ -1,0 +1,143 @@
+/* 쇼츠 */
+.shorts {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+  align-items: start;
+}
+.shorts .side {
+  position: sticky;
+  top: calc(var(--hdr) + 16px);
+  max-height: calc(100vh - var(--hdr) - 32px);
+  overflow: auto;
+}
+.shorts .side .plist li {
+  display: block;
+}
+.shorts .side .plist li.sel {
+  background: var(--accent2);
+}
+.shcard {
+  display: flex;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.shvid {
+  flex: 0 0 234px;
+  height: 416px;
+  background: #1b1d22;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c9ccd2;
+  font-size: 12px;
+  text-align: center;
+}
+.shvid video {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  display: block;
+}
+.shwait {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+.shimg {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.shed {
+  flex: 1 1 340px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.shed .row {
+  margin: 0;
+}
+.shtitle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.shtitle input {
+  font-weight: 600;
+  min-width: 0;
+}
+.shtitle input + input {
+  color: #a16207;
+}
+.shtext {
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 10px;
+  line-height: 1.8;
+  max-height: 240px;
+  overflow: auto;
+}
+.shtext .ctx {
+  color: var(--muted);
+  font-size: 12px;
+  display: block;
+}
+.shtext .shs {
+  display: block;
+  border-radius: 4px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  cursor: pointer;
+}
+.shtext .shs:hover {
+  background: #e8edf8;
+}
+.shtext mark {
+  background: #ffe08a;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.shtext mark:hover {
+  background: #ffcf4d;
+  text-decoration: line-through;
+}
+.shrange button {
+  padding: 1px 8px;
+}
+.shbar {
+  flex: 1;
+  height: 6px;
+  background: #e5e9f2;
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 80px;
+}
+.shbar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+@media (max-width: 860px) {
+  .shorts {
+    grid-template-columns: 1fr;
+  }
+  .shorts .side {
+    position: static;
+    max-height: none;
+  }
+}

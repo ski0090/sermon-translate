@@ -1,0 +1,18 @@
+/* 프로젝트 목록과 구글 드라이브 고르기 창 */
+.start {
+  max-width: 760px;
+  margin: 40px auto;
+  padding: 0 16px;
+}
+.crumbs a {
+  cursor: pointer;
+}
+.dlist {
+  max-height: 50vh;
+  overflow: auto;
+  margin-bottom: 10px;
+}
+.dlist.busy li {
+  pointer-events: none;
+  opacity: 0.5;
+}
