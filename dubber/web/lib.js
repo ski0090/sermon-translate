@@ -1,4 +1,4 @@
-// 새 화면(Vue)이 함께 쓰는 것: API, 글 형식, 단계 계산, 공용 상태. 규칙은 지금 화면(static/index.html)과 같다
+// 화면(Vue)이 함께 쓰는 것: API, 글 형식, 단계 계산, 공용 상태
 import {reactive} from "./vendor/vue.esm-browser.prod.js";
 
 export async function api(path,method="GET",body){

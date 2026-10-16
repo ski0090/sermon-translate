@@ -17,11 +17,10 @@
 설치, 실행, 화면 사용 순서는 저장소 루트의 [README.md](../README.md)에 있습니다.
 프로젝트는 `dubber/projects/<영상 이름>/`에 저장되고, 결과 파일은 그 아래 `<영상 이름> 한국어 더빙/`에 만든 뒤 구글 드라이브의 원본 영상 폴더 아래 같은 이름의 폴더에 올립니다. 내보내기 중간 파일은 `work/`에 둡니다.
 
-## 새 화면(Vue) 시험판
+## 화면
 
-화면을 Vue로 옮기는 중입니다. `python webdev.py`(다른 PC에서도 보려면 `--lan`)를 실행하고 http://127.0.0.1:8766/ 을 엽니다.
-지금 서버(8765)는 그대로 두고 옆에서 띄우며, `/api` 요청을 지금 서버로 넘기므로 데이터와 작업은 같습니다(새 화면에서 누른 것도 실제로 반영됩니다).
-프로젝트 목록, 프로젝트 작업(자막 읽기, 정리와 검수, 음성, 내보내기), 쇼츠, 음성 영상, 사용량, 스케줄, AI 도구를 모두 옮겼습니다. 지금 화면은 `/old`에서 그대로 열 수 있습니다. Vue는 빌드 없이 `web/vendor/vue.esm-browser.prod.js`(3.5.13) 파일 하나로 씁니다.
+화면은 `web/`의 Vue 3입니다. 빌드 없이 `web/vendor/vue.esm-browser.prod.js`(3.5.13) 파일 하나를 쓰므로 Node나 빌드 단계가 필요 없습니다.
+서버(`server.py`)가 `/api`가 아닌 주소는 `web/`의 파일로 내주고, 화면은 `/api`의 JSON만 씁니다. 주소의 `#` 뒤가 화면입니다(`#/projects/<단계>`, `#/p/<프로젝트>`, `#/shorts/<상태>/<프로젝트>`, `#/sleep/<상태>`, `#/usage`, `#/schedule`, `#/tools`).
 
 ## 소요 시간 (GPU 없는 노트북 기준)
 
@@ -57,10 +56,9 @@ GPU 없는 개인 PC에서 사용료 없이 한국어 음성을 쉽게 만들 �
 | `server.py`의 자동 진행 | 영상 대기열을 자막 읽기 줄과 음성 줄로 나눠 한 편씩 끝까지 진행(`projects/_batch.json`) |
 | `project.py` | 프로젝트 저장소와 문장 편집, 잘라내기 구간 |
 | `server.py` | 로컬 웹 서버와 API (표준 라이브러리) |
-| `static/index.html` | 화면(왼쪽 메뉴와 단계별 거르기, 프로젝트 목록, 프로젝트 작업) |
-| `static/shorts.js` | 쇼츠 화면 |
-| `static/tools.js`, `static/usage.js` | AI 도구 설정 화면, 사용량 화면 |
-| `static/sleep.js` | 음성 영상(자면서 듣는 설교) 화면 |
-| `static/schedule.js` | 스케줄 화면(날마다 자동 작업이 쓸 Claude 사용량, `projects/_schedule.json`) |
-| `webdev.py` | 새 화면(Vue) 시험판을 8766 포트에서 띄우는 개발용 서버. `web/`은 직접 내주고 나머지는 지금 서버로 넘김 |
-| `web/` | 새 화면(Vue): `app.js`(메뉴, 사용량), `projects.js`(프로젝트 목록), `shorts.js`(쇼츠), `sleep.js`(음성 영상), `usage.js`(사용량), `schedule.js`(스케줄), `tools.js`(AI 도구), `work.js`(프로젝트 작업: 영상, 타임라인, 단계)와 `work-*.js`(단계 패널), `lib.js`(공용) |
+| `web/app.js` | 화면 뼈대: 왼쪽 메뉴(단계별 거르기와 숫자), 주소(`#`)에 따라 화면 바꾸기 |
+| `web/projects.js` | 프로젝트 목록(새 프로젝트, 구글 드라이브, 유튜브, 자동 진행) |
+| `web/work.js`, `web/work-*.js` | 프로젝트 작업: 영상, 타임라인과 잘라내기, 단계 버튼, 프로젝트 설정 / 단계 패널(자막 읽기, 정리와 검수, 음성, 내보내기) |
+| `web/shorts.js`, `web/sleep.js` | 쇼츠 화면, 음성 영상(자면서 듣는 설교) 화면 |
+| `web/usage.js`, `web/tools.js`, `web/schedule.js` | 사용량 화면, AI 도구 설정 화면, 스케줄 화면(날마다 자동 작업이 쓸 Claude 사용량, `projects/_schedule.json`) |
+| `web/lib.js`, `web/style.css` | 공용(API, 글 형식, 단계 계산, 상태), 모양 |

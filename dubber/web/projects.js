@@ -93,7 +93,7 @@ const YtMeta={
   </div></div>`,
 };
 
-// 구글 드라이브에서 영상 고르기. 다 받으면 그 프로젝트를 지금 화면에서 연다. 보던 폴더는 다시 열어도 그대로다
+// 구글 드라이브에서 영상 고르기. 다 받으면 그 프로젝트를 연다. 보던 폴더는 다시 열어도 그대로다
 const D=reactive({path:"",shared:false});
 const DriveModal={
   emits:["close"],

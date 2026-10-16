@@ -1,4 +1,4 @@
-// 새 화면(Vue): 왼쪽 메뉴와 화면 바꾸기. 주소의 # 뒤가 화면이다(#/projects/<단계>, #/shorts/<상태>/<프로젝트>, #/sleep/<상태>, #/usage, #/schedule, #/tools, #/p/<프로젝트>)
+// 화면(Vue): 왼쪽 메뉴와 화면 바꾸기. 주소의 # 뒤가 화면이다(#/projects/<단계>, #/shorts/<상태>/<프로젝트>, #/sleep/<상태>, #/usage, #/schedule, #/tools, #/p/<프로젝트>)
 import {createApp,computed,onMounted,onUnmounted,ref,watch} from "./vendor/vue.esm-browser.prod.js";
 import {api,store,every,STAGES,SH_STAGES,SV_STAGES,libState,projStage,shStage,svStage} from "./lib.js";
 import ProjectsView from "./projects.js";
@@ -82,7 +82,6 @@ const App={
         <button id="btnNav" class="small" title="메뉴" @click.stop="navOpen=!navOpen">☰</button>
         <h1>{{title}}</h1>
         <div id="hdrSlot" class="hdrslot"></div>
-        <span class="pilot">새 화면(Vue) 시험판 · <a href="/old">지금 화면으로</a></span>
       </header>
       <ScheduleView v-if="store.route.view==='schedule'"/>
       <ShortsView v-else-if="store.route.view==='shorts'"/>

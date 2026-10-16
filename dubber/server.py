@@ -1,4 +1,4 @@
-"""로컬 웹 서버: 브라우저 화면(static/index.html)과 JSON API. 표준 라이브러리만 쓴다.
+"""로컬 웹 서버: 브라우저 화면(web/, Vue)과 JSON API. 표준 라이브러리만 쓴다.
 실행: python server.py  ->  http://127.0.0.1:8765"""
 import json
 import mimetypes
@@ -26,7 +26,10 @@ import tts
 import youtube
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STATIC = os.path.join(HERE, "static")
+WEB = os.path.join(HERE, "web")  # 화면(Vue, 빌드 없음)
+# 윈도우 레지스트리가 .js를 text/plain으로 알려 주면 브라우저가 화면 모듈을 불러오지 않는다
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
 DRIVE_DIR = os.path.join(prj.ROOT, "_drive")  # 구글 드라이브에서 받은 영상
 DRIVE_JOB = "_drive"
 IMPORT_MARK = os.path.join(DRIVE_DIR, "_import.json")  # 받는 중인 영상(서버가 꺼졌다 켜지면 다시 받는다)
@@ -1883,10 +1886,13 @@ class Handler(BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         path = urllib.parse.unquote(u.path)
         q = dict(urllib.parse.parse_qsl(u.query))
-        if method == "GET" and path in ("/", "/index.html"):
-            return self._file(os.path.join(STATIC, "index.html"))
-        if method == "GET" and path.startswith("/static/"):
-            return self._file(os.path.join(STATIC, os.path.basename(path)), cache=False)
+        # 화면: /api가 아닌 GET은 web/ 안의 파일. vendor(Vue)는 바뀌지 않으므로 브라우저가 기억해 둔다
+        if method == "GET" and not path.startswith("/api/"):
+            rel = posixpath.normpath(path).lstrip("/") or "index.html"
+            full = os.path.join(WEB, *rel.split("/"))
+            if not full.startswith(WEB + os.sep):
+                return self._json({"error": "없는 주소"}, 404)
+            return self._file(full, cache=rel.startswith("vendor/"))
         if path == "/api/projects" and method == "GET":
             items = prj.list_projects()
             for it in items:
