@@ -1,12 +1,12 @@
 // 스케줄 화면: 날마다 자동 작업(자동 진행의 자막 읽기·문장 정리, 쇼츠 자동 후보)이 쓸 AI 도구와 Claude 사용량(5시간·주간 %)을
 // 달력에서 정한다. 정하지 않은 날은 기본값을 쓴다. 30초마다 새로 받아도 고치는 중인 입력 칸은 덮지 않는다
 import {computed,onMounted,onUnmounted,reactive,ref,watch} from "./vendor/vue.esm-browser.prod.js";
-import {api,every,when,ago} from "./lib.js";
+import {api,every,when,ago,TOOLS} from "./lib.js";
 
 const pad=n=>String(n).padStart(2,"0");
 const key=(y,m,d)=>`${y}-${pad(m+1)}-${pad(d)}`;
 const label=k=>{const [y,m,d]=k.split("-").map(Number);return `${m}/${d}(${"일월화수목금토"[new Date(y,m-1,d).getDay()]})`;};
-const toolName=t=>t==="codex"?"Codex":"Claude";
+const toolName=t=>TOOLS[t]||"없음(모든 도구가 꺼짐)";
 const pct=x=>x==null?"모름":Math.round(x*100)+"%";
 
 export default {
@@ -19,7 +19,7 @@ export default {
     const pick=reactive({tool:"claude",five_hour:50,seven_day:50});
     function take(v){
       d.value=v;
-      if(!def.dirty)Object.assign(def,{tool:v.tool,five_hour:v.default.five_hour,seven_day:v.default.seven_day});
+      if(!def.dirty)Object.assign(def,{tool:v.tool||"claude",five_hour:v.default.five_hour,seven_day:v.default.seven_day});
       if(!fb.dirty)Object.assign(fb,{on:v.fable.on,limit:v.fable.limit});
     }
     let stop;
@@ -38,7 +38,7 @@ export default {
       const {y,m}=cal,first=new Date(y,m,1).getDay(),n=new Date(y,m+1,0).getDate(),out=[];
       for(let i=0;i<first;i++)out.push({k:"blank"+i,blank:true});
       for(let day=1;day<=n;day++){const k=key(y,m,day),set=v.days[k],wd=(first+day-1)%7;
-        out.push({k,day,set:!!set,lim:set||v.default,tool:(set&&set.tool)||v.tool,wd,past:k<v.today,today:k===v.today,reset:resets.value[k]});}
+        out.push({k,day,set:!!set,lim:set||v.default,tool:(set&&set.tool)||v.tool||"claude",wd,past:k<v.today,today:k===v.today,reset:resets.value[k]});}
       return out;
     });
     function month(dm){if(dm===0){cal.y=now.getFullYear();cal.m=now.getMonth();return;}
@@ -54,11 +54,11 @@ export default {
     const days=computed(()=>[...sel].sort());
     // 고른 날의 입력 칸은 처음 고른 날의 값으로 채운다
     watch(()=>days.value[0],k=>{if(!k||!d.value)return;const v=d.value.days[k]||d.value.default;
-      Object.assign(pick,{tool:v.tool||d.value.tool,five_hour:v.five_hour,seven_day:v.seven_day});});
+      Object.assign(pick,{tool:v.tool||d.value.tool||"claude",five_hour:v.five_hour,seven_day:v.seven_day});});
     async function send(x){const v=await post({days:x});if(v){sel.clear();take(v);}}
     const apply=()=>send(Object.fromEntries(days.value.map(k=>[k,{tool:pick.tool,five_hour:pick.five_hour,seven_day:pick.seven_day}])));
     const reset=()=>send(Object.fromEntries(days.value.map(k=>[k,null])));
-    return {d,err,cal,sel,def,fb,pick,saveDef,saveFable,cells,month,clickDay,weekends,days,apply,reset,label,toolName,pct,when,ago};
+    return {d,err,cal,sel,def,fb,pick,saveDef,saveFable,cells,month,clickDay,weekends,days,apply,reset,label,toolName,pct,when,ago,TOOLS};
   },
   template:`<section class="sched">
     <div v-if="err&&!d" class="card"><div class="err">{{err}}</div></div>
@@ -66,12 +66,12 @@ export default {
     <template v-else>
     <div class="card">
       <div class="row" style="justify-content:space-between;margin:0">
-        <strong>오늘 {{label(d.today)}}: {{toolName(d.today_tool)}}{{d.today_tool==="codex"?"로 자동 작업 (Claude 한도는 보지 않음)":" · 한도 5시간 "+d.limits.five_hour+"% · 주간 "+d.limits.seven_day+"%"}}</strong>
+        <strong>오늘 {{label(d.today)}}: {{toolName(d.today_tool)}}{{d.today_tool&&d.today_tool!=="claude"?"로 자동 작업 (Claude 한도는 보지 않음)":" · 한도 5시간 "+d.limits.five_hour+"% · 주간 "+d.limits.seven_day+"%"}}</strong>
         <span class="muted">지금 사용량: 5시간 {{pct(d.usage.five_hour.utilization)}} · 주간 {{pct(d.usage.seven_day.utilization)}}{{d.usage_t?" ("+ago(d.usage_t)+" 기준)":""}}</span>
       </div>
       <div class="row"><template v-if="d.pause"><span class="badge warn">자동 작업 쉬는 중</span> <span class="muted">{{d.pause.reason}} {{when(d.pause.until)}}까지</span></template><span v-else class="badge ok">자동 작업 가능</span></div>
       <div class="muted">자동 진행(자막 읽기·문장 정리)과 쇼츠 자동 후보 고르기는 그날의 Claude 사용량이 한도에 닿으면 쉬고, 사용량이 초기화되거나 한도가 더 높은 날이 되면 이어 갑니다. 0%로 정한 날은 자동 작업을 하지 않습니다. 화면에서 직접 누른 작업은 한도와 상관없이 프로젝트 설정의 AI 도구로 합니다. Codex로 정한 날은 자동 작업을 Codex로 하고 Claude 한도(5시간·주간 %)는 보지 않습니다(0%면 쉼). 사용량은 마지막 Claude 호출 때의 값입니다(왼쪽 아래의 "확인"으로 새로 읽습니다).</div>
-      <div class="row" style="margin-top:10px">기본 도구 <select v-model="def.tool" @change="def.dirty=true"><option value="claude">Claude</option><option value="codex">Codex</option></select>
+      <div class="row" style="margin-top:10px">기본 도구 <select v-model="def.tool" @change="def.dirty=true"><option v-for="(n,k) in TOOLS" :key="k" :value="k">{{n}}</option></select>
         기본 한도 <label>5시간 <input type="number" min="0" max="100" step="5" v-model.number="def.five_hour" @input="def.dirty=true" style="width:70px">%</label>
         <label>주간 <input type="number" min="0" max="100" step="5" v-model.number="def.seven_day" @input="def.dirty=true" style="width:70px">%</label>
         <button class="small" @click="saveDef">기본값 저장</button><span class="muted">달력에서 정하지 않은 날에 씁니다.</span></div>
@@ -92,7 +92,7 @@ export default {
         <div v-for="c in cells" :key="c.k" class="cd" :class="c.blank?'blank':{sun:c.wd===0,sat:c.wd===6,past:c.past,today:c.today,set:c.set,sel:sel.has(c.k)}" @click="clickDay(c,$event)">
           <template v-if="!c.blank">
             <div class="cdn">{{c.day}} <span v-if="c.today" class="badge ok">오늘</span></div>
-            <div class="cdv"><b v-if="c.tool==='codex'" style="color:#047857">Codex</b><template v-else>Claude</template><br>5시간 {{c.lim.five_hour}}%<br>주간 {{c.lim.seven_day}}%</div>
+            <div class="cdv"><template v-if="c.tool==='claude'">Claude</template><b v-else style="color:#047857">{{TOOLS[c.tool]}}</b><br>5시간 {{c.lim.five_hour}}%<br>주간 {{c.lim.seven_day}}%</div>
             <div v-if="c.reset" class="cdr" title="Claude 주간 사용량이 초기화되는 시각">↻ 주간 초기화 {{c.reset}}</div>
           </template>
         </div>
@@ -102,7 +102,7 @@ export default {
       <span v-if="!days.length" class="muted">날짜를 누르면 고릅니다. Shift를 누른 채 누르면 그 사이의 날을 모두 고릅니다. 고른 날의 한도를 정하고 "적용"을 누르세요.</span>
       <template v-else>
         <div class="row" style="margin:0"><strong>고른 날 {{days.length}}일</strong><span class="muted">{{days.slice(0,8).map(label).join(", ")}}{{days.length>8?" …":""}}</span></div>
-        <div class="row">도구 <select v-model="pick.tool"><option value="claude">Claude</option><option value="codex">Codex</option></select>
+        <div class="row">도구 <select v-model="pick.tool"><option v-for="(n,k) in TOOLS" :key="k" :value="k">{{n}}</option></select>
           <label>5시간 <input type="number" min="0" max="100" step="5" v-model.number="pick.five_hour" style="width:70px">%</label>
           <label>주간 <input type="number" min="0" max="100" step="5" v-model.number="pick.seven_day" style="width:70px">%</label>
           <button class="primary small" @click="apply">적용</button><button class="small" @click="reset">기본값으로</button><button class="small" @click="sel.clear()">고르기 취소</button></div>

@@ -17,6 +17,8 @@ export const STAGES=[["todo","진행 전"],["review","정리와 검수"],["scan"
 export const SH_STAGES=[["todo","진행 전"],["making","만드는 중"],["done","완성"]];
 export const SV_STAGES=[["todo","아직 없음"],["making","만드는 중"],["done","완성"]];
 export const stageName=k=>(STAGES.find(x=>x[0]===k)||[])[1];
+// AI 도구 이름(스케줄, 프로젝트 설정, AI 도구, 사용량)
+export const TOOLS={claude:"Claude",codex:"Codex",agy:"Antigravity"};
 
 // 지금 돌고 있는 작업 이름(프로젝트 단계가 아니라)
 export const jobName=j=>j.queued?"음성 대기":({scan:"자막 읽기",read:"자막 읽기",tidy:"문장 정리",tts:"음성",export:"내보내기"})[j.kind]||"작업";

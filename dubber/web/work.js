@@ -1,7 +1,7 @@
 // 프로젝트 작업 화면: 왼쪽 영상, 오른쪽 단계 패널(자막 읽기 · 정리와 검수 · 음성 · 내보내기), 아래 타임라인(잘라내기 구간).
 // 단계 패널은 work-*.js에 있고, 화면 전체가 함께 쓰는 상태와 동작(W)을 provide로 넘긴다. 위쪽 줄의 단계 버튼은 header로 옮겨 그린다
 import {computed,inject,nextTick,onMounted,onUnmounted,provide,reactive,ref,watch} from "./vendor/vue.esm-browser.prod.js";
-import {api,store,fmt,jobMsg} from "./lib.js";
+import {api,store,fmt,jobMsg,TOOLS} from "./lib.js";
 import ScanPanel from "./work-scan.js";
 import ReviewPanel from "./work-review.js";
 import TtsPanel from "./work-tts.js";
@@ -23,12 +23,12 @@ const SettingsModal={
       try{await api(W.P("/settings"),"POST",body);}catch(e){return alert(e.message);}
       emit("close");await W.reload();
     }
-    return {f,save};
+    return {f,save,TOOLS};
   },
   template:`<div class="modal"><div class="card">
     <h2 style="margin-top:0">프로젝트 설정</h2>
     <label>AI 도구</label>
-    <select v-model="f.tool"><option value="claude">claude</option><option value="codex">codex</option></select>
+    <select v-model="f.tool"><option v-for="(n,k) in TOOLS" :key="k" :value="k">{{n}}</option></select>
     <label>한 묶음에 넣는 자막 수 (20~30)</label><input v-model="f.per_strip" type="number" min="5" max="40">
     <label>동시에 읽는 묶음 수</label><input v-model="f.workers" type="number" min="1" max="8">
     <label>자막 없음 기준 시간(초)</label><input v-model="f.min_gap" type="number" min="5" max="120">
