@@ -15,3 +15,7 @@ export const nav = reactive({
 export const openProject = (dir) => {
   location.hash = "#/p/" + encodeURIComponent(dir);
 };
+// 쇼츠 화면에서 영상 고르기(거르기는 그대로)
+export const openShorts = (filter, dir) => {
+  location.hash = "#/shorts/" + filter + "/" + encodeURIComponent(dir);
+};
