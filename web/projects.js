@@ -279,7 +279,7 @@ const DriveModal = {
     </ul>
     <div v-if="running" class="job"><span>{{s.job.msg||"내려받는 중"}}</span><div class="bar"><i :style="{width:Math.round(s.job.progress*100)+'%'}"></i></div><span class="time">{{Math.round(s.job.progress*100)}}%</span><button class="small" @click="cancel">중단</button></div>
     <div v-else-if="s.job&&s.job.error" class="err">{{s.job.error}}</div>
-    <div class="muted">고른 영상은 이 PC(dubber/projects/_drive)에 내려받은 뒤 프로젝트로 만듭니다. 이미 받은 영상은 다시 받지 않습니다.</div>
+    <div class="muted">고른 영상은 이 PC(projects/_drive)에 내려받은 뒤 프로젝트로 만듭니다. 이미 받은 영상은 다시 받지 않습니다.</div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button @click="$emit('close')">닫기</button></div>
   </div></div>`,
 };

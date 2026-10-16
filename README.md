@@ -4,7 +4,7 @@
 Windows 또는 Ubuntu PC에서 혼자 쓰는 로컬 웹 프로그램이며 GPU는 필요 없습니다.
 
 - 기획 문서: [reports/issue-0-1.md](reports/issue-0-1.md)
-- 코드와 모듈 설명: [dubber/README.md](dubber/README.md)
+- 코드와 모듈 설명: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## 준비물 (한 번만)
 
@@ -62,8 +62,8 @@ Ubuntu 26.04(Python 3.14)에서 확인했습니다. 저장소 폴더에서 실�
 저장소 폴더에서 실행하면 브라우저가 자동으로 열립니다.
 
 ```bash
-python dubber/server.py          # Windows
-.venv/bin/python dubber/server.py   # Ubuntu
+python server.py             # Windows
+.venv/bin/python server.py   # Ubuntu
 ```
 
 - 주소: http://127.0.0.1:8765
@@ -75,7 +75,7 @@ python dubber/server.py          # Windows
 
 ## 구글 드라이브 연결
 
-시작 화면의 "구글 드라이브에서 선택"으로 영상을 고릅니다. 고른 영상은 작업용으로 `dubber/projects/_drive/`에 내려받은 뒤 프로젝트로 만들며, 이미 받은 영상은 다시 받지 않습니다. "공유 문서함"을 체크하면 다른 사람이 공유한 파일도 볼 수 있습니다.
+시작 화면의 "구글 드라이브에서 선택"으로 영상을 고릅니다. 고른 영상은 작업용으로 `projects/_drive/`에 내려받은 뒤 프로젝트로 만들며, 이미 받은 영상은 다시 받지 않습니다. "공유 문서함"을 체크하면 다른 사람이 공유한 파일도 볼 수 있습니다.
 
 결과물은 원본 영상과 같은 드라이브 폴더 아래 `<영상 이름> 한국어 더빙` 폴더에 올립니다. 예를 들어 `2026 설교/주일 설교.mp4`의 결과물은 `2026 설교/주일 설교 한국어 더빙/`에 저장됩니다. 공유받은 폴더에 쓸 권한이 없으면 내 드라이브 맨 위에 같은 이름의 폴더를 만듭니다. 다시 내보내면 같은 이름의 파일을 덮어씁니다.
 
@@ -106,7 +106,7 @@ rclone의 공용 client_id는 2026년 중 사용이 중단되므로 본인 clien
 - 날짜를 눌러 고르고(Shift를 누르면 그 사이의 날을 모두, "이 달 주말 고르기"도 있음) 한도를 적은 뒤 "적용"을 누릅니다. "기본값으로"는 따로 정한 값을 지웁니다. 달력에는 Claude 주간 사용량이 초기화되는 날도 표시됩니다.
 - **Fable로 이어 하기**(기본으로 켜짐): Fable은 5시간·주간 사용량을 기본 모델과 함께 쓰지만, 그것을 다 쓴 뒤에 쓸 수 있는 별도 주간 몫(`seven_day_overage_included`)이 있습니다. Claude 호출이 사용량 한도에 걸리면 같은 요청을 Fable(`claude --model fable`)로 다시 하고, 기본 사용량이 풀릴 때까지는 바로 Fable로 부릅니다. 자동 작업은 그날 한도가 100%인 날에만 Fable로 이어 가며, Fable 추가 몫이 정한 한도(기본 100%)에 닿으면 쉽니다. 화면에서 직접 누른 작업은 날과 상관없이 Fable로 이어 갑니다. 그 몫을 얼마나 썼는지는 "사용량"의 "Fable 추가 몫"에서 봅니다.
 - **도구**: 날마다(또는 기본값으로) 자동 작업의 AI 도구를 Claude나 Codex로 고릅니다. Codex인 날은 자동 진행과 쇼츠 자동 후보를 `codex exec`로 하고 Claude 한도(%)는 보지 않습니다(0%면 쉼). Codex가 사용량 한도에 걸리면 30분쯤 기다렸다가 이어 갑니다. 화면에서 직접 누른 작업은 프로젝트 설정의 AI 도구를 씁니다. Codex CLI는 `~/.local/bin/codex`에 설치하고 `codex login`으로 ChatGPT 계정에 로그인해 둡니다.
-- 값은 `dubber/projects/_schedule.json`에 저장되고, 바꾸면 1분 안에 반영됩니다.
+- 값은 `projects/_schedule.json`에 저장되고, 바꾸면 1분 안에 반영됩니다.
 
 ## AI 도구와 사용량
 
@@ -167,7 +167,7 @@ rclone의 공용 client_id는 2026년 중 사용이 중단되므로 본인 clien
 
 **음성 영상(자면서 듣는 설교)**: 왼쪽 메뉴의 "음성 영상"에서 음성을 만든 영상마다 `<영상 이름> (자면서 듣는 설교).mp4`를 만듭니다. 원본 화면 대신 어두운 배경에 제목과 소리에 맞춰 움직이는 이퀄라이저만 보여 주고, 소리는 영상 싱크 없이 문장을 원래 속도로 이은 음성입니다. 한 편씩 대기열에서 만들고(1시간 설교에 약 11분) 드라이브 결과 폴더에 올리며, 화면에서 재생·내려받기·유튜브 올리기(비공개, 제목과 설명은 "설명·해시태그"에서)를 합니다. "내보내기가 끝나면 자동으로 만들기"가 켜져 있으면 내보내기 뒤에 대기열에 넣습니다.
 
-결과 파일은 구글 드라이브의 `<영상 이름> 한국어 더빙` 폴더에 저장됩니다. 서버 PC의 `dubber/projects/<영상 이름>/<영상 이름> 한국어 더빙/`에도 같은 파일이 남습니다.
+결과 파일은 구글 드라이브의 `<영상 이름> 한국어 더빙` 폴더에 저장됩니다. 서버 PC의 `projects/<영상 이름>/<영상 이름> 한국어 더빙/`에도 같은 파일이 남습니다.
 작업 내용은 단계마다 저장되므로 프로그램을 껐다 켜도 이어서 할 수 있습니다. 작업 중에 서버가 꺼지면 다시 켤 때 하던 단계(자막 읽기, 문장 정리, 음성 만들기, 내보내기, 드라이브에서 받기)를 그 단계의 처음부터 자동으로 다시 시작합니다. 이미 AI가 읽은 묶음과 만든 음성은 다시 만들지 않습니다. 같은 단계가 3번 연달아 끊기면 자동으로 다시 시작하지 않습니다.
 
 ## 설정
@@ -192,7 +192,7 @@ rclone의 공용 client_id는 2026년 중 사용이 중단되므로 본인 clien
 - **자막 영역에 성경 구절 상자가 들어옵니다.** 자막 읽기 화면에서 y 값을 키워 상자 아래로 내립니다.
 - **목록에 "이전 작업 있음"이 나옵니다.** 다른 PC에서 작업한 기록(`<영상 이름>/project.json`)이 드라이브에 있지만 결과 영상은 없는 경우입니다. 누르면 처음부터 새로 작업합니다.
 - **"구글 드라이브에 올리지 못했습니다"가 나옵니다.** 인터넷 연결과 `rclone lsd gdrive:`를 확인한 뒤 "내보내기"를 다시 누릅니다.
-- **Ubuntu에서 `ModuleNotFoundError: No module named 'numpy'`가 납니다.** 시스템 Python(`python3`)으로 실행한 경우입니다. `.venv/bin/python dubber/server.py`로 실행합니다.
+- **Ubuntu에서 `ModuleNotFoundError: No module named 'numpy'`가 납니다.** 시스템 Python(`python3`)으로 실행한 경우입니다. `.venv/bin/python server.py`로 실행합니다.
 - **"구글 드라이브에서 선택" 버튼이 눌리지 않습니다.** `rclone listremotes`에 `gdrive:`가 있는지 확인합니다. 이름이 다르면 `DUBBER_GDRIVE`를 정합니다.
 
 ## 명령줄로 단계 실행
@@ -200,9 +200,9 @@ rclone의 공용 client_id는 2026년 중 사용이 중단되므로 본인 clien
 화면 없이 단계별로 돌릴 수도 있습니다. Ubuntu에서는 `python` 대신 `.venv/bin/python`을 씁니다.
 
 ```bash
-python dubber/project.py new "<영상 경로>"
-python dubber/project.py scan "<프로젝트 폴더>"
-python dubber/project.py read "<프로젝트 폴더>"
-python dubber/project.py sentences "<프로젝트 폴더>"
-python dubber/project.py tidy "<프로젝트 폴더>"
+python project.py new "<영상 경로>"
+python project.py scan "<프로젝트 폴더>"
+python project.py read "<프로젝트 폴더>"
+python project.py sentences "<프로젝트 폴더>"
+python project.py tidy "<프로젝트 폴더>"
 ```
