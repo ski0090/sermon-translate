@@ -689,7 +689,7 @@ function renderExport(el){
   const total=d.info.duration-d.cuts.reduce((a,c)=>a+(c.end-c.start),0);
   el.innerHTML=`<h2>내보내기</h2>
   <div class="card">
-    <div class="row"><label><input type="checkbox" id="wVideo" checked> 한국어 음성이 입혀진 영상</label><label><input type="checkbox" id="wAudio" checked> 한국어 음성만 담은 오디오 파일</label></div>
+    <div class="row"><label><input type="checkbox" id="wVideo" checked> 한국어 음성이 입혀진 영상</label><label><input type="checkbox" id="wAudio" checked> 한국어 음성만 담은 오디오 파일</label><label><input type="checkbox" id="wSleep" checked> 자면서 듣는 설교 영상(이퀄라이저 화면)</label></div>
     <div class="row"><label><input type="checkbox" id="wSrt" checked> 한국어 자막 파일 (srt)</label><label><input type="checkbox" id="wTxt" checked> 자막 텍스트 파일</label></div>
     <div class="row"><span>원음 처리</span><label><input type="radio" name="oa" value="remove" ${d.settings.orig_audio!=="duck"?"checked":""}> 원음 제거</label><label><input type="radio" name="oa" value="duck" ${d.settings.orig_audio==="duck"?"checked":""}> 원음 낮춰서 깔기</label></div>
     <div class="muted">잘라내기 ${d.cuts.length}개 구간을 빼면 결과 영상 길이는 약 ${fmt(total)}입니다. 음성이 없는 문장 ${d.sentences.filter(s=>!s.tts).length}개는 빠집니다.<br>원음을 제거하면 오디오 파일은 영상 타이밍과 상관없이 문장을 원래 속도로 이어 붙입니다.</div>
@@ -697,7 +697,7 @@ function renderExport(el){
     <div class="row" style="margin-top:8px"><button class="primary" id="btnExport" ${running?"disabled":""}>내보내기</button></div>
   </div>
   ${files.length?`<div class="card" style="margin-top:12px"><strong>만들어진 파일</strong>${up?`<div class="muted">구글 드라이브 ${esc((up.shared?"공유 문서함/":"내 드라이브/")+up.folder)}에 올렸습니다.</div>`:d.drive&&!running?`<div class="err" style="margin:6px 0">구글 드라이브에 올리지 못했습니다. 내보내기를 다시 누르세요.</div>`:""}<ul class="files">${files.map(f=>`<li><a href="${P("/download?path="+encodeURIComponent(f))}" download>${esc(f.split(/[\\/]/).pop())}</a></li>`).join("")}</ul></div>`:""}`;
-  $("#btnExport").onclick=()=>{const want=[];if($("#wVideo").checked)want.push("video");if($("#wAudio").checked)want.push("audio");if($("#wSrt").checked)want.push("srt");if($("#wTxt").checked)want.push("txt");
+  $("#btnExport").onclick=()=>{const want=[];if($("#wVideo").checked)want.push("video");if($("#wAudio").checked)want.push("audio");if($("#wSleep").checked)want.push("sleep");if($("#wSrt").checked)want.push("srt");if($("#wTxt").checked)want.push("txt");
     const oa=document.querySelector("input[name=oa]:checked").value;api(P("/settings"),"POST",{orig_audio:oa});startJob("export",{want,orig_audio:oa});};
 }
 

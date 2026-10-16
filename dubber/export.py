@@ -4,6 +4,7 @@ import subprocess
 
 import numpy as np
 
+import sleepvid
 import tts
 
 MAX_TEMPO = 1.2
@@ -147,14 +148,15 @@ def out_dir(project):
 
 
 def run(project, want, orig_audio="remove", progress=None, cancel=None):
-    """want: {"video","audio","srt","txt"} 중 포함할 것. 결과 파일 경로 목록을 돌려준다."""
+    """want: {"video","audio","srt","txt","sleep"} 중 포함할 것. 결과 파일 경로 목록을 돌려준다.
+    sleep은 자면서 듣는 설교 영상(이퀄라이저 화면 + 싱크 없이 이은 음성)."""
     out_dir_ = out_dir(project)
     placements = plan(project)
     files = []
     if "srt" in want or "txt" in want:
         srt, txt = write_subtitles(project, placements, out_dir_)
         files += [p for p, k in ((srt, "srt"), (txt, "txt")) if k in want]
-    if not ({"video", "audio"} & set(want)):
+    if not ({"video", "audio", "sleep"} & set(want)):
         return files, placements
     # 원음을 깔면 영상과 맞아야 하므로 오디오도 영상 타이밍을 따른다. 아니면 오디오는 싱크 없이 자연스럽게 잇는다.
     natural = not (orig_audio == "duck" and project.data["info"].get("has_audio"))
@@ -217,6 +219,12 @@ def run(project, want, orig_audio="remove", progress=None, cancel=None):
         if p.returncode != 0 and not (cancel and cancel()):
             raise RuntimeError("ffmpeg 실패: " + err[-500:])
         files.append(out)
+    if "sleep" in want and not (cancel and cancel()):
+        src, _ = build_natural(project)
+        out = os.path.join(out_dir_, project.data["name"] + " (자면서 듣는 설교).mp4")
+        if sleepvid.render(src, out, project.data["name"], progress=lambda r: progress and progress("sleep", r),
+                           cancel=cancel):
+            files.append(out)
     return files, placements
 
 

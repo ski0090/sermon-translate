@@ -1523,18 +1523,19 @@ def run_pipeline_job(p, lock, kind, job, params):
             return {}
         # 음성이 끝나면 모든 결과물을 원음 제거로 바로 내보낸다(브라우저를 닫아도 이어진다)
         job.kind = "export"
-        params = {"want": ["video", "audio", "srt", "txt"], "orig_audio": "remove"}
+        params = {"want": ["video", "audio", "srt", "txt", "sleep"], "orig_audio": "remove"}
         _mark_step(p, lock, "export", params)
         return run_pipeline_job(p, lock, "export", job, params)
     if kind == "export":
         want = set(params.get("want") or ["video", "srt"])
-        names = {"track": "음성 트랙을 합치는 중", "video": "영상을 만드는 중", "audio": "오디오 파일을 만드는 중"}
+        names = {"track": "음성 트랙을 합치는 중", "video": "영상을 만드는 중", "audio": "오디오 파일을 만드는 중",
+                 "sleep": "자면서 듣는 설교 영상을 만드는 중"}
 
         drive = bool(p.data.get("drive"))
         scale = 0.8 if drive else 1.0  # 남은 0.2는 드라이브 올리기
 
         def prog(stage, r):
-            weights = {"track": (0.0, 0.15), "video": (0.15, 0.75), "audio": (0.9, 0.1)}
+            weights = {"track": (0.0, 0.1), "video": (0.1, 0.45), "audio": (0.55, 0.05), "sleep": (0.6, 0.4)}
             a, w = weights.get(stage, (0, 1))
             job.progress = scale * (a + w * r)
             job.msg = f"{names.get(stage, stage)} ({int(r * 100)}%)"
