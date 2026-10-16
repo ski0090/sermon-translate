@@ -826,7 +826,9 @@ $("#sSave").onclick=async()=>{const dict={};$("#sDict").value.split("\n").forEac
 </script>
 <script src="/static/shorts.js"></script>
 <script src="/static/schedule.js"></script>
-<script>if(location.hash.startsWith("#shorts"))showShorts(decodeURIComponent(location.hash.slice(8))||null);else if(location.hash==="#schedule")showSchedule();else showStart();
+<script>const openP=new URLSearchParams(location.search).get("p");  // 새 화면(webdev.py)에서 프로젝트를 누르면 ?p=로 온다
+if(openP){history.replaceState(null,"",location.pathname);openProject(openP);}
+else if(location.hash.startsWith("#shorts"))showShorts(decodeURIComponent(location.hash.slice(8))||null);else if(location.hash==="#schedule")showSchedule();else showStart();
 navPoll();setInterval(navPoll,30000);document.addEventListener("visibilitychange",navPoll);</script>
 </body>
 </html>
