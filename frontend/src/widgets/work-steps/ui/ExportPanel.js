@@ -1,11 +1,11 @@
 // 내보내기 단계: 만들 파일과 원음 처리를 고르고 내보낸 뒤, 만든 파일을 내려받는다. 다 만들면 구글 드라이브의 결과 폴더에 올라간다
-import { computed, inject, reactive, ref } from "vue";
-import { api } from "@/shared/api/index.js";
+import { computed, reactive, ref } from "vue";
 import { fmt } from "@/shared/lib/index.js";
+import { saveProjectSettings, useWork } from "@/entities/project/index.js";
 
 export default {
   setup() {
-    const W = inject("W"),
+    const W = useWork(),
       d = computed(() => W.d);
     const want = reactive({ video: true, audio: true, srt: true, txt: true });
     const oa = ref(W.d.settings.orig_audio === "duck" ? "duck" : "remove");
@@ -30,8 +30,9 @@ export default {
         parts.concat([d.value.name + " 한국어 더빙"]).join("/")
       );
     });
+    // 원음 처리는 다음에도 쓰도록 프로젝트 설정에 남긴다(실패해도 내보내기는 한다)
     function run() {
-      api(W.P("/settings"), "POST", { orig_audio: oa.value }).catch(() => {});
+      saveProjectSettings(W.pid, { orig_audio: oa.value }).catch(() => {});
       W.startJob("export", {
         want: Object.keys(want).filter((k) => want[k]),
         orig_audio: oa.value,

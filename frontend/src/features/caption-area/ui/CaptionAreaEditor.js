@@ -1,15 +1,8 @@
-// 자막 읽기 단계: 자막 읽기 시작, 읽은 결과 요약, 자막 영역(빨간 상자) 편집.
+// 자막 영역(빨간 상자) 편집 카드: 영상 장면 위에 상자를 보이고, 끌어서 옮기거나 크기를 바꾸거나 새로 그린다.
 // 상자 안을 끌면 옮기고, 가장자리나 모서리를 끌면 크기가 바뀌고, 상자 밖에서 끌면 새로 그린다. 놓는 순간 저장한다
-import {
-  computed,
-  inject,
-  onMounted,
-  onUnmounted,
-  reactive,
-  ref,
-  watch,
-} from "vue";
-import { api } from "@/shared/api/index.js";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { useWork } from "@/entities/project/index.js";
+import { saveRoi } from "../api/roi.js";
 
 const EDGE = 8;
 const CURSORS = {
@@ -26,11 +19,8 @@ const CURSORS = {
 
 export default {
   setup() {
-    const W = inject("W"),
+    const W = useWork(),
       d = computed(() => W.d);
-    const n = computed(() => d.value.captions.length),
-      empty = computed(() => d.value.captions.filter((c) => !c.text).length);
-    const running = computed(() => !!(d.value.job && d.value.job.running));
     const caps = W.d.captions,
       startT =
         W.cur || (caps[0] ? caps[Math.floor(caps.length / 2)].start : 300);
@@ -66,7 +56,7 @@ export default {
     };
     async function save(r) {
       try {
-        W.d.roi = await api(W.P("/roi"), "POST", r);
+        W.d.roi = await saveRoi(W.pid, r);
       } catch (e) {
         alert(e.message);
       }
@@ -74,7 +64,7 @@ export default {
     async function auto() {
       autoBusy.value = true;
       try {
-        W.d.roi = await api(W.P("/roi"), "POST", { auto: true });
+        W.d.roi = await saveRoi(W.pid, { auto: true });
       } catch (e) {
         alert(e.message);
       }
@@ -83,16 +73,6 @@ export default {
     const refresh = () => {
       src.value = W.P("/frame?t=" + W.videoTime() + "&_=" + Date.now());
     };
-    function scan() {
-      if (
-        n.value &&
-        !confirm(
-          "자막을 다시 읽으면 지금까지 정리한 문장이 초기화됩니다. 계속할까요?",
-        )
-      )
-        return;
-      W.startJob("scan", { auto_roi: !d.value.roi });
-    }
 
     /* ----- 상자 끌기 ----- */
     let drag = null;
@@ -193,11 +173,6 @@ export default {
       removeEventListener("resize", measure);
     });
     return {
-      W,
-      d,
-      n,
-      empty,
-      running,
       src,
       img,
       wrap,
@@ -209,23 +184,11 @@ export default {
       save,
       auto,
       refresh,
-      scan,
       hover,
       down,
     };
   },
-  template: `<div>
-    <h2>자막 읽기</h2>
-    <p class="muted">자막이 바뀌는 순간을 PC 안에서 찾은 뒤, 자막 그림을 {{d.settings.per_strip}}장씩 묶어 AI({{d.settings.tool}})에 읽힙니다. 영상 자체는 전송하지 않습니다. 영상을 재생할 필요는 없습니다.</p>
-    <div class="row" style="margin:0 0 12px">
-      <button class="primary" :disabled="running" @click="scan">{{n?"자막 다시 읽기":"자막 읽기 시작"}}</button>
-      <span class="muted">{{n?"자막 "+n+"장 읽음 · 글이 비어 있는 자막 "+empty+"장":"영상 전체를 훑고 AI 읽기까지 이어서 진행합니다."}}</span>
-    </div>
-    <template v-if="n">
-      <div class="row"><span class="stat">자막 없음 구간 {{d.ranges.gaps.length}}개</span><span class="stat">찬양 후보 구간 {{d.ranges.lyrics.length}}개</span><span class="stat">잘라내기 {{d.cuts.length}}개</span><span class="muted">아래 타임라인에서 확인하고 잘라낼 구간을 정하세요.</span></div>
-      <div class="row" style="margin-bottom:12px"><button class="primary" :disabled="!d.sentences.length" @click="W.go('review')">정리와 검수로</button></div>
-    </template>
-    <div class="card"><strong>자막 영역</strong> <span class="muted">읽기 전에 빨간 상자가 자막을 모두 덮고 성경 구절 상자는 피하는지 확인하세요.</span>
+  template: `<div class="card"><strong>자막 영역</strong> <span class="muted">읽기 전에 빨간 상자가 자막을 모두 덮고 성경 구절 상자는 피하는지 확인하세요.</span>
       <div ref="wrap" class="roiwrap" :style="{cursor}" @mousemove="hover" @mousedown.prevent="down">
         <img ref="img" class="roiimg" :src="src" alt="자막 영역 미리보기" draggable="false" @load="measure">
         <div class="roibox" :style="box"><i class="nw"></i><i class="ne"></i><i class="sw"></i><i class="se"></i><i class="n"></i><i class="s"></i><i class="w"></i><i class="e"></i></div>
@@ -239,6 +202,5 @@ export default {
         <button class="small" @click="save({...form})">적용</button><button class="small" :disabled="autoBusy" @click="auto">자동 감지</button>
         <button class="small" @click="refresh">현재 장면으로 미리보기</button>
       </div>
-    </div>
-  </div>`,
+    </div>`,
 };
