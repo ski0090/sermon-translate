@@ -26,8 +26,6 @@ input,select,textarea{font:inherit;padding:5px 8px;border:1px solid var(--line);
 #navList button.on{background:var(--accent2);color:var(--accent);font-weight:600}
 #navList .ncount{font-size:12px;color:var(--muted);font-weight:400;font-variant-numeric:tabular-nums}
 #navList button.on .ncount{color:var(--accent)}
-#usage{margin-top:auto;padding:10px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);line-height:1.7}
-#usage .urow{display:flex;justify-content:space-between;align-items:center;gap:8px}
 #main{margin-left:var(--navw);min-width:0}
 #btnNav{display:none}
 @media (max-width:960px){#menu{transform:translateX(-100%);transition:transform .2s}body.navopen #menu{transform:none;box-shadow:0 0 24px rgba(0,0,0,.2)}#main{margin-left:0}#btnNav{display:inline-block}}
@@ -158,7 +156,6 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
 <nav id="menu">
   <div class="brand">설교 영상 한국어 더빙</div>
   <div id="navList"></div>
-  <div id="usage"></div>
 </nav>
 
 <div id="main">
@@ -490,28 +487,8 @@ async function openLibItem(it){
 }
 $("#btnLibRefresh").onclick=()=>renderList(true);
 
-/* ---------- Claude 사용량 ---------- */
-// AI(claude)를 부를 때마다 받은 5시간·주간 한도 사용률을 남은 비율로 보여 준다
+// 날짜와 시각(한도 초기화, 대기 끝 시각 등)
 const when=t=>new Date(t*1000).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
-async function renderUsage(){
-  let u;try{u=await api("/api/usage");}catch(e){return;}
-  const i=u.info;let html;
-  const head=`<div class="urow"><span>Claude 남은 사용량</span><button class="small" id="btnUsage">확인</button></div>`;
-  if(!i)html=head+`<div>아직 모름</div>`;
-  else{
-    const w=i.unifiedWindows||{};
-    const part=(k,label)=>{if(!w[k])return "";const left=Math.max(0,Math.round((1-w[k].utilization)*100));
-      const c=left<20?"var(--bad)":left<40?"var(--warn)":"var(--text)";
-      return `<div class="urow" title="${when(w[k].resetsAt)}에 초기화"><span>${label}</span><b style="color:${c}">${left}%</b></div>`;};
-    const age=Math.round((Date.now()/1000-u.t)/60);
-    html=head+part("five_hour","5시간")+part("seven_day","주간")+part("seven_day_overage_included","Fable 추가")
-      +(i.status==="rejected"?`<div><b style="color:var(--bad)">한도 도달 (${when(i.resetsAt)}까지)</b></div>`:"")
-      +`<div title="AI를 부를 때마다 갱신됩니다">${age<1?"방금":age<60?age+"분 전":Math.round(age/60)+"시간 전"} 기준</div>`;
-  }
-  if($("#usage").innerHTML!==html){$("#usage").innerHTML=html;
-    $("#btnUsage").onclick=async()=>{$("#btnUsage").disabled=true;try{await api("/api/usage/check","POST",{});}catch(e){alert(e.message);}renderUsage();};}
-}
-renderUsage();setInterval(renderUsage,30000);
 
 /* ---------- 구글 드라이브 ---------- */
 const D={path:"",items:[],poll:null};

@@ -37,7 +37,7 @@ function scTopRender(){
   const html=`<div class="row" style="justify-content:space-between;margin:0"><strong>오늘 ${scLabel(d.today)}: ${scTool(d.today_tool)}${d.today_tool&&d.today_tool!=="claude"?"로 자동 작업 (Claude 한도는 보지 않음)":` · 한도 5시간 ${L.five_hour}% · 주간 ${L.seven_day}%`}</strong>
       <span class="muted">지금 사용량: 5시간 ${pct(u.five_hour.utilization)} · 주간 ${pct(u.seven_day.utilization)}${age!=null?` (${age<1?"방금":age<60?age+"분 전":Math.round(age/60)+"시간 전"} 기준)`:""}</span></div>
     <div class="row">${st}</div>
-    <div class="muted">자동 진행(자막 읽기·문장 정리)과 쇼츠 자동 후보 고르기는 그날의 Claude 사용량이 한도에 닿으면 쉬고, 사용량이 초기화되거나 한도가 더 높은 날이 되면 이어 갑니다. 0%로 정한 날은 자동 작업을 하지 않습니다. 화면에서 직접 누른 작업은 한도와 상관없이 프로젝트 설정의 AI 도구로 합니다. Codex로 정한 날은 자동 작업을 Codex로 하고 Claude 한도(5시간·주간 %)는 보지 않습니다(0%면 쉼). 사용량은 마지막 Claude 호출 때의 값입니다(위의 "확인"으로 새로 읽습니다).</div>
+    <div class="muted">자동 진행(자막 읽기·문장 정리)과 쇼츠 자동 후보 고르기는 그날의 Claude 사용량이 한도에 닿으면 쉬고, 사용량이 초기화되거나 한도가 더 높은 날이 되면 이어 갑니다. 0%로 정한 날은 자동 작업을 하지 않습니다. 화면에서 직접 누른 작업은 한도와 상관없이 프로젝트 설정의 AI 도구로 합니다. Codex로 정한 날은 자동 작업을 Codex로 하고 Claude 한도(5시간·주간 %)는 보지 않습니다(0%면 쉼). 사용량은 마지막 Claude 호출 때의 값입니다(사용량 화면의 "확인"으로 새로 읽습니다).</div>
     <div class="row" style="margin-top:10px">기본 도구 ${scToolSel("scDefTool",d.tool)} 기본 한도 <label>5시간 <input type="number" min="0" max="100" step="5" id="scDef5" value="${d.default.five_hour}" style="width:70px">%</label>
       <label>주간 <input type="number" min="0" max="100" step="5" id="scDef7" value="${d.default.seven_day}" style="width:70px">%</label>
       <button class="small" id="scDefSave">기본값 저장</button><span class="muted">달력에서 정하지 않은 날에 씁니다.</span></div>${fableRow}`;

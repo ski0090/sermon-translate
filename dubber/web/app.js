@@ -1,6 +1,6 @@
-// 새 화면(Vue): 왼쪽 메뉴, 사용량, 화면 바꾸기. 주소의 # 뒤가 화면이다(#/projects/<단계>, #/shorts/<상태>/<프로젝트>, #/sleep/<상태>, #/usage, #/schedule, #/tools, #/p/<프로젝트>)
+// 새 화면(Vue): 왼쪽 메뉴와 화면 바꾸기. 주소의 # 뒤가 화면이다(#/projects/<단계>, #/shorts/<상태>/<프로젝트>, #/sleep/<상태>, #/usage, #/schedule, #/tools, #/p/<프로젝트>)
 import {createApp,computed,onMounted,onUnmounted,ref,watch} from "./vendor/vue.esm-browser.prod.js";
-import {api,store,every,when,ago,STAGES,SH_STAGES,SV_STAGES,libState,projStage,shStage,svStage} from "./lib.js";
+import {api,store,every,STAGES,SH_STAGES,SV_STAGES,libState,projStage,shStage,svStage} from "./lib.js";
 import ProjectsView from "./projects.js";
 import ShortsView from "./shorts.js";
 import SleepView from "./sleep.js";
@@ -24,32 +24,7 @@ route();addEventListener("hashchange",route);
 
 const tally=ks=>ks.reduce((c,k)=>(c[k]=(c[k]||0)+1,c),{all:ks.length});
 
-const UsagePanel={
-  setup(){
-    const u=ref(null),busy=ref(false);
-    const load=async()=>{u.value=await api("/api/usage");};
-    let stop;onMounted(()=>{stop=every(30000,load);});onUnmounted(()=>stop());
-    // AI(claude)를 부를 때마다 받은 5시간·주간 한도 사용률을 남은 비율로 보여 준다
-    const parts=computed(()=>{const w=(u.value&&u.value.info&&u.value.info.unifiedWindows)||{};
-      return [["five_hour","5시간"],["seven_day","주간"],["seven_day_overage_included","Fable 추가"]].filter(([k])=>w[k]).map(([k,label])=>{
-        const left=Math.max(0,Math.round((1-w[k].utilization)*100));
-        return {label,left,color:left<20?"var(--bad)":left<40?"var(--warn)":"var(--text)",title:when(w[k].resetsAt)+"에 초기화"};});});
-    async function check(){busy.value=true;try{await api("/api/usage/check","POST",{});}catch(e){alert(e.message);}busy.value=false;await load();}
-    return {u,parts,busy,check,when,ago};
-  },
-  template:`<div id="usage">
-    <div class="urow"><span>Claude 남은 사용량</span><button class="small" :disabled="busy" @click="check">확인</button></div>
-    <div v-if="!u||!u.info">아직 모름</div>
-    <template v-else>
-      <div v-for="p in parts" :key="p.label" class="urow" :title="p.title"><span>{{p.label}}</span><b :style="{color:p.color}">{{p.left}}%</b></div>
-      <div v-if="u.info.status==='rejected'"><b style="color:var(--bad)">한도 도달 ({{when(u.info.resetsAt)}}까지)</b></div>
-      <div title="AI를 부를 때마다 갱신됩니다">{{ago(u.t)}} 기준</div>
-    </template>
-  </div>`,
-};
-
 const NavMenu={
-  components:{UsagePanel},
   setup(){
     const pc=computed(()=>store.lib?tally(store.lib.items.map(it=>libState(it).stage).concat(store.lib.others.map(projStage))):{});
     const sc=computed(()=>store.shorts?tally(store.shorts.map(shStage)):{});
@@ -83,7 +58,6 @@ const NavMenu={
         <a class="nitem" :class="{on:store.route.view==='tools'}" href="#/tools">AI 도구</a>
       </div>
     </div>
-    <UsagePanel/>
   </nav>`,
 };
 

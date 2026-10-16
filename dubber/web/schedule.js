@@ -70,7 +70,7 @@ export default {
         <span class="muted">지금 사용량: 5시간 {{pct(d.usage.five_hour.utilization)}} · 주간 {{pct(d.usage.seven_day.utilization)}}{{d.usage_t?" ("+ago(d.usage_t)+" 기준)":""}}</span>
       </div>
       <div class="row"><template v-if="d.pause"><span class="badge warn">자동 작업 쉬는 중</span> <span class="muted">{{d.pause.reason}} {{when(d.pause.until)}}까지</span></template><span v-else class="badge ok">자동 작업 가능</span></div>
-      <div class="muted">자동 진행(자막 읽기·문장 정리)과 쇼츠 자동 후보 고르기는 그날의 Claude 사용량이 한도에 닿으면 쉬고, 사용량이 초기화되거나 한도가 더 높은 날이 되면 이어 갑니다. 0%로 정한 날은 자동 작업을 하지 않습니다. 화면에서 직접 누른 작업은 한도와 상관없이 프로젝트 설정의 AI 도구로 합니다. Codex로 정한 날은 자동 작업을 Codex로 하고 Claude 한도(5시간·주간 %)는 보지 않습니다(0%면 쉼). 사용량은 마지막 Claude 호출 때의 값입니다(왼쪽 아래의 "확인"으로 새로 읽습니다).</div>
+      <div class="muted">자동 진행(자막 읽기·문장 정리)과 쇼츠 자동 후보 고르기는 그날의 Claude 사용량이 한도에 닿으면 쉬고, 사용량이 초기화되거나 한도가 더 높은 날이 되면 이어 갑니다. 0%로 정한 날은 자동 작업을 하지 않습니다. 화면에서 직접 누른 작업은 한도와 상관없이 프로젝트 설정의 AI 도구로 합니다. Codex로 정한 날은 자동 작업을 Codex로 하고 Claude 한도(5시간·주간 %)는 보지 않습니다(0%면 쉼). 사용량은 마지막 Claude 호출 때의 값입니다(사용량 화면의 "확인"으로 새로 읽습니다).</div>
       <div class="row" style="margin-top:10px">기본 도구 <select v-model="def.tool" @change="def.dirty=true"><option v-for="(n,k) in TOOLS" :key="k" :value="k">{{n}}</option></select>
         기본 한도 <label>5시간 <input type="number" min="0" max="100" step="5" v-model.number="def.five_hour" @input="def.dirty=true" style="width:70px">%</label>
         <label>주간 <input type="number" min="0" max="100" step="5" v-model.number="def.seven_day" @input="def.dirty=true" style="width:70px">%</label>
