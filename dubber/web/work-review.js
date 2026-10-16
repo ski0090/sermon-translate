@@ -22,7 +22,7 @@ function diffParts(a,b){
 }
 
 // 입력 칸: 고치는 중에는 화면을 새로 그려도 덮지 않고, 놓으면(change) save로 알린다
-const Edit={
+export const Edit={
   props:{value:null,area:Boolean},emits:["save"],
   setup(props,{emit}){
     const norm=x=>x==null?"":String(x);
