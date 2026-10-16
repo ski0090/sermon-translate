@@ -121,6 +121,10 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
 .shbar{flex:1;height:6px;background:#e5e9f2;border-radius:3px;overflow:hidden;min-width:80px}
 .shbar i{display:block;height:100%;background:var(--accent)}
 @media (max-width:860px){#shorts{grid-template-columns:1fr}#shorts .side{position:static;max-height:none}}
+/* 음성 영상 */
+#sleepv{display:none;max-width:980px;margin:24px auto;padding:0 16px}
+#svList li{cursor:default;flex-wrap:wrap}
+#svList video{width:100%;max-width:640px;margin-top:8px;border-radius:8px;background:#000}
 /* 스케줄 */
 #sched{display:none;max-width:980px;margin:24px auto;padding:0 16px}
 .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:10px}
@@ -204,6 +208,11 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
   <div id="shMain"><div class="card muted">왼쪽에서 영상을 고르세요.</div></div>
 </section>
 
+<section id="sleepv">
+  <div class="card" id="svTop"></div>
+  <div class="card" style="margin-top:16px"><ul class="plist" id="svList"></ul></div>
+</section>
+
 <section id="sched">
   <div class="card" id="scTop"></div>
   <div class="card" style="margin-top:16px" id="scCal"></div>
@@ -242,6 +251,10 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
     <input id="ymSTitle" style="width:100%">
     <label>쇼츠 설명 ({링크}는 유튜브에 올린 전체 영상 주소. 전체 영상이 아직 없으면 그 줄은 빠집니다. 해시태그는 #Shorts와 위의 해시태그가 붙습니다)</label>
     <textarea id="ymSDesc" rows="3" style="width:100%"></textarea>
+    <label>음성 영상 제목 ({이름}은 영상 이름)</label>
+    <input id="ymLTitle" style="width:100%">
+    <label>음성 영상 설명 ({링크}는 유튜브에 올린 더빙 영상 주소. 없으면 그 줄은 빠집니다)</label>
+    <textarea id="ymLDesc" rows="3" style="width:100%"></textarea>
     <div class="muted" style="margin-top:6px">새로 올리는 영상에만 적용됩니다. 이미 유튜브에 있던 영상의 설명은 바꾸지 않습니다.</div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button id="ymCancel">닫기</button><button class="primary" id="ymSave">저장</button></div>
   </div>
@@ -265,7 +278,7 @@ const $=s=>document.querySelector(s);
 const STEPS=[["load","영상 불러오기"],["scan","자막 읽기"],["review","정리와 검수"],["tts","음성"],["export","내보내기"]];
 // 프로젝트 목록을 거르는 단계(projStage), 쇼츠 목록을 거르는 상태(shorts.js의 shStage)
 const STAGES=[["todo","진행 전"],["review","정리와 검수"],["scan","자막 읽기"],["tts","음성"],["export","내보내기"]];
-const NAV=[["projects","프로젝트 목록",STAGES],["shorts","쇼츠",[["todo","진행 전"],["making","만드는 중"],["done","완성"]]],["settings","설정",[["schedule","스케줄"]]]];
+const NAV=[["projects","프로젝트 목록",STAGES],["shorts","쇼츠",[["todo","진행 전"],["making","만드는 중"],["done","완성"]]],["sleep","음성 영상",[["todo","아직 없음"],["making","만드는 중"],["done","완성"]]],["settings","설정",[["schedule","스케줄"]]]];
 const navName=(g,f)=>(NAV.find(x=>x[0]===g)[2].find(x=>x[0]===f)||[])[1];
 const stageName=k=>navName("projects",k);
 // 이 브라우저에 기억한 거르기(없거나 모르는 값이면 전체)
@@ -288,12 +301,13 @@ function renderNav(){
   document.querySelectorAll("#menu [data-nav]").forEach(b=>b.onclick=()=>{const [g,f]=b.dataset.nav.split(":");document.body.classList.remove("navopen");
     if(g==="projects"){S.listFilter=f;navSave();showStart();}
     else if(g==="shorts"){SH.filter=f;navSave();if(S.view==="shorts"){navMark();shList();}else showShorts();}
+    else if(g==="sleep"){SV.filter=f;if(S.view==="sleepv"){navMark();svList();}else showSleep();}
     else showSchedule();});
 }
 function navSave(){try{localStorage.setItem("dubber.nav",JSON.stringify({projects:S.listFilter,shorts:SH.filter}));}catch(e){}}
 // 지금 화면의 메뉴를 표시한다. 프로젝트를 열었으면 들어온 목록의 거르기를 표시한다
 function navMark(){
-  const cur=S.view==="shorts"?"shorts:"+SH.filter:S.view==="sched"?"settings:schedule":"projects:"+S.listFilter;
+  const cur=S.view==="shorts"?"shorts:"+SH.filter:S.view==="sleepv"?"sleep:"+SV.filter:S.view==="sched"?"settings:schedule":"projects:"+S.listFilter;
   document.querySelectorAll("#menu [data-nav]").forEach(b=>b.classList.toggle("on",b.dataset.nav===cur));
 }
 // 영상마다의 단계(stages)를 세어 메뉴의 숫자로 쓴다
@@ -315,9 +329,9 @@ document.addEventListener("click",e=>{if(document.body.classList.contains("navop
 // 화면 전환: start(프로젝트 목록), work(프로젝트), shorts(쇼츠), sched(스케줄)
 function showView(v){
   S.view=v;$("#start").style.display=v==="start"?"block":"none";$("#work").style.display=v==="work"?"grid":"none";
-  $("#shorts").style.display=v==="shorts"?"grid":"none";$("#sched").style.display=v==="sched"?"block":"none";
+  $("#shorts").style.display=v==="shorts"?"grid":"none";$("#sched").style.display=v==="sched"?"block":"none";$("#sleepv").style.display=v==="sleepv"?"block":"none";
   $("#btnSettings").style.display=v==="work"?"":"none";navMark();
-  if(!["shorts","sched"].includes(v)&&location.hash)history.replaceState(null,"",location.pathname);
+  if(!["shorts","sched","sleepv"].includes(v)&&location.hash)history.replaceState(null,"",location.pathname);
 }
 async function showStart(){
   stopPoll();S.pid=null;S.d=null;
@@ -423,10 +437,10 @@ async function renderYt(){
 // 미리 보기는 서버의 yt_meta와 같은 규칙(해시태그를 설명 끝에 붙인다)
 function ytPreview(){const tags=$("#ymTags").value.split(/[\s,]+/).map(t=>t.replace(/^#+/,"")).filter(Boolean);
   $("#ymPrev").textContent=$("#ymDesc").value.split("{이름}").join("218 선생이 아닌 구세주 예수").trim()+(tags.length?"\n\n"+tags.map(t=>"#"+t).join(" "):"");}
-async function openYtMeta(){const m=await api("/api/youtube/settings");$("#ymDesc").value=m.description;$("#ymTags").value=m.hashtags;$("#ymSTitle").value=m.shorts_title;$("#ymSDesc").value=m.shorts_description;ytPreview();$("#ytMeta").style.display="flex";}
+async function openYtMeta(){const m=await api("/api/youtube/settings");$("#ymDesc").value=m.description;$("#ymTags").value=m.hashtags;$("#ymLTitle").value=m.sleep_title;$("#ymLDesc").value=m.sleep_description;$("#ymSTitle").value=m.shorts_title;$("#ymSDesc").value=m.shorts_description;ytPreview();$("#ytMeta").style.display="flex";}
 $("#ymDesc").oninput=ytPreview;$("#ymTags").oninput=ytPreview;
 $("#ymCancel").onclick=()=>$("#ytMeta").style.display="none";
-$("#ymSave").onclick=async()=>{await api("/api/youtube/settings","POST",{description:$("#ymDesc").value,hashtags:$("#ymTags").value,shorts_title:$("#ymSTitle").value,shorts_description:$("#ymSDesc").value});$("#ytMeta").style.display="none";};
+$("#ymSave").onclick=async()=>{await api("/api/youtube/settings","POST",{description:$("#ymDesc").value,hashtags:$("#ymTags").value,sleep_title:$("#ymLTitle").value,sleep_description:$("#ymLDesc").value,shorts_title:$("#ymSTitle").value,shorts_description:$("#ymSDesc").value});$("#ytMeta").style.display="none";};
 /* ---------- 자동 진행 ---------- */
 const VOICES=["M1","M2","M3","M4","M5","F1","F2","F3","F4","F5"];
 async function renderBatch(){
@@ -759,7 +773,7 @@ function renderExport(el){
   const total=d.info.duration-d.cuts.reduce((a,c)=>a+(c.end-c.start),0);
   el.innerHTML=`<h2>내보내기</h2>
   <div class="card">
-    <div class="row"><label><input type="checkbox" id="wVideo" checked> 한국어 음성이 입혀진 영상</label><label><input type="checkbox" id="wAudio" checked> 한국어 음성만 담은 오디오 파일</label><label><input type="checkbox" id="wSleep" checked> 자면서 듣는 설교 영상(이퀄라이저 화면)</label></div>
+    <div class="row"><label><input type="checkbox" id="wVideo" checked> 한국어 음성이 입혀진 영상</label><label><input type="checkbox" id="wAudio" checked> 한국어 음성만 담은 오디오 파일</label></div>
     <div class="row"><label><input type="checkbox" id="wSrt" checked> 한국어 자막 파일 (srt)</label><label><input type="checkbox" id="wTxt" checked> 자막 텍스트 파일</label></div>
     <div class="row"><span>원음 처리</span><label><input type="radio" name="oa" value="remove" ${d.settings.orig_audio!=="duck"?"checked":""}> 원음 제거</label><label><input type="radio" name="oa" value="duck" ${d.settings.orig_audio==="duck"?"checked":""}> 원음 낮춰서 깔기</label></div>
     <div class="muted">잘라내기 ${d.cuts.length}개 구간을 빼면 결과 영상 길이는 약 ${fmt(total)}입니다. 음성이 없는 문장 ${d.sentences.filter(s=>!s.tts).length}개는 빠집니다.<br>원음을 제거하면 오디오 파일은 영상 타이밍과 상관없이 문장을 원래 속도로 이어 붙입니다.</div>
@@ -767,7 +781,7 @@ function renderExport(el){
     <div class="row" style="margin-top:8px"><button class="primary" id="btnExport" ${running?"disabled":""}>내보내기</button></div>
   </div>
   ${files.length?`<div class="card" style="margin-top:12px"><strong>만들어진 파일</strong>${up?`<div class="muted">구글 드라이브 ${esc((up.shared?"공유 문서함/":"내 드라이브/")+up.folder)}에 올렸습니다.</div>`:d.drive&&!running?`<div class="err" style="margin:6px 0">구글 드라이브에 올리지 못했습니다. 내보내기를 다시 누르세요.</div>`:""}<ul class="files">${files.map(f=>`<li><a href="${P("/download?path="+encodeURIComponent(f))}" download>${esc(f.split(/[\\/]/).pop())}</a></li>`).join("")}</ul></div>`:""}`;
-  $("#btnExport").onclick=()=>{const want=[];if($("#wVideo").checked)want.push("video");if($("#wAudio").checked)want.push("audio");if($("#wSleep").checked)want.push("sleep");if($("#wSrt").checked)want.push("srt");if($("#wTxt").checked)want.push("txt");
+  $("#btnExport").onclick=()=>{const want=[];if($("#wVideo").checked)want.push("video");if($("#wAudio").checked)want.push("audio");if($("#wSrt").checked)want.push("srt");if($("#wTxt").checked)want.push("txt");
     const oa=document.querySelector("input[name=oa]:checked").value;api(P("/settings"),"POST",{orig_audio:oa});startJob("export",{want,orig_audio:oa});};
 }
 
@@ -826,9 +840,10 @@ $("#sSave").onclick=async()=>{const dict={};$("#sDict").value.split("\n").forEac
 </script>
 <script src="/static/shorts.js"></script>
 <script src="/static/schedule.js"></script>
+<script src="/static/sleep.js"></script>
 <script>const openP=new URLSearchParams(location.search).get("p");  // 새 화면(webdev.py)에서 프로젝트를 누르면 ?p=로 온다
 if(openP){history.replaceState(null,"",location.pathname);openProject(openP);}
-else if(location.hash.startsWith("#shorts"))showShorts(decodeURIComponent(location.hash.slice(8))||null);else if(location.hash==="#schedule")showSchedule();else showStart();
+else if(location.hash.startsWith("#shorts"))showShorts(decodeURIComponent(location.hash.slice(8))||null);else if(location.hash==="#schedule")showSchedule();else if(location.hash==="#sleep")showSleep();else showStart();
 navPoll();setInterval(navPoll,30000);document.addEventListener("visibilitychange",navPoll);</script>
 </body>
 </html>

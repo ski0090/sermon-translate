@@ -20,6 +20,7 @@ import export
 import gdrive
 import project as prj
 import shorts
+import sleepvid
 import tts
 import youtube
 
@@ -212,7 +213,10 @@ YT_DEFAULTS = {"description": "조셉 프린스 목사님 설교 \"{이름}\"의
                "hashtags": "#조셉프린스 #JosephPrince #한국어더빙 #설교 #은혜",
                # 쇼츠: {제목}은 쇼츠 제목 두 줄, {링크}는 유튜브에 올린 전체 영상(없으면 그 줄을 뺀다)
                "shorts_title": "{제목} | 조셉 프린스 설교 (한국어 더빙)",
-               "shorts_description": "조셉 프린스 목사님 설교 \"{이름}\" 중에서 (한국어 더빙)\n전체 영상: {링크}"}
+               "shorts_description": "조셉 프린스 목사님 설교 \"{이름}\" 중에서 (한국어 더빙)\n전체 영상: {링크}",
+               # 음성 영상(자면서 듣는 설교)
+               "sleep_title": "{이름} (자면서 듣는 설교)",
+               "sleep_description": "조셉 프린스 목사님 설교 \"{이름}\"을 한국어 음성으로 편하게 들을 수 있게 만들었습니다. 잠들기 전이나 쉬면서 들어 보세요.\n화면과 함께 보기: {링크}"}
 
 
 def yt_settings():
@@ -308,7 +312,8 @@ def _yt_worker():
             st = _yt["items"][path]
         cancelled = lambda: path in _yt_run["cancel"]  # noqa
         try:
-            (_yt_upload_short if path.startswith(SHORT_KEY) else _yt_upload_one)(path, st, cancelled)
+            (_yt_upload_short if path.startswith(SHORT_KEY) else _yt_upload_sleep if path.startswith(SLEEP_KEY)
+             else _yt_upload_one)(path, st, cancelled)
             st.update(status="cancelled" if cancelled() else "done", msg="", error=None)
         except youtube.QuotaExceeded:
             until = _quota_reset()
@@ -812,6 +817,196 @@ def _yt_upload_short(key, st, cancel):
     if vid is None:
         return
     st.update(video_id=vid, url=f"https://www.youtube.com/shorts/{vid}", title=title, privacy=YT_PRIVACY,
+              uploaded=time.time(), progress=1.0)
+    _yt_save()
+
+
+# ---------- 음성 영상(자면서 듣는 설교) ----------
+# 화면은 제목과 이퀄라이저, 소리는 싱크 없이 이은 더빙 음성(sleepvid). 내보내기와 따로 한 줄에서 하나씩 만든다.
+# 상태는 프로젝트의 sleep.json에 두고, 서버가 꺼졌다 켜지면 기다리던 것과 만들던 것을 처음부터 다시 한다.
+SLEEP_STATE = os.path.join(prj.ROOT, "_sleep.json")  # 설정(내보내기 뒤 자동으로 만들기)
+SLEEP_KEY = "sleep:"  # 유튜브 대기열 이름: "sleep:<프로젝트>"
+_sl = {"auto": True}
+_sl_q = []
+_sl_live = {}
+_sl_run = {"thread": None, "cancel": set()}
+
+
+def sleep_path(p):
+    return os.path.join(export.out_dir(p), p.data["name"] + " (자면서 듣는 설교).mp4")
+
+
+def _sl_file(d):
+    return os.path.join(d, "sleep.json")
+
+
+def sleep_state(d):
+    try:
+        with open(_sl_file(d), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _sl_set(d, **kw):
+    with shorts.lock(d):
+        st = dict(sleep_state(d), **kw)
+        tmp = _sl_file(d) + ".tmp"
+        _write_json(tmp, st)
+        os.replace(tmp, _sl_file(d))
+
+
+def sleep_enqueue(pid):
+    p, _ = get_project(pid)
+    if not any(s.get("tts") for s in p.data["sentences"]):
+        raise RuntimeError("음성을 먼저 만드세요")
+    with _glock:
+        if pid in _sl_q:
+            return
+        _sl_q.append(pid)
+    _sl_set(p.dir, status="queued", error=None)
+    with _glock:
+        t = _sl_run["thread"]
+        if t and t.is_alive():
+            return
+        _sl_run["thread"] = threading.Thread(target=_sl_worker, daemon=True)
+        _sl_run["thread"].start()
+
+
+def sleep_cancel(pid):
+    with _glock:
+        if pid not in _sl_q:
+            return
+        if pid in _sl_live:
+            _sl_run["cancel"].add(pid)  # 만드는 중이면 멈춘다
+            return
+        _sl_q.remove(pid)
+    d = _pdir(pid)
+    _sl_set(d, status="done" if os.path.isfile(sleep_path(get_project(pid)[0])) else "idle")
+
+
+def _sl_worker():
+    while True:
+        with _glock:
+            if not _sl_q:
+                _sl_run["thread"] = None
+                return
+            pid = _sl_q[0]
+        try:
+            _sl_render(pid)
+        except Exception:  # noqa
+            traceback.print_exc()
+        finally:
+            with _glock:
+                if pid in _sl_q:
+                    _sl_q.remove(pid)
+                _sl_run["cancel"].discard(pid)
+                _sl_live.pop(pid, None)
+
+
+def _sl_render(pid):
+    d = _pdir(pid)
+    if not os.path.isdir(d):
+        return
+    p, _ = get_project(pid)
+    live = _sl_live[pid] = {"progress": 0.0, "msg": "음성을 잇는 중"}
+    cancel = lambda: pid in _sl_run["cancel"]  # noqa
+    drive = bool(p.data.get("drive"))
+    _sl_set(d, status="rendering", error=None)
+    try:
+        src, length = export.build_natural(p)
+        out = sleep_path(p)
+
+        def prog(r):
+            live.update(progress=r * (0.9 if drive else 1.0), msg=f"영상을 만드는 중 ({int(r * 100)}%)")
+        if not sleepvid.render(src, out, p.data["name"], progress=prog, cancel=cancel):
+            _sl_set(d, status="done" if os.path.isfile(out) else "idle")
+            return
+        _sl_set(d, status="done", rendered=time.time(), length=round(length), drive=None)
+        if drive:
+            live.update(progress=0.9, msg="구글 드라이브에 올리는 중")
+            ex = p.data.get("drive_export") or {}
+            folder, shared = (ex["folder"], ex.get("shared", False)) if ex.get("folder") else drive_folder(p)
+            try:
+                ok = gdrive.upload([out], folder, shared, None, cancel)
+                _sl_set(d, drive={"folder": folder, "shared": shared} if ok else None)
+            except Exception as e:  # noqa  영상은 만들었으니 드라이브 실패만 남긴다
+                _sl_set(d, drive={"error": str(e)})
+    except Exception as e:  # noqa
+        traceback.print_exc()
+        _sl_set(d, status="error", error=str(e))
+
+
+def sleep_after_export(p):
+    """내보내기가 끝났을 때 자동 설정이 켜져 있으면 음성 영상을 대기열에 넣는다(내용이 바뀌었을 수 있으니 다시 만든다)."""
+    if _sl["auto"]:
+        sleep_enqueue(os.path.basename(p.dir))
+
+
+def sleep_list():
+    with _glock:
+        q = list(_sl_q)
+    out = []
+    for it in prj.list_projects():
+        if not it["tts"]:
+            continue
+        d = _pdir(it["dir"])
+        st = sleep_state(d)
+        f = os.path.join(d, it["name"] + export.OUT_SUFFIX, it["name"] + " (자면서 듣는 설교).mp4")
+        has = os.path.isfile(f)
+        status = st.get("status") or ("done" if has else "idle")
+        if status == "done" and not has:
+            status = "idle"
+        x = {"dir": it["dir"], "name": it["name"], "status": status, "has_file": has,
+             "voice_done": it["tts"] == it["sentences"], "tts": it["tts"], "sentences": it["sentences"],
+             "rendered": st.get("rendered") or (os.path.getmtime(f) if has else None), "length": st.get("length"),
+             "size": os.path.getsize(f) if has else None, "drive": st.get("drive"), "error": st.get("error"),
+             "youtube": _yt["items"].get(SLEEP_KEY + it["dir"])}
+        x.update(_sl_live.get(it["dir"]) or {})
+        if it["dir"] in q:
+            x["ahead"] = q.index(it["dir"])
+        out.append(x)
+    out.sort(key=lambda x: _natural(x["name"]))
+    return {"items": out, "auto": _sl["auto"], "yt": youtube.status()["connected"]}
+
+
+def sleep_resume():
+    if os.path.exists(SLEEP_STATE):
+        with open(SLEEP_STATE, encoding="utf-8") as f:
+            _sl.update(json.load(f))
+    n = 0
+    for it in prj.list_projects():
+        if sleep_state(_pdir(it["dir"])).get("status") in ("queued", "rendering"):
+            sleep_enqueue(it["dir"])
+            n += 1
+    if n:
+        print("음성 영상 대기열을 이어 갑니다:", n, "개", flush=True)
+
+
+def _yt_upload_sleep(key, st, cancel):
+    pid = key[len(SLEEP_KEY):]
+    p, _ = get_project(pid)
+    f = sleep_path(p)
+    if not os.path.isfile(f):
+        raise RuntimeError("만든 음성 영상이 없습니다")
+    if st.get("video_id"):
+        return
+
+    def prog(done, total):
+        st["progress"] = done / total
+        st["msg"] = f"유튜브에 올리는 중 ({done / 2**20:,.0f} / {total / 2**20:,.0f}MB)"
+    stem, s = p.data["name"], yt_settings()
+    title = s["sleep_title"].replace("{이름}", stem).replace("<", "(").replace(">", ")").strip()[:100]
+    path = (p.data.get("drive") or {}).get("path")
+    full = (_yt["items"].get(path) or {}).get("url") if path else None
+    lines = [ln.replace("{링크}", full or "") for ln in s["sleep_description"].split("\n") if full or "{링크}" not in ln]
+    desc, tags = yt_meta(stem, "\n".join(lines), extra_tags=["자면서듣는설교", "수면설교"])
+    st.update(status="uploading", msg="유튜브에 올리는 중", progress=0.0)
+    _yt_save()
+    vid = youtube.upload_video(f, title, description=desc, tags=tags, privacy=YT_PRIVACY, progress=prog, cancel=cancel)
+    if vid is None:
+        return
+    st.update(video_id=vid, url=f"https://www.youtube.com/watch?v={vid}", title=title, privacy=YT_PRIVACY,
               uploaded=time.time(), progress=1.0)
     _yt_save()
 
@@ -1523,7 +1718,7 @@ def run_pipeline_job(p, lock, kind, job, params):
             return {}
         # 음성이 끝나면 모든 결과물을 원음 제거로 바로 내보낸다(브라우저를 닫아도 이어진다)
         job.kind = "export"
-        params = {"want": ["video", "audio", "srt", "txt", "sleep"], "orig_audio": "remove"}
+        params = {"want": ["video", "audio", "srt", "txt"], "orig_audio": "remove"}
         _mark_step(p, lock, "export", params)
         return run_pipeline_job(p, lock, "export", job, params)
     if kind == "export":
@@ -1552,10 +1747,11 @@ def run_pipeline_job(p, lock, kind, job, params):
                 p.data["drive_export"] = uploaded
                 p.save()
         if "video" in want and files and not job.cancelled:
-            try:
-                shorts_after_export(p)
-            except Exception:  # noqa  쇼츠 때문에 내보내기가 실패로 보이지 않게
-                traceback.print_exc()
+            for after in (shorts_after_export, sleep_after_export):
+                try:
+                    after(p)
+                except Exception:  # noqa  쇼츠·음성 영상 때문에 내보내기가 실패로 보이지 않게
+                    traceback.print_exc()
         return {"files": files, "drive": p.data["drive_export"]}
     raise ValueError(kind)
 
@@ -1736,6 +1932,17 @@ class Handler(BaseHTTPRequestHandler):
                 except (ValueError, TypeError) as e:
                     return self._json({"error": str(e)}, 400)
             return self._json(schedule_view())
+        if path == "/api/sleep":
+            if method == "POST":
+                body = self._body()
+                if "auto" in body:
+                    _sl["auto"] = bool(body["auto"])
+                    _write_json(SLEEP_STATE, _sl)
+                if body.get("action") == "all":  # 아직 없는 영상 모두
+                    for x in sleep_list()["items"]:
+                        if not x["has_file"] and x["status"] not in ("queued", "rendering"):
+                            sleep_enqueue(x["dir"])
+            return self._json(sleep_list())
         if path == "/api/shorts":
             if method == "POST":
                 body = self._body()
@@ -1842,6 +2049,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"cuts": cuts, "sentences": p.data["sentences"]})
         if rest == "/plan":
             return self._json(export.plan(p))
+        if rest.startswith("/sleep"):
+            act = rest[len("/sleep"):]
+            try:
+                if act == "/video" and method == "GET":
+                    return self._file(sleep_path(p), download=bool(q.get("dl")))
+                if act == "" and method == "POST":
+                    sleep_enqueue(pid)
+                elif act == "/cancel" and method == "POST":
+                    sleep_cancel(pid)
+                elif act == "/youtube" and method == "POST":
+                    yt_enqueue(SLEEP_KEY + pid)
+                elif act == "/youtube/cancel" and method == "POST":
+                    yt_cancel(SLEEP_KEY + pid)
+                else:
+                    return self._json({"error": "없는 주소"}, 404)
+            except RuntimeError as e:
+                return self._json({"error": str(e)}, 409)
+            return self._json(sleep_list())
         if rest.startswith("/shorts"):
             return self._shorts(pid, p, rest[len("/shorts"):], method, q)
         if rest == "/download":
@@ -1980,6 +2205,7 @@ def main():
     yt_resume()
     batch_resume()
     shorts_resume()
+    sleep_resume()
     for pid, params, path in voice:  # 음성 대기열을 불러온 뒤에 넣는다. 하던 음성은 직접 요청했던 것이다
         voice_enqueue(pid, params, manual=True, path=path if path in _batch["items"] else None)
     httpd.daemon_threads = True

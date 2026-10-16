@@ -58,6 +58,7 @@ GPU 없는 개인 PC에서 사용료 없이 한국어 음성을 쉽게 만들 �
 | `server.py` | 로컬 웹 서버와 API (표준 라이브러리) |
 | `static/index.html` | 화면(왼쪽 메뉴와 단계별 거르기, 프로젝트 목록, 프로젝트 작업) |
 | `static/shorts.js` | 쇼츠 화면 |
+| `static/sleep.js` | 음성 영상(자면서 듣는 설교) 화면 |
 | `static/schedule.js` | 스케줄 화면(날마다 자동 작업이 쓸 Claude 사용량, `projects/_schedule.json`) |
 | `webdev.py` | 새 화면(Vue) 시험판을 8766 포트에서 띄우는 개발용 서버. `web/`은 직접 내주고 나머지는 지금 서버로 넘김 |
 | `web/` | 새 화면(Vue): `app.js`(메뉴, 사용량), `projects.js`(프로젝트 목록), `schedule.js`(스케줄), `lib.js`(공용) |
