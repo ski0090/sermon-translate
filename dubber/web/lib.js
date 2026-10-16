@@ -56,12 +56,13 @@ export const shStage=x=>x.busy||x.done<x.count?"making":x.count?"done":"todo";
 // 영상의 음성 영상 상태: 아직 없음 · 만드는 중(대기 포함) · 완성
 export const svStage=x=>x.status==="queued"||x.status==="rendering"?"making":x.has_file?"done":"todo";
 
-// 화면 사이에 함께 쓰는 상태. route는 주소의 # 뒤(app.js), 목록은 몇 초마다 서버에서 새로 받는다
-export const store=reactive({route:{view:"projects",filter:"all"},shPid:null,lib:null,shorts:null,sleep:null,yt:null});
+// 화면 사이에 함께 쓰는 상태. route는 주소의 # 뒤(app.js), 목록은 몇 초마다 서버에서 새로 받는다.
+// listFilter는 마지막으로 본 프로젝트 목록의 거르기(프로젝트를 열어도 메뉴에 표시), workName은 연 프로젝트 이름
+export const store=reactive({route:{view:"projects",filter:"all"},listFilter:"all",shPid:null,workName:null,lib:null,shorts:null,sleep:null,yt:null});
 
-// 새 화면에 아직 없는 프로젝트 작업 화면은 지금 화면에서 연다. 뒤로 가기로 돌아온다
+// 새 화면에 아직 없는 단계는 지금 화면에서 연다. 뒤로 가기로 돌아온다
 export const openOld=q=>{location.href="/old"+q;};
-export const openProject=dir=>openOld("?p="+encodeURIComponent(dir));
+export const openProject=dir=>{location.hash="#/p/"+encodeURIComponent(dir);};
 
 // fn을 ms마다 부른다. 앞 호출이 안 끝났으면 건너뛰고 탭이 숨어 있으면 쉰다. 멈추는 함수를 돌려준다
 export function every(ms,fn){

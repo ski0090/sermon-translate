@@ -21,7 +21,7 @@
 
 화면을 Vue로 옮기는 중입니다. `python webdev.py`(다른 PC에서도 보려면 `--lan`)를 실행하고 http://127.0.0.1:8766/ 을 엽니다.
 지금 서버(8765)는 그대로 두고 옆에서 띄우며, `/api` 요청을 지금 서버로 넘기므로 데이터와 작업은 같습니다(새 화면에서 누른 것도 실제로 반영됩니다).
-지금은 프로젝트 목록, 쇼츠, 음성 영상, 스케줄을 옮겼고, 프로젝트 작업은 지금 화면(`/old`)으로 엽니다. Vue는 빌드 없이 `web/vendor/vue.esm-browser.prod.js`(3.5.13) 파일 하나로 씁니다.
+지금은 프로젝트 목록, 쇼츠, 음성 영상, 스케줄, 프로젝트 작업의 자막 읽기 단계를 옮겼고, 나머지 단계는 지금 화면(`/old`)으로 엽니다. Vue는 빌드 없이 `web/vendor/vue.esm-browser.prod.js`(3.5.13) 파일 하나로 씁니다.
 
 ## 소요 시간 (GPU 없는 노트북 기준)
 
@@ -61,4 +61,4 @@ GPU 없는 개인 PC에서 사용료 없이 한국어 음성을 쉽게 만들 �
 | `static/sleep.js` | 음성 영상(자면서 듣는 설교) 화면 |
 | `static/schedule.js` | 스케줄 화면(날마다 자동 작업이 쓸 Claude 사용량, `projects/_schedule.json`) |
 | `webdev.py` | 새 화면(Vue) 시험판을 8766 포트에서 띄우는 개발용 서버. `web/`은 직접 내주고 나머지는 지금 서버로 넘김 |
-| `web/` | 새 화면(Vue): `app.js`(메뉴, 사용량), `projects.js`(프로젝트 목록), `shorts.js`(쇼츠), `sleep.js`(음성 영상), `schedule.js`(스케줄), `lib.js`(공용) |
+| `web/` | 새 화면(Vue): `app.js`(메뉴, 사용량), `projects.js`(프로젝트 목록), `shorts.js`(쇼츠), `sleep.js`(음성 영상), `schedule.js`(스케줄), `work.js`(프로젝트 작업: 영상, 타임라인, 단계)와 `work-*.js`(단계 패널), `lib.js`(공용) |

@@ -1,21 +1,23 @@
-// 새 화면(Vue): 왼쪽 메뉴, 사용량, 화면 바꾸기. 주소의 # 뒤가 화면이다(#/projects/<단계>, #/shorts/<상태>/<프로젝트>, #/sleep/<상태>, #/schedule)
+// 새 화면(Vue): 왼쪽 메뉴, 사용량, 화면 바꾸기. 주소의 # 뒤가 화면이다(#/projects/<단계>, #/shorts/<상태>/<프로젝트>, #/sleep/<상태>, #/schedule, #/p/<프로젝트>)
 import {createApp,computed,onMounted,onUnmounted,ref,watch} from "./vendor/vue.esm-browser.prod.js";
 import {api,store,every,when,ago,STAGES,SH_STAGES,SV_STAGES,libState,projStage,shStage,svStage} from "./lib.js";
 import ProjectsView from "./projects.js";
 import ShortsView from "./shorts.js";
 import SleepView from "./sleep.js";
+import WorkView from "./work.js";
 import ScheduleView from "./schedule.js";
 
 const known=(list,f)=>list.some(x=>x[0]===f)?f:"all";
 function parseRoute(){
   const [view,filter,pid]=location.hash.replace(/^#\/?/,"").split("/");
+  if(view==="p")return {view:"work",filter:"all",pid:decodeURIComponent(filter||"")};
   if(view==="schedule")return {view,filter:"all"};
   if(view==="shorts")return {view,filter:known(SH_STAGES,filter),pid:pid?decodeURIComponent(pid):null};
   if(view==="sleep")return {view,filter:known(SV_STAGES,filter)};
   return {view:"projects",filter:known(STAGES,filter)};
 }
-// 쇼츠에서 고른 영상은 다른 화면에 다녀와도 기억한다
-const route=()=>{store.route=parseRoute();if(store.route.pid)store.shPid=store.route.pid;};
+// 쇼츠에서 고른 영상과 프로젝트 목록의 거르기는 다른 화면에 다녀와도 기억한다
+const route=()=>{const r=store.route=parseRoute();if(r.view==="shorts"&&r.pid)store.shPid=r.pid;if(r.view==="projects")store.listFilter=r.filter;};
 route();addEventListener("hashchange",route);
 
 const tally=ks=>ks.reduce((c,k)=>(c[k]=(c[k]||0)+1,c),{all:ks.length});
@@ -50,7 +52,8 @@ const NavMenu={
     const pc=computed(()=>store.lib?tally(store.lib.items.map(it=>libState(it).stage).concat(store.lib.others.map(projStage))):{});
     const sc=computed(()=>store.shorts?tally(store.shorts.map(shStage)):{});
     const vc=computed(()=>store.sleep?tally(store.sleep.items.map(svStage)):{});
-    const on=(view,f)=>store.route.view===view&&store.route.filter===f;
+    // 프로젝트를 열었으면 들어온 목록의 거르기를 표시한다
+    const on=(view,f)=>{const r=store.route;return view==="projects"&&r.view==="work"?store.listFilter===f:r.view===view&&r.filter===f;};
     const shHref=f=>"#/shorts/"+f+(store.shPid?"/"+encodeURIComponent(store.shPid):"");
     return {STAGES,SH_STAGES,SV_STAGES,pc,sc,vc,on,shHref,store};
   },
@@ -79,7 +82,7 @@ const NavMenu={
 };
 
 const App={
-  components:{NavMenu,ProjectsView,ShortsView,SleepView,ScheduleView},
+  components:{NavMenu,ProjectsView,ShortsView,SleepView,ScheduleView,WorkView},
   setup(){
     const navOpen=ref(false);
     watch(()=>store.route,()=>{navOpen.value=false;});
@@ -89,7 +92,7 @@ const App={
       every(30000,async()=>{if(store.route.view!=="sleep")store.sleep=await api("/api/sleep");}),
       every(30000,async()=>{if(store.route.view!=="projects")store.lib=await api("/api/library");})];});
     onUnmounted(()=>stops.forEach(f=>f()));
-    const title=computed(()=>({schedule:"스케줄",shorts:"쇼츠",sleep:"음성 영상"})[store.route.view]||"프로젝트 목록");
+    const title=computed(()=>store.route.view==="work"?store.workName||"프로젝트":({schedule:"스케줄",shorts:"쇼츠",sleep:"음성 영상"})[store.route.view]||"프로젝트 목록");
     return {store,navOpen,title};
   },
   template:`<div :class="{navopen:navOpen}">
@@ -98,11 +101,13 @@ const App={
       <header>
         <button id="btnNav" class="small" title="메뉴" @click.stop="navOpen=!navOpen">☰</button>
         <h1>{{title}}</h1>
+        <div id="hdrSlot" class="hdrslot"></div>
         <span class="pilot">새 화면(Vue) 시험판 · <a href="/old">지금 화면으로</a></span>
       </header>
       <ScheduleView v-if="store.route.view==='schedule'"/>
       <ShortsView v-else-if="store.route.view==='shorts'"/>
       <SleepView v-else-if="store.route.view==='sleep'"/>
+      <WorkView v-else-if="store.route.view==='work'" :key="store.route.pid" :pid="store.route.pid"/>
       <ProjectsView v-else/>
     </div>
   </div>`,
