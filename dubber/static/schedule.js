@@ -19,7 +19,6 @@ async function showSchedule(){
   SC.poll=setInterval(async()=>{if(S.view!=="sched"){clearInterval(SC.poll);SC.poll=null;return;}
     try{SC.d=await api("/api/schedule");scTopRender();}catch(e){}},30000);
 }
-$("#btnSched").onclick=()=>showSchedule();
 
 function scRender(){scTopRender();scCalRender();scSelRender();}
 function scTopRender(){

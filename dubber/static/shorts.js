@@ -1,8 +1,12 @@
 /* ---------- 쇼츠 화면 ----------
    왼쪽: 음성을 다 만든 영상 목록. 오른쪽: 고른 영상의 쇼츠 카드.
    카드에서 제목, 구간(문장 단위), 강조 구절, 가로 위치를 고치면 바로 저장되고, 미리 보기 그림으로 확인한 뒤
-   "다시 만들기"를 누르면 영상에 반영된다. index.html의 $, api, esc, fmt, S, showView, openProject를 쓴다. */
-const SH={pid:null,d:null,poll:null,listPoll:null,listBusy:false,busy:false,pt:{},pv:0};
+   "다시 만들기"를 누르면 영상에 반영된다. 왼쪽 메뉴에서 고른 상태(SH.filter)의 영상만 목록에 보인다.
+   index.html의 $, api, esc, fmt, S, showView, openProject, navLoad, navName, navCounts를 쓴다. */
+const SH={pid:null,d:null,poll:null,listPoll:null,listBusy:false,busy:false,pt:{},pv:0,filter:navLoad("shorts")};
+// 영상의 쇼츠 상태: 진행 전(아직 없음) · 만드는 중(고르거나 만드는 중, 아직 안 만든 쇼츠가 있음) · 완성
+const shStage=x=>x.busy||x.done<x.count?"making":x.count?"done":"todo";
+const shCounts=items=>navCounts("shorts",items.map(shStage));
 const SP=path=>`/api/p/${encodeURIComponent(SH.pid)}/shorts${path||""}`;
 
 async function showShorts(pid){
@@ -16,19 +20,20 @@ async function showShorts(pid){
     if(SH.listBusy)return;SH.listBusy=true;try{await shList();}catch(e){}finally{SH.listBusy=false;}},5000);
   if(pid||SH.pid)await shOpen(pid||SH.pid);
 }
-$("#btnShorts").onclick=()=>showShorts();
 $("#shAuto").onchange=e=>api("/api/shorts","POST",{auto:e.target.checked});
 
 async function shList(){
-  const r=await api("/api/shorts");
-  $("#shAuto").checked=!!r.auto;
-  const html=r.items.length?r.items.map(x=>{
+  const r=await api("/api/shorts"),f=SH.filter;
+  $("#shAuto").checked=!!r.auto;shCounts(r.items);
+  $("#shTitle").textContent=f==="all"?"쇼츠":"쇼츠 · "+navName("shorts",f);
+  const items=r.items.filter(x=>f==="all"||shStage(x)===f);
+  const html=items.length?items.map(x=>{
     const st=x.busy?`<span class="badge ok">${x.suggest==="queued"||x.suggest==="running"?"후보 고르는 중":"만드는 중"}</span>`
       :x.error?`<span class="badge bad">후보 고르기 실패</span>`
       :x.count?`<span class="badge">${x.done}/${x.count}개 완성${x.uploaded?` · 유튜브 ${x.uploaded}`:""}</span>`
       :`<span class="badge">아직 없음</span>`;
     return `<li data-id="${esc(x.dir)}" class="${x.dir===SH.pid?"sel":""}"><div>${esc(x.name)}</div><div>${st}${x.voice_done?"":''}</div></li>`;}).join("")
-    :`<li class="muted">문장 정리까지 끝난 영상이 없습니다.</li>`;
+    :`<li class="muted">${r.items.length?"이 상태의 영상이 없습니다.":"문장 정리까지 끝난 영상이 없습니다."}</li>`;
   if($("#shList").innerHTML!==html){$("#shList").innerHTML=html;
     document.querySelectorAll("#shList li[data-id]").forEach(li=>li.onclick=()=>shOpen(li.dataset.id));}
 }

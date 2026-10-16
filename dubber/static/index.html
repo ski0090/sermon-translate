@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>설교 영상 한국어 더빙</title>
 <style>
-:root{--bg:#f4f5f7;--panel:#fff;--line:#dcdfe4;--text:#1f2328;--muted:#6b7280;--accent:#2457d6;--accent2:#e9effd;--warn:#b45309;--warnbg:#fff4e0;--bad:#b91c1c;--badbg:#fde8e8;--ok:#047857;--okbg:#e3f6ee;--cut:#d6455d;--gap:#9aa3af;--lyric:#e4b400}
+:root{--bg:#f4f5f7;--panel:#fff;--line:#dcdfe4;--text:#1f2328;--muted:#6b7280;--accent:#2457d6;--accent2:#e9effd;--warn:#b45309;--warnbg:#fff4e0;--bad:#b91c1c;--badbg:#fde8e8;--ok:#047857;--okbg:#e3f6ee;--cut:#d6455d;--gap:#9aa3af;--lyric:#e4b400;--navw:200px;--hdr:53px}
 *{box-sizing:border-box}
 body{margin:0;font-family:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
 button{font:inherit;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;color:var(--text)}
@@ -15,10 +15,26 @@ button.primary:hover{background:#1b46b3}
 button.small{padding:2px 8px;font-size:12px}
 button:disabled{opacity:.5;cursor:default}
 input,select,textarea{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--text)}
-header{display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
-header h1{font-size:16px;margin:0;white-space:nowrap}
-.steps{display:flex;gap:4px;flex:1}
-.steps button{border-radius:999px;padding:5px 14px;background:transparent;border-color:transparent;color:var(--muted)}
+/* 왼쪽 메뉴 */
+#menu{position:fixed;left:0;top:0;bottom:0;width:var(--navw);background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;z-index:10;overflow:auto}
+#menu .brand{font-weight:700;font-size:15px;padding:0 16px;height:var(--hdr);display:flex;align-items:center;border-bottom:1px solid var(--line);flex:none}
+#navList .ngroup{padding:8px;border-bottom:1px solid var(--line)}
+#navList button{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;border:0;background:transparent;text-align:left;padding:6px 10px;border-radius:6px}
+#navList button:hover{background:#f0f2f5}
+#navList .nhead{font-weight:600}
+#navList .nitem{padding-left:22px;color:var(--muted)}
+#navList button.on{background:var(--accent2);color:var(--accent);font-weight:600}
+#navList .ncount{font-size:12px;color:var(--muted);font-weight:400;font-variant-numeric:tabular-nums}
+#navList button.on .ncount{color:var(--accent)}
+#usage{margin-top:auto;padding:10px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);line-height:1.7}
+#usage .urow{display:flex;justify-content:space-between;align-items:center;gap:8px}
+#main{margin-left:var(--navw);min-width:0}
+#btnNav{display:none}
+@media (max-width:960px){#menu{transform:translateX(-100%);transition:transform .2s}body.navopen #menu{transform:none;box-shadow:0 0 24px rgba(0,0,0,.2)}#main{margin-left:0}#btnNav{display:inline-block}}
+header{display:flex;align-items:center;gap:16px;padding:0 16px;height:var(--hdr);background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+.steps{display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto}
+.steps button{border-radius:999px;padding:5px 14px;background:transparent;border-color:transparent;color:var(--muted);white-space:nowrap;flex:none}
 .steps button.done{color:var(--text)}
 .steps button.active{background:var(--accent2);color:var(--accent);border-color:var(--accent2);font-weight:600}
 .steps button:disabled{opacity:.45}
@@ -34,7 +50,7 @@ header h1{font-size:16px;margin:0;white-space:nowrap}
 .pjob .bar{flex:0 0 120px;height:6px;background:#e5e9f2;border-radius:3px;overflow:hidden}
 .pjob .bar i{display:block;height:100%;background:var(--accent)}
 .muted{color:var(--muted);font-size:12px}
-#work{display:none;grid-template-columns:minmax(360px,42%) 1fr;grid-template-rows:1fr auto;height:calc(100vh - 53px)}
+#work{display:none;grid-template-columns:minmax(360px,42%) 1fr;grid-template-rows:1fr auto;height:calc(100vh - var(--hdr))}
 #left{padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0;overflow:auto}
 #left video{width:100%;background:#000;border-radius:8px}
 #right{padding:12px 12px 12px 0;overflow:auto;min-width:0}
@@ -82,10 +98,9 @@ header h1{font-size:16px;margin:0;white-space:nowrap}
 #dList{max-height:50vh;overflow:auto;margin-bottom:10px}
 #dList.busy li{pointer-events:none;opacity:.5}
 kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
-header button.on{background:var(--accent2);color:var(--accent);border-color:#c8d6f7;font-weight:600}
 /* 쇼츠 */
-#shorts{display:none;grid-template-columns:300px minmax(0,1fr);gap:16px;padding:16px;align-items:start}
-#shorts .side{position:sticky;top:69px;max-height:calc(100vh - 86px);overflow:auto}
+#shorts{display:none;grid-template-columns:260px minmax(0,1fr);gap:16px;padding:16px;align-items:start}
+#shorts .side{position:sticky;top:calc(var(--hdr) + 16px);max-height:calc(100vh - var(--hdr) - 32px);overflow:auto}
 #shorts .side .plist li{cursor:pointer;display:block}
 #shorts .side .plist li.sel{background:var(--accent2)}
 .shcard{display:flex;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;flex-wrap:wrap}
@@ -126,18 +141,22 @@ header button.on{background:var(--accent2);color:var(--accent);border-color:#c8d
 </style>
 </head>
 <body>
+<nav id="menu">
+  <div class="brand">설교 영상 한국어 더빙</div>
+  <div id="navList"></div>
+  <div id="usage"></div>
+</nav>
+
+<div id="main">
 <header>
-  <h1 id="title">설교 영상 한국어 더빙</h1>
+  <button id="btnNav" class="small" title="메뉴">☰</button>
+  <h1 id="title">프로젝트 목록</h1>
   <nav class="steps" id="steps"></nav>
-  <span id="usage" class="muted" style="white-space:nowrap"></span>
-  <button id="btnHome" class="small">프로젝트 목록</button>
-  <button id="btnShorts" class="small">쇼츠</button>
-  <button id="btnSched" class="small">스케줄</button>
-  <button id="btnSettings" class="small">설정</button>
+  <button id="btnSettings" class="small">프로젝트 설정</button>
 </header>
 
 <section id="start">
-  <div class="card">
+  <div class="card" id="newCard">
     <div class="row" style="justify-content:space-between">
       <div><strong>새 프로젝트</strong><div class="muted" id="newHint">화면 아래쪽에 한국어 자막이 있는 설교 영상을 구글 드라이브에서 고르세요. 결과물은 영상과 같은 폴더 아래 "영상 이름 한국어 더빙" 폴더에 저장됩니다.</div></div>
       <button class="primary" id="btnDrive" disabled>구글 드라이브에서 선택</button>
@@ -177,7 +196,7 @@ header button.on{background:var(--accent2);color:var(--accent);border-color:#c8d
 
 <section id="shorts">
   <div class="card side">
-    <strong>쇼츠</strong>
+    <strong id="shTitle">쇼츠</strong>
     <div class="muted">문장 정리가 끝난 영상에서 AI가 쇼츠 구간(30~60초)과 제목·강조 구절을 고르고, 원본 음성에 한국어 자막을 크게 박은 세로 영상(1080×1920)을 만듭니다. 결과는 "한국어 더빙/쇼츠" 폴더와 구글 드라이브에 저장됩니다.</div>
     <label class="muted" style="display:block;margin-top:8px"><input type="checkbox" id="shAuto"> 내보내기가 끝나면 자동으로 후보 3개 만들기</label>
     <ul class="plist" id="shList"></ul>
@@ -190,10 +209,11 @@ header button.on{background:var(--accent2);color:var(--accent);border-color:#c8d
   <div class="card" style="margin-top:16px" id="scCal"></div>
   <div class="card" style="margin-top:16px" id="scSel"></div>
 </section>
+</div>
 
 <div class="modal" id="settings">
   <div class="card">
-    <h2 style="margin-top:0">설정</h2>
+    <h2 style="margin-top:0">프로젝트 설정</h2>
     <label>AI 도구</label>
     <select id="sTool"><option value="claude">claude</option><option value="codex">codex</option></select>
     <label>한 묶음에 넣는 자막 수 (20~30)</label><input id="sPer" type="number" min="5" max="40">
@@ -243,7 +263,14 @@ header button.on{background:var(--accent2);color:var(--accent);border-color:#c8d
 <script>
 const $=s=>document.querySelector(s);
 const STEPS=[["load","영상 불러오기"],["scan","자막 읽기"],["review","정리와 검수"],["tts","음성"],["export","내보내기"]];
-const S={yt:null,pid:null,d:null,plan:[],step:"scan",filter:"all",sel:null,preview:false,poll:null,cur:null,exportFiles:null};
+// 프로젝트 목록을 거르는 단계(projStage), 쇼츠 목록을 거르는 상태(shorts.js의 shStage)
+const STAGES=[["todo","진행 전"],["review","정리와 검수"],["scan","자막 읽기"],["tts","음성"],["export","내보내기"]];
+const NAV=[["projects","프로젝트 목록",STAGES],["shorts","쇼츠",[["todo","진행 전"],["making","만드는 중"],["done","완성"]]],["settings","설정",[["schedule","스케줄"]]]];
+const navName=(g,f)=>(NAV.find(x=>x[0]===g)[2].find(x=>x[0]===f)||[])[1];
+const stageName=k=>navName("projects",k);
+// 이 브라우저에 기억한 거르기(없거나 모르는 값이면 전체)
+function navLoad(g){let v;try{v=JSON.parse(localStorage.getItem("dubber.nav"))[g];}catch(e){}return navName(g,v)?v:"all";}
+const S={yt:null,pid:null,d:null,plan:[],step:"scan",filter:"all",listFilter:navLoad("projects"),sel:null,preview:false,poll:null,cur:null,exportFiles:null};
 
 async function api(path,method="GET",body){
   const r=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
@@ -254,17 +281,47 @@ async function api(path,method="GET",body){
 const fmt=t=>{t=Math.max(0,t||0);const m=Math.floor(t/60),s=Math.floor(t%60);return `${m}:${String(s).padStart(2,"0")}`;};
 const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+/* ---------- 왼쪽 메뉴 ---------- */
+function renderNav(){
+  $("#navList").innerHTML=NAV.map(([g,label,items])=>`<div class="ngroup"><button class="nhead" data-nav="${g}:all">${label}<span class="ncount" data-nc="${g}:all"></span></button>
+    ${items.map(([k,n])=>`<button class="nitem" data-nav="${g}:${k}">${n}<span class="ncount" data-nc="${g}:${k}"></span></button>`).join("")}</div>`).join("");
+  document.querySelectorAll("#menu [data-nav]").forEach(b=>b.onclick=()=>{const [g,f]=b.dataset.nav.split(":");document.body.classList.remove("navopen");
+    if(g==="projects"){S.listFilter=f;navSave();showStart();}
+    else if(g==="shorts"){SH.filter=f;navSave();if(S.view==="shorts"){navMark();shList();}else showShorts();}
+    else showSchedule();});
+}
+function navSave(){try{localStorage.setItem("dubber.nav",JSON.stringify({projects:S.listFilter,shorts:SH.filter}));}catch(e){}}
+// 지금 화면의 메뉴를 표시한다. 프로젝트를 열었으면 들어온 목록의 거르기를 표시한다
+function navMark(){
+  const cur=S.view==="shorts"?"shorts:"+SH.filter:S.view==="sched"?"settings:schedule":"projects:"+S.listFilter;
+  document.querySelectorAll("#menu [data-nav]").forEach(b=>b.classList.toggle("on",b.dataset.nav===cur));
+}
+// 영상마다의 단계(stages)를 세어 메뉴의 숫자로 쓴다
+function navCounts(g,stages){
+  const c={all:stages.length};stages.forEach(k=>c[k]=(c[k]||0)+1);
+  document.querySelectorAll(`#menu [data-nc^="${g}:"]`).forEach(s=>s.textContent=c[s.dataset.nc.split(":")[1]]||"");
+}
+// 보고 있지 않은 목록의 숫자도 가끔 새로 센다(보고 있는 목록은 그 화면이 센다). 탭이 숨어 있으면 쉰다
+async function navPoll(){
+  if(document.hidden)return;
+  if(S.view!=="start")try{const lib=await api("/api/library");navCounts("projects",lib.items.map(it=>libState(it)[4]).concat(lib.others.map(projStage)));}catch(e){}
+  if(S.view!=="shorts")try{shCounts((await api("/api/shorts")).items);}catch(e){}
+}
+renderNav();
+$("#btnNav").onclick=e=>{e.stopPropagation();document.body.classList.toggle("navopen");};
+document.addEventListener("click",e=>{if(document.body.classList.contains("navopen")&&!e.target.closest("#menu"))document.body.classList.remove("navopen");});
+
 /* ---------- 시작 화면 ---------- */
 // 화면 전환: start(프로젝트 목록), work(프로젝트), shorts(쇼츠), sched(스케줄)
 function showView(v){
   S.view=v;$("#start").style.display=v==="start"?"block":"none";$("#work").style.display=v==="work"?"grid":"none";
   $("#shorts").style.display=v==="shorts"?"grid":"none";$("#sched").style.display=v==="sched"?"block":"none";
-  $("#btnHome").classList.toggle("on",v==="start");$("#btnShorts").classList.toggle("on",v==="shorts");$("#btnSched").classList.toggle("on",v==="sched");
+  $("#btnSettings").style.display=v==="work"?"":"none";navMark();
   if(!["shorts","sched"].includes(v)&&location.hash)history.replaceState(null,"",location.pathname);
 }
 async function showStart(){
   stopPoll();S.pid=null;S.d=null;
-  showView("start");$("#steps").innerHTML="";$("#title").textContent="설교 영상 한국어 더빙";
+  showView("start");$("#steps").innerHTML="";$("#title").textContent="프로젝트 목록";
   await renderList();
   if(S.listPoll)clearInterval(S.listPoll);
   // 앞 요청이 아직 안 끝났으면 건너뛴다(서버가 바쁠 때 요청이 쌓이지 않게)
@@ -285,42 +342,56 @@ function jobBar(j){return `<div class="pjob"><span title="${jobMsg(j)}">${jobMsg
 function projectRow(p){
   const j=p.job;
   const right=j?jobBar(j):`<div class="muted" style="text-align:right">${progressText(p)}</div>`;
-  return `<li data-id="${esc(p.dir)}"><div class="pleft"><div>${esc(p.name)} <span class="badge ${j?"ok":""}">${j?"진행 중 · "+jobName(j):stepName(p.step)}</span></div><div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.drive||p.video||"")}</div></div>
+  return `<li data-id="${esc(p.dir)}"><div class="pleft"><div>${esc(p.name)} <span class="badge ${j?"ok":""}">${j?"진행 중 · "+jobName(j):p.exported?"완료":stageName(projStage(p))}</span></div><div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.drive||p.video||"")}</div></div>
     <div class="pright">${right}<div class="muted" style="text-align:right">${p.duration?fmt(p.duration):""} · ${new Date(p.updated*1000).toLocaleString("ko-KR")}</div></div></li>`;
 }
 // 지금 돌고 있는 작업 이름(프로젝트 단계가 아니라)
 const jobName=j=>j.queued?"음성 대기":({scan:"자막 읽기",read:"자막 읽기",tidy:"문장 정리",tts:"음성",export:"내보내기"})[j.kind]||"작업";
-// 드라이브 영상 하나의 상태: 진행 중 > 내려받는 중 > 이 PC의 프로젝트 > 드라이브의 결과 > 이전 작업 > 시작 전
+// 프로젝트가 머문 단계(왼쪽 메뉴의 거르기): 돌고 있는 작업 > 만든 결과. 서버는 review 단계를 따로 적지 않아 문장이 있으면 정리와 검수로 본다
+function projStage(p){
+  const j=p.job;
+  if(j)return j.queued?"tts":({tidy:"review",tts:"tts",export:"export"})[j.kind]||"scan";
+  if(p.exported||p.step==="export")return "export";
+  if(p.tts||p.step==="tts")return "tts";
+  if(p.sentences)return "review";
+  return p.captions||p.step==="scan"?"scan":"todo";
+}
+// 드라이브 영상 하나의 상태 [묶음, 이름표, 색, 오른쪽 칸, 단계]: 진행 중 > 내려받는 중 > 이 PC의 프로젝트 > 드라이브의 결과 > 이전 작업 > 시작 전
 function libState(it){
   const p=it.project;
-  if(p&&p.job)return ["run","진행 중 · "+jobName(p.job),"ok",jobBar(p.job)];
-  if(it.importing)return ["run","내려받는 중","ok",jobBar(it.importing)];
-  if(p&&p.exported)return ["done","완료","ok",progressText(p)];
-  if(p)return ["run",stepName(p.step),"warn",progressText(p)];
-  if(it.drive_done)return ["done","완료","ok","구글 드라이브에 결과 있음"];
-  if(it.legacy)return ["run","이전 작업 있음","warn","다른 PC에서 작업한 기록이 드라이브에 있음"];
-  return ["todo","시작 전","",fsize(it.size)];
+  if(p&&p.job)return ["run","진행 중 · "+jobName(p.job),"ok",jobBar(p.job),projStage(p)];
+  if(it.importing)return ["run","내려받는 중","ok",jobBar(it.importing),"todo"];
+  if(p&&p.exported)return ["done","완료","ok",progressText(p),"export"];
+  if(p){const k=projStage(p);return ["run",stageName(k),"warn",progressText(p),k];}
+  if(it.drive_done)return ["done","완료","ok","구글 드라이브에 결과 있음","export"];
+  if(it.legacy)return ["run","이전 작업 있음","warn","다른 PC에서 작업한 기록이 드라이브에 있음","todo"];
+  return ["todo","시작 전","",fsize(it.size),"todo"];
 }
 async function renderList(refresh){
   const lib=await api("/api/library"+(refresh?"?refresh=1":""));
-  $("#libTitle").textContent=`구글 드라이브 ${lib.root} 폴더`;
+  const f=S.listFilter,all=f==="all",pick=k=>all||k===f;
+  $("#libTitle").textContent=`구글 드라이브 ${lib.root} 폴더`+(all?"":` · ${stageName(f)}`);
+  $("#newCard").style.display=$("#batchBox").style.display=all?"":"none";
   const st=lib.items.map(libState);const n=k=>st.filter(x=>x[0]===k).length;
-  $("#libSum").textContent=lib.items.length?`${lib.items.length}개 · 완료 ${n("done")} · 진행 중 ${n("run")} · 시작 전 ${n("todo")}`:"";
+  navCounts("projects",st.map(x=>x[4]).concat(lib.others.map(projStage)));
+  const rows=lib.items.map((it,i)=>i).filter(i=>pick(st[i][4]));
+  $("#libSum").textContent=!lib.items.length?"":all?`${lib.items.length}개 · 완료 ${n("done")} · 진행 중 ${n("run")} · 시작 전 ${n("todo")}`:`${rows.length}개`;
   const html=lib.error?`<li class="err">${esc(lib.error)}</li>`
-    :lib.items.length?lib.items.map((it,i)=>{const [,label,cls,right]=st[i];
+    :rows.length?rows.map(i=>{const it=lib.items[i],[,label,cls,right]=st[i];
       const auto={waiting:"자동 대기",ready:"검수 대기 · 음성은 직접",skipped:"같은 영상이라 건너뜀"}[it.batch];
       return `<li data-i="${i}"><div class="pleft"><div>${esc(it.name)} <span class="badge ${cls}">${esc(label)}</span>${auto&&!(it.project&&it.project.job)?` <span class="badge">${auto}</span>`:""}</div></div>
         <div class="pright">${right.startsWith("<")?right:`<div class="muted" style="text-align:right">${esc(right)}</div>`}${ytCell(it,i)}</div></li>`;}).join("")
-    :`<li class="muted">${lib.loading?"불러오는 중…":"영상이 없습니다."}</li>`;
+    :`<li class="muted">${lib.loading?"불러오는 중…":all?"영상이 없습니다.":"이 단계의 영상이 없습니다."}</li>`;
   if($("#plist").innerHTML!==html)$("#plist").innerHTML=html;
   document.querySelectorAll("#plist li[data-i]").forEach(li=>li.onclick=()=>openLibItem(lib.items[+li.dataset.i]));
   document.querySelectorAll("#plist [data-yt]").forEach(b=>b.onclick=async ev=>{ev.stopPropagation();
     const it=lib.items[+b.dataset.i];
     try{await api("/api/youtube/"+b.dataset.yt,"POST",{path:it.path});}catch(e){alert(e.message);}
     await renderList();});
-  renderYt();renderBatch();
-  $("#otherBox").style.display=lib.others.length?"":"none";
-  const ohtml=lib.others.map(projectRow).join("");
+  renderYt();if(all)renderBatch();
+  const others=lib.others.filter(p=>pick(projStage(p)));
+  $("#otherBox").style.display=others.length?"":"none";
+  const ohtml=others.map(projectRow).join("");
   if($("#olist").innerHTML!==ohtml)$("#olist").innerHTML=ohtml;
   document.querySelectorAll("#olist li[data-id]").forEach(li=>li.onclick=()=>openProject(li.dataset.id));
 }
@@ -391,23 +462,22 @@ const when=t=>new Date(t*1000).toLocaleString("ko-KR",{month:"numeric",day:"nume
 async function renderUsage(){
   let u;try{u=await api("/api/usage");}catch(e){return;}
   const i=u.info;let html;
-  if(!i)html=`Claude 남은 사용량: 아직 모름 <button class="small" id="btnUsage">확인</button>`;
+  const head=`<div class="urow"><span>Claude 남은 사용량</span><button class="small" id="btnUsage">확인</button></div>`;
+  if(!i)html=head+`<div>아직 모름</div>`;
   else{
     const w=i.unifiedWindows||{};
     const part=(k,label)=>{if(!w[k])return "";const left=Math.max(0,Math.round((1-w[k].utilization)*100));
       const c=left<20?"var(--bad)":left<40?"var(--warn)":"var(--text)";
-      return `<span title="${when(w[k].resetsAt)}에 초기화">${label} <b style="color:${c}">${left}%</b></span>`;};
+      return `<div class="urow" title="${when(w[k].resetsAt)}에 초기화"><span>${label}</span><b style="color:${c}">${left}%</b></div>`;};
     const age=Math.round((Date.now()/1000-u.t)/60);
-    html=`Claude 남은 사용량: ${[part("five_hour","5시간"),part("seven_day","주간"),part("seven_day_overage_included","Fable 추가")].filter(Boolean).join(" · ")}`
-      +(i.status==="rejected"?` <b style="color:var(--bad)">한도 도달 (${when(i.resetsAt)}까지)</b>`:"")
-      +` <span title="AI를 부를 때마다 갱신됩니다">(${age<1?"방금":age<60?age+"분 전":Math.round(age/60)+"시간 전"} 기준)</span> <button class="small" id="btnUsage">확인</button>`;
+    html=head+part("five_hour","5시간")+part("seven_day","주간")+part("seven_day_overage_included","Fable 추가")
+      +(i.status==="rejected"?`<div><b style="color:var(--bad)">한도 도달 (${when(i.resetsAt)}까지)</b></div>`:"")
+      +`<div title="AI를 부를 때마다 갱신됩니다">${age<1?"방금":age<60?age+"분 전":Math.round(age/60)+"시간 전"} 기준</div>`;
   }
   if($("#usage").innerHTML!==html){$("#usage").innerHTML=html;
     $("#btnUsage").onclick=async()=>{$("#btnUsage").disabled=true;try{await api("/api/usage/check","POST",{});}catch(e){alert(e.message);}renderUsage();};}
 }
 renderUsage();setInterval(renderUsage,30000);
-const stepName=s=>(STEPS.find(x=>x[0]===s)||["","영상 불러오기"])[1];
-$("#btnHome").onclick=showStart;
 
 /* ---------- 구글 드라이브 ---------- */
 const D={path:"",items:[],poll:null};
@@ -756,6 +826,7 @@ $("#sSave").onclick=async()=>{const dict={};$("#sDict").value.split("\n").forEac
 </script>
 <script src="/static/shorts.js"></script>
 <script src="/static/schedule.js"></script>
-<script>if(location.hash.startsWith("#shorts"))showShorts(decodeURIComponent(location.hash.slice(8))||null);else if(location.hash==="#schedule")showSchedule();else showStart();</script>
+<script>if(location.hash.startsWith("#shorts"))showShorts(decodeURIComponent(location.hash.slice(8))||null);else if(location.hash==="#schedule")showSchedule();else showStart();
+navPoll();setInterval(navPoll,30000);document.addEventListener("visibilitychange",navPoll);</script>
 </body>
 </html>
