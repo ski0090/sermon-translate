@@ -1,66 +1,222 @@
 // 스케줄 화면: 날마다 자동 작업(자동 진행의 자막 읽기·문장 정리, 쇼츠 자동 후보)이 쓸 AI 도구와 Claude 사용량(5시간·주간 %)을
 // 달력에서 정한다. 정하지 않은 날은 기본값을 쓴다. 30초마다 새로 받아도 고치는 중인 입력 칸은 덮지 않는다
-import {computed,onMounted,onUnmounted,reactive,ref,watch} from "./vendor/vue.esm-browser.prod.js";
-import {api,every,when,ago,TOOLS} from "./lib.js";
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch,
+} from "./vendor/vue.esm-browser.prod.js";
+import { api, every, when, ago, TOOLS } from "./lib.js";
 
-const pad=n=>String(n).padStart(2,"0");
-const key=(y,m,d)=>`${y}-${pad(m+1)}-${pad(d)}`;
-const label=k=>{const [y,m,d]=k.split("-").map(Number);return `${m}/${d}(${"일월화수목금토"[new Date(y,m-1,d).getDay()]})`;};
-const toolName=t=>TOOLS[t]||"없음(모든 도구가 꺼짐)";
-const pct=x=>x==null?"모름":Math.round(x*100)+"%";
+const pad = (n) => String(n).padStart(2, "0");
+const key = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
+const label = (k) => {
+  const [y, m, d] = k.split("-").map(Number);
+  return `${m}/${d}(${"일월화수목금토"[new Date(y, m - 1, d).getDay()]})`;
+};
+const toolName = (t) => TOOLS[t] || "없음(모든 도구가 꺼짐)";
+const pct = (x) => (x == null ? "모름" : Math.round(x * 100) + "%");
 
 export default {
-  setup(){
-    const d=ref(null),err=ref(null);
-    const now=new Date(),cal=reactive({y:now.getFullYear(),m:now.getMonth()});
-    const sel=reactive(new Set());let last=null;
-    const def=reactive({tool:"claude",five_hour:50,seven_day:50,dirty:false});
-    const fb=reactive({on:false,limit:100,dirty:false});
-    const pick=reactive({tool:"claude",five_hour:50,seven_day:50});
-    function take(v){
-      d.value=v;
-      if(!def.dirty)Object.assign(def,{tool:v.tool||"claude",five_hour:v.default.five_hour,seven_day:v.default.seven_day});
-      if(!fb.dirty)Object.assign(fb,{on:v.fable.on,limit:v.fable.limit});
+  setup() {
+    const d = ref(null),
+      err = ref(null);
+    const now = new Date(),
+      cal = reactive({ y: now.getFullYear(), m: now.getMonth() });
+    const sel = reactive(new Set());
+    let last = null;
+    const def = reactive({
+      tool: "claude",
+      five_hour: 50,
+      seven_day: 50,
+      dirty: false,
+    });
+    const fb = reactive({ on: false, limit: 100, dirty: false });
+    const pick = reactive({ tool: "claude", five_hour: 50, seven_day: 50 });
+    function take(v) {
+      d.value = v;
+      if (!def.dirty)
+        Object.assign(def, {
+          tool: v.tool || "claude",
+          five_hour: v.default.five_hour,
+          seven_day: v.default.seven_day,
+        });
+      if (!fb.dirty)
+        Object.assign(fb, { on: v.fable.on, limit: v.fable.limit });
     }
     let stop;
-    onMounted(()=>{stop=every(30000,async()=>{try{take(await api("/api/schedule"));err.value=null;}catch(e){err.value=e.message;}});});
-    onUnmounted(()=>stop());
-    const post=async body=>{try{return await api("/api/schedule","POST",body);}catch(e){alert(e.message);return null;}};
-    async function saveDef(){const v=await post({tool:def.tool,default:{five_hour:def.five_hour,seven_day:def.seven_day}});if(v){def.dirty=false;take(v);}}
-    async function saveFable(){const v=await post({fable:{on:fb.on,limit:fb.limit}});if(v){fb.dirty=false;take(v);}}
+    onMounted(() => {
+      stop = every(30000, async () => {
+        try {
+          take(await api("/api/schedule"));
+          err.value = null;
+        } catch (e) {
+          err.value = e.message;
+        }
+      });
+    });
+    onUnmounted(() => stop());
+    const post = async (body) => {
+      try {
+        return await api("/api/schedule", "POST", body);
+      } catch (e) {
+        alert(e.message);
+        return null;
+      }
+    };
+    async function saveDef() {
+      const v = await post({
+        tool: def.tool,
+        default: { five_hour: def.five_hour, seven_day: def.seven_day },
+      });
+      if (v) {
+        def.dirty = false;
+        take(v);
+      }
+    }
+    async function saveFable() {
+      const v = await post({ fable: { on: fb.on, limit: fb.limit } });
+      if (v) {
+        fb.dirty = false;
+        take(v);
+      }
+    }
 
     // 주간 사용량이 초기화되는 날(다음 초기화 시각부터 7일마다)
-    const resets=computed(()=>{const r=d.value&&d.value.usage.seven_day.resetsAt;if(!r)return {};const out={};
-      for(let k=0;k<10;k++){const t=new Date((r+k*7*86400)*1000);out[key(t.getFullYear(),t.getMonth(),t.getDate())]=t.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});}
-      return out;});
-    const cells=computed(()=>{
-      const v=d.value;if(!v)return [];
-      const {y,m}=cal,first=new Date(y,m,1).getDay(),n=new Date(y,m+1,0).getDate(),out=[];
-      for(let i=0;i<first;i++)out.push({k:"blank"+i,blank:true});
-      for(let day=1;day<=n;day++){const k=key(y,m,day),set=v.days[k],wd=(first+day-1)%7;
-        out.push({k,day,set:!!set,lim:set||v.default,tool:(set&&set.tool)||v.tool||"claude",wd,past:k<v.today,today:k===v.today,reset:resets.value[k]});}
+    const resets = computed(() => {
+      const r = d.value && d.value.usage.seven_day.resetsAt;
+      if (!r) return {};
+      const out = {};
+      for (let k = 0; k < 10; k++) {
+        const t = new Date((r + k * 7 * 86400) * 1000);
+        out[key(t.getFullYear(), t.getMonth(), t.getDate())] =
+          t.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+      }
       return out;
     });
-    function month(dm){if(dm===0){cal.y=now.getFullYear();cal.m=now.getMonth();return;}
-      cal.m+=dm;if(cal.m<0){cal.m=11;cal.y--;}if(cal.m>11){cal.m=0;cal.y++;}}
-    function clickDay(c,e){
-      if(c.blank||c.past)return;
-      if(e.shiftKey&&last){const [a,b]=[last,c.k].sort();
-        for(let t=new Date(a+"T12:00");;t.setDate(t.getDate()+1)){const kk=key(t.getFullYear(),t.getMonth(),t.getDate());if(kk>b)break;sel.add(kk);}}
-      else if(sel.has(c.k))sel.delete(c.k);else sel.add(c.k);
-      last=c.k;
+    const cells = computed(() => {
+      const v = d.value;
+      if (!v) return [];
+      const { y, m } = cal,
+        first = new Date(y, m, 1).getDay(),
+        n = new Date(y, m + 1, 0).getDate(),
+        out = [];
+      for (let i = 0; i < first; i++) out.push({ k: "blank" + i, blank: true });
+      for (let day = 1; day <= n; day++) {
+        const k = key(y, m, day),
+          set = v.days[k],
+          wd = (first + day - 1) % 7;
+        out.push({
+          k,
+          day,
+          set: !!set,
+          lim: set || v.default,
+          tool: (set && set.tool) || v.tool || "claude",
+          wd,
+          past: k < v.today,
+          today: k === v.today,
+          reset: resets.value[k],
+        });
+      }
+      return out;
+    });
+    function month(dm) {
+      if (dm === 0) {
+        cal.y = now.getFullYear();
+        cal.m = now.getMonth();
+        return;
+      }
+      cal.m += dm;
+      if (cal.m < 0) {
+        cal.m = 11;
+        cal.y--;
+      }
+      if (cal.m > 11) {
+        cal.m = 0;
+        cal.y++;
+      }
     }
-    const weekends=()=>cells.value.forEach(c=>{if(!c.blank&&!c.past&&(c.wd===0||c.wd===6))sel.add(c.k);});
-    const days=computed(()=>[...sel].sort());
+    function clickDay(c, e) {
+      if (c.blank || c.past) return;
+      if (e.shiftKey && last) {
+        const [a, b] = [last, c.k].sort();
+        for (let t = new Date(a + "T12:00"); ; t.setDate(t.getDate() + 1)) {
+          const kk = key(t.getFullYear(), t.getMonth(), t.getDate());
+          if (kk > b) break;
+          sel.add(kk);
+        }
+      } else if (sel.has(c.k)) sel.delete(c.k);
+      else sel.add(c.k);
+      last = c.k;
+    }
+    const weekends = () =>
+      cells.value.forEach((c) => {
+        if (!c.blank && !c.past && (c.wd === 0 || c.wd === 6)) sel.add(c.k);
+      });
+    const days = computed(() => [...sel].sort());
     // 고른 날의 입력 칸은 처음 고른 날의 값으로 채운다
-    watch(()=>days.value[0],k=>{if(!k||!d.value)return;const v=d.value.days[k]||d.value.default;
-      Object.assign(pick,{tool:v.tool||d.value.tool||"claude",five_hour:v.five_hour,seven_day:v.seven_day});});
-    async function send(x){const v=await post({days:x});if(v){sel.clear();take(v);}}
-    const apply=()=>send(Object.fromEntries(days.value.map(k=>[k,{tool:pick.tool,five_hour:pick.five_hour,seven_day:pick.seven_day}])));
-    const reset=()=>send(Object.fromEntries(days.value.map(k=>[k,null])));
-    return {d,err,cal,sel,def,fb,pick,saveDef,saveFable,cells,month,clickDay,weekends,days,apply,reset,label,toolName,pct,when,ago,TOOLS};
+    watch(
+      () => days.value[0],
+      (k) => {
+        if (!k || !d.value) return;
+        const v = d.value.days[k] || d.value.default;
+        Object.assign(pick, {
+          tool: v.tool || d.value.tool || "claude",
+          five_hour: v.five_hour,
+          seven_day: v.seven_day,
+        });
+      },
+    );
+    async function send(x) {
+      const v = await post({ days: x });
+      if (v) {
+        sel.clear();
+        take(v);
+      }
+    }
+    const apply = () =>
+      send(
+        Object.fromEntries(
+          days.value.map((k) => [
+            k,
+            {
+              tool: pick.tool,
+              five_hour: pick.five_hour,
+              seven_day: pick.seven_day,
+            },
+          ]),
+        ),
+      );
+    const reset = () =>
+      send(Object.fromEntries(days.value.map((k) => [k, null])));
+    return {
+      d,
+      err,
+      cal,
+      sel,
+      def,
+      fb,
+      pick,
+      saveDef,
+      saveFable,
+      cells,
+      month,
+      clickDay,
+      weekends,
+      days,
+      apply,
+      reset,
+      label,
+      toolName,
+      pct,
+      when,
+      ago,
+      TOOLS,
+    };
   },
-  template:`<section class="sched">
+  template: `<section class="sched">
     <div v-if="err&&!d" class="card"><div class="err">{{err}}</div></div>
     <div v-else-if="!d" class="card muted">불러오는 중…</div>
     <template v-else>

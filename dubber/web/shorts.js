@@ -1,62 +1,216 @@
 // 쇼츠 화면: 왼쪽은 쇼츠를 만들 수 있는 영상 목록(메뉴에서 고른 상태만), 오른쪽은 고른 영상의 쇼츠 카드.
 // 카드에서 제목, 구간(문장 단위), 강조 구절, 가로 위치를 고치면 바로 저장되고, 미리 보기 그림으로 확인한 뒤
 // "다시 만들기"를 누르면 영상에 반영된다. 몇 초마다 새로 받아도 고치는 중인 제목 칸과 고른 글은 그대로 둔다
-import {computed,onMounted,onUnmounted,reactive,ref,watch} from "./vendor/vue.esm-browser.prod.js";
-import {api,store,every,fmt,shStage,SH_STAGES,openProject} from "./lib.js";
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch,
+} from "./vendor/vue.esm-browser.prod.js";
+import {
+  api,
+  store,
+  every,
+  fmt,
+  shStage,
+  SH_STAGES,
+  openProject,
+} from "./lib.js";
 
-const SP=(pid,path)=>`/api/p/${encodeURIComponent(pid)}/shorts${path||""}`;
+const SP = (pid, path) =>
+  `/api/p/${encodeURIComponent(pid)}/shorts${path || ""}`;
 // 미리 보기 그림 주소에 붙이는 값: 그림에 들어가는 설정이 바뀔 때만 바뀌어 그 카드의 그림만 새로 받는다
-const hash=s=>{let h=5381;for(let i=0;i<s.length;i++)h=(h*33^s.charCodeAt(i))>>>0;return h.toString(36);};
+const hash = (s) => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+};
 // 문장 하나를 강조 구절로 나눈 조각 [{text, mark, a, b}]
-function marks(text,ph){
-  const f=new Array(text.length).fill(false);
-  (ph||[]).forEach(p=>{const i=text.indexOf(p);if(i>=0)for(let k=i;k<i+p.length;k++)f[k]=true;});
-  const out=[];let i=0;
-  while(i<text.length){let j=i;while(j<text.length&&f[j]===f[i])j++;out.push({text:text.slice(i,j),mark:f[i],a:i,b:j});i=j;}
+function marks(text, ph) {
+  const f = new Array(text.length).fill(false);
+  (ph || []).forEach((p) => {
+    const i = text.indexOf(p);
+    if (i >= 0) for (let k = i; k < i + p.length; k++) f[k] = true;
+  });
+  const out = [];
+  let i = 0;
+  while (i < text.length) {
+    let j = i;
+    while (j < text.length && f[j] === f[i]) j++;
+    out.push({ text: text.slice(i, j), mark: f[i], a: i, b: j });
+    i = j;
+  }
   return out;
 }
 
-const ShortCard={
-  props:["it","sentences","pid"],emits:["act"],
-  setup(props,{emit}){
-    const root=ref(null),video=ref(null),pt=ref(null);
-    const title=reactive({0:"",1:""}),xpos=ref(50);let editing=false;
-    watch(()=>props.it.title,v=>{if(!editing){title[0]=v[0]||"";title[1]=v[1]||"";}},{immediate:true});
-    watch(()=>props.it.xpos,v=>{xpos.value=Math.round((v==null?0.5:v)*100);},{immediate:true});
-    const it=computed(()=>props.it),y=computed(()=>props.it.youtube||{});
-    const seg=computed(()=>{const ss=props.sentences;return {ss,a:ss.findIndex(s=>s.id===it.value.start),b:ss.findIndex(s=>s.id===it.value.end)};});
+const ShortCard = {
+  props: ["it", "sentences", "pid"],
+  emits: ["act"],
+  setup(props, { emit }) {
+    const root = ref(null),
+      video = ref(null),
+      pt = ref(null);
+    const title = reactive({ 0: "", 1: "" }),
+      xpos = ref(50);
+    let editing = false;
+    watch(
+      () => props.it.title,
+      (v) => {
+        if (!editing) {
+          title[0] = v[0] || "";
+          title[1] = v[1] || "";
+        }
+      },
+      { immediate: true },
+    );
+    watch(
+      () => props.it.xpos,
+      (v) => {
+        xpos.value = Math.round((v == null ? 0.5 : v) * 100);
+      },
+      { immediate: true },
+    );
+    const it = computed(() => props.it),
+      y = computed(() => props.it.youtube || {});
+    const seg = computed(() => {
+      const ss = props.sentences;
+      return {
+        ss,
+        a: ss.findIndex((s) => s.id === it.value.start),
+        b: ss.findIndex((s) => s.id === it.value.end),
+      };
+    });
     // 왼쪽 칸: 고친 내용이 반영된 영상이 있으면 영상, 아니면 지금 설정의 미리 보기 그림
-    const mode=computed(()=>it.value.has_file&&!it.value.dirty?"video":it.value.invalid?"none":"img");
-    const busy=computed(()=>["queued","rendering"].includes(it.value.status));
-    const ytOk=computed(()=>it.value.has_file&&!it.value.dirty&&!busy.value);
-    const connected=computed(()=>!!(store.yt&&store.yt.connected));
-    const ver=computed(()=>hash(JSON.stringify([it.value.title,it.value.start,it.value.end,it.value.emph,it.value.xpos])));
-    const imgSrc=computed(()=>SP(props.pid,`/${it.value.id}/frame?v=${ver.value}${pt.value!=null?"&t="+pt.value.toFixed(2):""}`));
-    const videoSrc=computed(()=>SP(props.pid,`/${it.value.id}/video?v=${Math.round(it.value.rendered||0)}`));
-    const dlSrc=computed(()=>SP(props.pid,`/${it.value.id}/video?dl=1`));
-    const post=(body,path="")=>emit("act",SP(props.pid,"/"+it.value.id+path),"POST",body);
-    function move(k,dl){const {ss,a,b}=seg.value,i=(k==="start"?a:b)+dl;
-      if(i<0||i>=ss.length||(k==="start"&&i>b)||(k==="end"&&i<a))return;post({[k]:ss[i].id});}
-    function unmark(s,p){const emph={...it.value.emph};
-      emph[s.id]=(emph[s.id]||[]).filter(x=>{const i=s.text.indexOf(x);return i<0||i+x.length<=p.a||i>=p.b;});post({emph});}
-    function addEmph(){
-      const sel=getSelection(),txt=sel.toString().replace(/\s+/g," ").trim();
-      const near=n=>n&&(n.nodeType===1?n:n.parentElement),ea=near(sel.anchorNode),eb=near(sel.focusNode);
-      const sa=ea&&ea.closest(".shs"),sb=eb&&eb.closest(".shs");
-      if(!txt||!sa||sa!==sb||!root.value.contains(sa))return alert("이 카드의 글에서 강조할 부분을 한 문장 안에서 마우스로 고른 뒤 누르세요.");
-      const s=props.sentences.find(x=>String(x.id)===sa.dataset.sid);
-      if(!s.text.includes(txt))return alert("고른 글을 문장에서 찾지 못했습니다.");
-      const emph={...it.value.emph};emph[s.id]=(emph[s.id]||[]).concat([txt]);sel.removeAllRanges();post({emph});
+    const mode = computed(() =>
+      it.value.has_file && !it.value.dirty
+        ? "video"
+        : it.value.invalid
+          ? "none"
+          : "img",
+    );
+    const busy = computed(() =>
+      ["queued", "rendering"].includes(it.value.status),
+    );
+    const ytOk = computed(
+      () => it.value.has_file && !it.value.dirty && !busy.value,
+    );
+    const connected = computed(() => !!(store.yt && store.yt.connected));
+    const ver = computed(() =>
+      hash(
+        JSON.stringify([
+          it.value.title,
+          it.value.start,
+          it.value.end,
+          it.value.emph,
+          it.value.xpos,
+        ]),
+      ),
+    );
+    const imgSrc = computed(() =>
+      SP(
+        props.pid,
+        `/${it.value.id}/frame?v=${ver.value}${pt.value != null ? "&t=" + pt.value.toFixed(2) : ""}`,
+      ),
+    );
+    const videoSrc = computed(() =>
+      SP(
+        props.pid,
+        `/${it.value.id}/video?v=${Math.round(it.value.rendered || 0)}`,
+      ),
+    );
+    const dlSrc = computed(() => SP(props.pid, `/${it.value.id}/video?dl=1`));
+    const post = (body, path = "") =>
+      emit("act", SP(props.pid, "/" + it.value.id + path), "POST", body);
+    function move(k, dl) {
+      const { ss, a, b } = seg.value,
+        i = (k === "start" ? a : b) + dl;
+      if (
+        i < 0 ||
+        i >= ss.length ||
+        (k === "start" && i > b) ||
+        (k === "end" && i < a)
+      )
+        return;
+      post({ [k]: ss[i].id });
+    }
+    function unmark(s, p) {
+      const emph = { ...it.value.emph };
+      emph[s.id] = (emph[s.id] || []).filter((x) => {
+        const i = s.text.indexOf(x);
+        return i < 0 || i + x.length <= p.a || i >= p.b;
+      });
+      post({ emph });
+    }
+    function addEmph() {
+      const sel = getSelection(),
+        txt = sel.toString().replace(/\s+/g, " ").trim();
+      const near = (n) => n && (n.nodeType === 1 ? n : n.parentElement),
+        ea = near(sel.anchorNode),
+        eb = near(sel.focusNode);
+      const sa = ea && ea.closest(".shs"),
+        sb = eb && eb.closest(".shs");
+      if (!txt || !sa || sa !== sb || !root.value.contains(sa))
+        return alert(
+          "이 카드의 글에서 강조할 부분을 한 문장 안에서 마우스로 고른 뒤 누르세요.",
+        );
+      const s = props.sentences.find((x) => String(x.id) === sa.dataset.sid);
+      if (!s.text.includes(txt))
+        return alert("고른 글을 문장에서 찾지 못했습니다.");
+      const emph = { ...it.value.emph };
+      emph[s.id] = (emph[s.id] || []).concat([txt]);
+      sel.removeAllRanges();
+      post({ emph });
     }
     // 문장을 누르면 그 장면: 영상이면 그 시각으로, 그림이면 그 시각의 그림으로
-    function seek(s){if(it.value.invalid)return;const at=Math.max(0,s.t-it.value.at+Math.min(1,s.d/2));
-      if(video.value){video.value.currentTime=at;video.value.play().catch(()=>{});}else pt.value=at;}
-    function del(){if(!confirm(`쇼츠 #${it.value.id}을(를) 지울까요? 이 PC의 영상 파일도 지웁니다(구글 드라이브와 유튜브에 올린 것은 그대로 둡니다).`))return;
-      emit("act",SP(props.pid,"/"+it.value.id),"DELETE");}
-    return {root,video,title,xpos,it,y,seg,mode,busy,ytOk,connected,imgSrc,videoSrc,dlSrc,post,move,unmark,addEmph,seek,del,marks,fmt,
-      edit:v=>{editing=v;},saveTitle:()=>post({title:[title[0],title[1]]})};
+    function seek(s) {
+      if (it.value.invalid) return;
+      const at = Math.max(0, s.t - it.value.at + Math.min(1, s.d / 2));
+      if (video.value) {
+        video.value.currentTime = at;
+        video.value.play().catch(() => {});
+      } else pt.value = at;
+    }
+    function del() {
+      if (
+        !confirm(
+          `쇼츠 #${it.value.id}을(를) 지울까요? 이 PC의 영상 파일도 지웁니다(구글 드라이브와 유튜브에 올린 것은 그대로 둡니다).`,
+        )
+      )
+        return;
+      emit("act", SP(props.pid, "/" + it.value.id), "DELETE");
+    }
+    return {
+      root,
+      video,
+      title,
+      xpos,
+      it,
+      y,
+      seg,
+      mode,
+      busy,
+      ytOk,
+      connected,
+      imgSrc,
+      videoSrc,
+      dlSrc,
+      post,
+      move,
+      unmark,
+      addEmph,
+      seek,
+      del,
+      marks,
+      fmt,
+      edit: (v) => {
+        editing = v;
+      },
+      saveTitle: () => post({ title: [title[0], title[1]] }),
+    };
   },
-  template:`<div class="shcard" ref="root">
+  template: `<div class="shcard" ref="root">
     <div class="shvid">
       <video v-if="mode==='video'" ref="video" controls preload="metadata" playsinline :src="videoSrc"></video>
       <div v-else-if="mode==='none'" style="padding:12px">{{it.invalid}}</div>
@@ -105,27 +259,57 @@ const ShortCard={
 };
 
 // 고른 영상의 쇼츠. 처음에 문장까지 받고, 그 뒤로는 2.5초마다 문장 없이 상태만 받는다
-const ShortsDetail={
-  props:["pid"],components:{ShortCard},
-  setup(props){
-    const d=ref(null),err=ref(null);
-    const take=v=>{d.value={...v,sentences:d.value.sentences};};
+const ShortsDetail = {
+  props: ["pid"],
+  components: { ShortCard },
+  setup(props) {
+    const d = ref(null),
+      err = ref(null);
+    const take = (v) => {
+      d.value = { ...v, sentences: d.value.sentences };
+    };
     let stop;
-    onMounted(async()=>{
-      try{d.value=await api(SP(props.pid));}catch(e){err.value=e.message;return;}
-      stop=every(2500,async()=>take(await api(SP(props.pid,"?lite=1"))));
+    onMounted(async () => {
+      try {
+        d.value = await api(SP(props.pid));
+      } catch (e) {
+        err.value = e.message;
+        return;
+      }
+      stop = every(2500, async () => take(await api(SP(props.pid, "?lite=1"))));
     });
-    onUnmounted(()=>stop&&stop());
-    async function act(url,method,body){try{take(await api(url,method,body));}catch(e){alert(e.message);}}
-    const g=computed(()=>(d.value&&d.value.suggest)||{});
-    function addNew(){
-      const v=prompt("원본 영상에서 쇼츠를 시작할 시각을 적으세요 (예: 12:30)");if(!v)return;
-      const at=v.trim().split(":").reduce((a,x)=>a*60+Number(x),0);if(!isFinite(at))return alert("시각을 알아보지 못했습니다.");
-      act(SP(props.pid,"/new"),"POST",{at});
+    onUnmounted(() => stop && stop());
+    async function act(url, method, body) {
+      try {
+        take(await api(url, method, body));
+      } catch (e) {
+        alert(e.message);
+      }
     }
-    return {d,err,g,act,addNew,suggest:()=>act(SP(props.pid,"/suggest"),"POST",{}),open:()=>openProject(props.pid)};
+    const g = computed(() => (d.value && d.value.suggest) || {});
+    function addNew() {
+      const v = prompt(
+        "원본 영상에서 쇼츠를 시작할 시각을 적으세요 (예: 12:30)",
+      );
+      if (!v) return;
+      const at = v
+        .trim()
+        .split(":")
+        .reduce((a, x) => a * 60 + Number(x), 0);
+      if (!isFinite(at)) return alert("시각을 알아보지 못했습니다.");
+      act(SP(props.pid, "/new"), "POST", { at });
+    }
+    return {
+      d,
+      err,
+      g,
+      act,
+      addNew,
+      suggest: () => act(SP(props.pid, "/suggest"), "POST", {}),
+      open: () => openProject(props.pid),
+    };
   },
-  template:`<div v-if="err" class="err">{{err}}</div>
+  template: `<div v-if="err" class="err">{{err}}</div>
     <div v-else-if="!d" class="card muted">불러오는 중…</div>
     <template v-else>
       <div class="card" style="margin-bottom:12px">
@@ -145,26 +329,70 @@ const ShortsDetail={
 };
 
 export default {
-  components:{ShortsDetail},
-  setup(){
-    const auto=ref(false);
+  components: { ShortsDetail },
+  setup() {
+    const auto = ref(false);
     let stop;
-    onMounted(()=>{
-      api("/api/youtube/status").then(y=>{store.yt=y;}).catch(()=>{});
-      stop=every(5000,async()=>{const r=await api("/api/shorts");store.shorts=r.items;auto.value=!!r.auto;});
+    onMounted(() => {
+      api("/api/youtube/status")
+        .then((y) => {
+          store.yt = y;
+        })
+        .catch(() => {});
+      stop = every(5000, async () => {
+        const r = await api("/api/shorts");
+        store.shorts = r.items;
+        auto.value = !!r.auto;
+      });
     });
-    onUnmounted(()=>stop());
-    const f=computed(()=>store.route.filter);
-    const items=computed(()=>(store.shorts||[]).filter(x=>f.value==="all"||shStage(x)===f.value));
-    const title=computed(()=>f.value==="all"?"쇼츠":"쇼츠 · "+SH_STAGES.find(x=>x[0]===f.value)[1]);
-    const badge=x=>x.busy?{cls:"ok",text:x.suggest==="queued"||x.suggest==="running"?"후보 고르는 중":"만드는 중"}
-      :x.error?{cls:"bad",text:"후보 고르기 실패"}
-      :x.count?{cls:"",text:x.done+"/"+x.count+"개 완성"+(x.uploaded?" · 유튜브 "+x.uploaded:"")}
-      :{cls:"",text:"아직 없음"};
-    const pick=dir=>{location.hash="#/shorts/"+f.value+"/"+encodeURIComponent(dir);};
-    return {store,auto,items,title,badge,pick,setAuto:v=>api("/api/shorts","POST",{auto:v})};
+    onUnmounted(() => stop());
+    const f = computed(() => store.route.filter);
+    const items = computed(() =>
+      (store.shorts || []).filter(
+        (x) => f.value === "all" || shStage(x) === f.value,
+      ),
+    );
+    const title = computed(() =>
+      f.value === "all"
+        ? "쇼츠"
+        : "쇼츠 · " + SH_STAGES.find((x) => x[0] === f.value)[1],
+    );
+    const badge = (x) =>
+      x.busy
+        ? {
+            cls: "ok",
+            text:
+              x.suggest === "queued" || x.suggest === "running"
+                ? "후보 고르는 중"
+                : "만드는 중",
+          }
+        : x.error
+          ? { cls: "bad", text: "후보 고르기 실패" }
+          : x.count
+            ? {
+                cls: "",
+                text:
+                  x.done +
+                  "/" +
+                  x.count +
+                  "개 완성" +
+                  (x.uploaded ? " · 유튜브 " + x.uploaded : ""),
+              }
+            : { cls: "", text: "아직 없음" };
+    const pick = (dir) => {
+      location.hash = "#/shorts/" + f.value + "/" + encodeURIComponent(dir);
+    };
+    return {
+      store,
+      auto,
+      items,
+      title,
+      badge,
+      pick,
+      setAuto: (v) => api("/api/shorts", "POST", { auto: v }),
+    };
   },
-  template:`<section class="shorts">
+  template: `<section class="shorts">
     <div class="card side">
       <strong>{{title}}</strong>
       <div class="muted">문장 정리가 끝난 영상에서 AI가 쇼츠 구간(30~60초)과 제목·강조 구절을 고르고, 원본 음성에 한국어 자막을 크게 박은 세로 영상(1080×1920)을 만듭니다. 결과는 "한국어 더빙/쇼츠" 폴더와 구글 드라이브에 저장됩니다.</div>

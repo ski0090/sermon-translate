@@ -1,36 +1,118 @@
 // 설정 > AI 도구 화면: Claude, Codex, Antigravity마다 설치·로그인·플랜, 사용 켜기/끄기, 모델 고르기, 지금 쓰는 모델,
 // 로그인·로그아웃·연결 시험, 모델별 사용 가능 여부와 쓴 한도. Codex 로그인 중이나 한도를 읽는 중에만 2초마다 새로 읽고,
 // 고르는 중인 모델 칸은 덮지 않는다
-import {computed,onMounted,onUnmounted,ref,watch} from "./vendor/vue.esm-browser.prod.js";
-import {api,every,when,TOOLS} from "./lib.js";
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+} from "./vendor/vue.esm-browser.prod.js";
+import { api, every, when, TOOLS } from "./lib.js";
 
-const ToolCard={
-  props:["x"],emits:["reload"],
-  setup(props,{emit}){
-    const sel=ref(props.x.model||""),text=ref(""),testing=ref(false);
-    watch(()=>props.x.model,v=>{sel.value=v||"";});
+const ToolCard = {
+  props: ["x"],
+  emits: ["reload"],
+  setup(props, { emit }) {
+    const sel = ref(props.x.model || ""),
+      text = ref(""),
+      testing = ref(false);
+    watch(
+      () => props.x.model,
+      (v) => {
+        sel.value = v || "";
+      },
+    );
     // 서버가 쓸 수 있는 모델부터 정렬해 준다. 쓸 수 없는 모델은 고르지 못하게 하고, 목록에 없는 모델을 직접 골라 두었으면 그것도 보인다
-    const info=v=>(props.x.model_info||{})[v]||{};
-    const opts=computed(()=>{const ms=props.x.models||[],m=props.x.model;
-      return ms.map(([v,l])=>{const i=info(v);return {v,t:l+(v&&v!==l?" ("+v+")":"")+(i.ok===false?" — 사용 불가":""),off:i.ok===false&&v!==m};})
-        .concat(m&&!ms.some(([v])=>v===m)?[{v:m,t:m,off:false}]:[]);});
-    const rows=computed(()=>(props.x.models||[]).map(([v,l])=>({v,l,ok:info(v).ok,why:info(v).why||info(v).note,limits:info(v).limits||[]})));
-    const count=computed(()=>({ok:rows.value.filter(r=>r.v&&r.ok===true).length,no:rows.value.filter(r=>r.v&&r.ok===false).length}));
-    const lg=computed(()=>props.x.login);
-    async function call(path,body,fresh){try{await api(path,"POST",body);}catch(e){alert(e.message);}emit("reload",fresh);}
-    const t=()=>props.x.tool;
-    return {sel,text,testing,opts,rows,count,lg,when,
-      pct:u=>Math.round(u*100)+"%",col:u=>u>=0.9?"var(--bad)":u>=0.7?"var(--warn)":"var(--text)",
-      setEnabled:on=>call("/api/tools",{tool:t(),enabled:on}),
-      saveModel(){const model=text.value.trim()||sel.value;text.value="";document.activeElement.blur();call("/api/tools",{tool:t(),model});},
-      async test(){testing.value=true;await call(`/api/tools/${t()}/test`,{},true);testing.value=false;},
-      login(){if(props.x.logged_in&&!confirm("새로 로그인을 시작하면 지금 로그인이 잠시 풀립니다. 새 로그인을 끝내지 않으면(취소, 15분 지남) 지금 로그인을 되살립니다. 시작할까요?"))return;
-        call(`/api/tools/${t()}/login`,{});},
-      cancel:()=>call(`/api/tools/${t()}/cancel`,{},true),
-      logout(){if(confirm("로그아웃하면 다시 로그인할 때까지 이 도구를 쓸 수 없습니다. 로그아웃할까요?"))call(`/api/tools/${t()}/logout`,{},true);},
+    const info = (v) => (props.x.model_info || {})[v] || {};
+    const opts = computed(() => {
+      const ms = props.x.models || [],
+        m = props.x.model;
+      return ms
+        .map(([v, l]) => {
+          const i = info(v);
+          return {
+            v,
+            t:
+              l +
+              (v && v !== l ? " (" + v + ")" : "") +
+              (i.ok === false ? " — 사용 불가" : ""),
+            off: i.ok === false && v !== m,
+          };
+        })
+        .concat(
+          m && !ms.some(([v]) => v === m) ? [{ v: m, t: m, off: false }] : [],
+        );
+    });
+    const rows = computed(() =>
+      (props.x.models || []).map(([v, l]) => ({
+        v,
+        l,
+        ok: info(v).ok,
+        why: info(v).why || info(v).note,
+        limits: info(v).limits || [],
+      })),
+    );
+    const count = computed(() => ({
+      ok: rows.value.filter((r) => r.v && r.ok === true).length,
+      no: rows.value.filter((r) => r.v && r.ok === false).length,
+    }));
+    const lg = computed(() => props.x.login);
+    async function call(path, body, fresh) {
+      try {
+        await api(path, "POST", body);
+      } catch (e) {
+        alert(e.message);
+      }
+      emit("reload", fresh);
+    }
+    const t = () => props.x.tool;
+    return {
+      sel,
+      text,
+      testing,
+      opts,
+      rows,
+      count,
+      lg,
+      when,
+      pct: (u) => Math.round(u * 100) + "%",
+      col: (u) =>
+        u >= 0.9 ? "var(--bad)" : u >= 0.7 ? "var(--warn)" : "var(--text)",
+      setEnabled: (on) => call("/api/tools", { tool: t(), enabled: on }),
+      saveModel() {
+        const model = text.value.trim() || sel.value;
+        text.value = "";
+        document.activeElement.blur();
+        call("/api/tools", { tool: t(), model });
+      },
+      async test() {
+        testing.value = true;
+        await call(`/api/tools/${t()}/test`, {}, true);
+        testing.value = false;
+      },
+      login() {
+        if (
+          props.x.logged_in &&
+          !confirm(
+            "새로 로그인을 시작하면 지금 로그인이 잠시 풀립니다. 새 로그인을 끝내지 않으면(취소, 15분 지남) 지금 로그인을 되살립니다. 시작할까요?",
+          )
+        )
+          return;
+        call(`/api/tools/${t()}/login`, {});
+      },
+      cancel: () => call(`/api/tools/${t()}/cancel`, {}, true),
+      logout() {
+        if (
+          confirm(
+            "로그아웃하면 다시 로그인할 때까지 이 도구를 쓸 수 없습니다. 로그아웃할까요?",
+          )
+        )
+          call(`/api/tools/${t()}/logout`, {}, true);
+      },
     };
   },
-  template:`<div class="card" style="margin-bottom:12px">
+  template: `<div class="card" style="margin-bottom:12px">
     <div class="row" style="justify-content:space-between;margin:0"><strong style="font-size:15px">{{x.name}}</strong>
       <label class="row" style="margin:0"><input type="checkbox" :checked="x.enabled" :disabled="!x.installed" @change="setEnabled($event.target.checked)"> 사용</label></div>
     <template v-if="!x.installed">
@@ -83,21 +165,37 @@ const ToolCard={
 };
 
 export default {
-  components:{ToolCard},
-  setup(){
-    const r=ref(null),err=ref(null);
+  components: { ToolCard },
+  setup() {
+    const r = ref(null),
+      err = ref(null);
     // 상태를 읽지 못하면 화면에 알리고, "상태 다시 읽기"로 다시 읽는다
-    const load=async fresh=>{try{r.value=await api("/api/tools"+(fresh?"?fresh=1":""));err.value=null;}catch(e){err.value=e.message;}};
+    const load = async (fresh) => {
+      try {
+        r.value = await api("/api/tools" + (fresh ? "?fresh=1" : ""));
+        err.value = null;
+      } catch (e) {
+        err.value = e.message;
+      }
+    };
     let stop;
-    onMounted(()=>{
+    onMounted(() => {
       load(true);
       // Codex 로그인 중이거나 Antigravity 한도를 뒤에서 읽는 중에만 자주 새로 읽는다
-      stop=every(2000,async()=>{if(r.value&&r.value.tools.some(x=>(x.login&&x.login.running)||x.usage_busy))await load();});
+      stop = every(2000, async () => {
+        if (
+          r.value &&
+          r.value.tools.some(
+            (x) => (x.login && x.login.running) || x.usage_busy,
+          )
+        )
+          await load();
+      });
     });
-    onUnmounted(()=>stop());
-    return {r,err,load,TOOLS};
+    onUnmounted(() => stop());
+    return { r, err, load, TOOLS };
   },
-  template:`<section class="toolsv">
+  template: `<section class="toolsv">
     <div class="card" style="margin-bottom:12px"><strong>AI 도구</strong>
       <div class="muted">자막 읽기, 문장 정리, 쇼츠 후보 고르기에 쓰는 AI 도구입니다. 끈 도구는 쓰지 않고, 스케줄에서 끈 도구로 정한 날은 켜진 도구로 대신합니다. 모델을 비워 두면 도구의 기본 모델을 씁니다.</div>
       <div class="row"><template v-if="r">오늘 자동 작업 도구: <b>{{r.today?TOOLS[r.today]:"없음(모든 도구가 꺼짐)"}}</b></template> <button class="small" @click="load(true)">상태 다시 읽기</button></div>

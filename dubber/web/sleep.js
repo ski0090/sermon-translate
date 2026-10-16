@@ -1,36 +1,101 @@
 // 음성 영상(자면서 듣는 설교) 화면: 음성을 만든 영상마다 이퀄라이저 화면 + 싱크 없이 이은 음성 영상을 만들고,
 // 재생·내려받기·유튜브 올리기를 한다. 메뉴에서 고른 상태만 보이고, 3초마다 새로 받아도 재생 중인 영상은 끊기지 않는다
-import {computed,onMounted,onUnmounted,ref} from "./vendor/vue.esm-browser.prod.js";
-import {api,store,every,fmt,when,svStage} from "./lib.js";
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  ref,
+} from "./vendor/vue.esm-browser.prod.js";
+import { api, store, every, fmt, when, svStage } from "./lib.js";
 
-const P=(x,p)=>`/api/p/${encodeURIComponent(x.dir)}/sleep${p}`;
+const P = (x, p) => `/api/p/${encodeURIComponent(x.dir)}/sleep${p}`;
 
 export default {
-  setup(){
-    const open=ref(null);
-    const load=async()=>{store.sleep=await api("/api/sleep");};
-    let stop;onMounted(()=>{stop=every(3000,load);});onUnmounted(()=>stop());
-    const d=computed(()=>store.sleep);
-    const items=computed(()=>d.value?d.value.items.filter(x=>store.route.filter==="all"||svStage(x)===store.route.filter):[]);
-    const todo=computed(()=>d.value?d.value.items.filter(x=>!x.has_file&&svStage(x)!=="making").length:0);
-    const busy=x=>x.status==="queued"||x.status==="rendering";
-    const pct=x=>Math.round((x.progress||0)*100);
-    const info=x=>(x.length?fmt(x.length)+" · ":"")+(x.size?Math.round(x.size/2**20)+"MB · ":"")+(x.rendered?when(x.rendered):"")
-      +(x.drive&&x.drive.folder?" · 드라이브에 올림":x.drive&&x.drive.error?" · 드라이브 실패":"");
-    async function act(x,a){
-      if(a==="cancel"&&x.status==="rendering"&&!confirm("만들던 음성 영상을 멈출까요?"))return;
-      if(a===""&&x.has_file&&!confirm("음성 영상을 다시 만듭니다. 약 11분 걸립니다."))return;
-      try{await api(P(x,a?"/"+a:""),"POST",{});}catch(e){alert(e.message);}
+  setup() {
+    const open = ref(null);
+    const load = async () => {
+      store.sleep = await api("/api/sleep");
+    };
+    let stop;
+    onMounted(() => {
+      stop = every(3000, load);
+    });
+    onUnmounted(() => stop());
+    const d = computed(() => store.sleep);
+    const items = computed(() =>
+      d.value
+        ? d.value.items.filter(
+            (x) =>
+              store.route.filter === "all" || svStage(x) === store.route.filter,
+          )
+        : [],
+    );
+    const todo = computed(() =>
+      d.value
+        ? d.value.items.filter((x) => !x.has_file && svStage(x) !== "making")
+            .length
+        : 0,
+    );
+    const busy = (x) => x.status === "queued" || x.status === "rendering";
+    const pct = (x) => Math.round((x.progress || 0) * 100);
+    const info = (x) =>
+      (x.length ? fmt(x.length) + " · " : "") +
+      (x.size ? Math.round(x.size / 2 ** 20) + "MB · " : "") +
+      (x.rendered ? when(x.rendered) : "") +
+      (x.drive && x.drive.folder
+        ? " · 드라이브에 올림"
+        : x.drive && x.drive.error
+          ? " · 드라이브 실패"
+          : "");
+    async function act(x, a) {
+      if (
+        a === "cancel" &&
+        x.status === "rendering" &&
+        !confirm("만들던 음성 영상을 멈출까요?")
+      )
+        return;
+      if (
+        a === "" &&
+        x.has_file &&
+        !confirm("음성 영상을 다시 만듭니다. 약 11분 걸립니다.")
+      )
+        return;
+      try {
+        await api(P(x, a ? "/" + a : ""), "POST", {});
+      } catch (e) {
+        alert(e.message);
+      }
       load();
     }
-    async function makeAll(){
-      if(!confirm(`음성 영상이 없는 ${todo.value}편을 모두 대기열에 넣습니다. 한 편에 약 11분 걸립니다.`))return;
-      try{await api("/api/sleep","POST",{action:"all"});}catch(e){alert(e.message);}
+    async function makeAll() {
+      if (
+        !confirm(
+          `음성 영상이 없는 ${todo.value}편을 모두 대기열에 넣습니다. 한 편에 약 11분 걸립니다.`,
+        )
+      )
+        return;
+      try {
+        await api("/api/sleep", "POST", { action: "all" });
+      } catch (e) {
+        alert(e.message);
+      }
       load();
     }
-    return {open,d,items,todo,busy,pct,info,act,makeAll,P,setAuto:v=>api("/api/sleep","POST",{auto:v})};
+    return {
+      open,
+      d,
+      items,
+      todo,
+      busy,
+      pct,
+      info,
+      act,
+      makeAll,
+      P,
+      setAuto: (v) => api("/api/sleep", "POST", { auto: v }),
+    };
   },
-  template:`<section class="sleepv">
+  template: `<section class="sleepv">
     <div v-if="!d" class="card muted">불러오는 중…</div>
     <template v-else>
     <div class="card">

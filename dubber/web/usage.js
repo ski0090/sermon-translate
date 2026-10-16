@@ -1,21 +1,57 @@
 // 사용량 화면: Claude(5시간·주간·Fable 추가 몫), Codex(한도), Antigravity(/usage)와 날짜별·도구별 호출 수·토큰.
 // 30초마다 새로 받고, "확인"은 그 도구에 짧게 물어 지금 값을 읽는다
-import {computed,onMounted,onUnmounted,reactive,ref} from "./vendor/vue.esm-browser.prod.js";
-import {api,every,when} from "./lib.js";
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+} from "./vendor/vue.esm-browser.prod.js";
+import { api, every, when } from "./lib.js";
 
-const ago=t=>{if(!t)return "아직 모름";const m=Math.round((Date.now()/1000-t)/60);return m<1?"방금":m<60?m+"분 전":m<1440?Math.round(m/60)+"시간 전":Math.round(m/1440)+"일 전";};
-const span=m=>!m?"":m>=1440?Math.round(m/1440)+"일":m>=60?Math.round(m/60)+"시간":m+"분";
-const tok=n=>!n?"0":n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?Math.round(n/1e3)+"K":String(n);
+const ago = (t) => {
+  if (!t) return "아직 모름";
+  const m = Math.round((Date.now() / 1000 - t) / 60);
+  return m < 1
+    ? "방금"
+    : m < 60
+      ? m + "분 전"
+      : m < 1440
+        ? Math.round(m / 60) + "시간 전"
+        : Math.round(m / 1440) + "일 전";
+};
+const span = (m) =>
+  !m
+    ? ""
+    : m >= 1440
+      ? Math.round(m / 1440) + "일"
+      : m >= 60
+        ? Math.round(m / 60) + "시간"
+        : m + "분";
+const tok = (n) =>
+  !n
+    ? "0"
+    : n >= 1e6
+      ? (n / 1e6).toFixed(1) + "M"
+      : n >= 1e3
+        ? Math.round(n / 1e3) + "K"
+        : String(n);
 
 // 한도 막대 하나: 쓴 비율(0~1), 초기화 시각, 덧붙임 말
-const UsageBar={
-  props:["label","used","resets","note"],
-  setup(props){
-    const p=computed(()=>Math.round(props.used*100));
-    const color=computed(()=>p.value>=90?"var(--bad)":p.value>=70?"var(--warn)":"var(--accent)");
-    return {p,color,when};
+const UsageBar = {
+  props: ["label", "used", "resets", "note"],
+  setup(props) {
+    const p = computed(() => Math.round(props.used * 100));
+    const color = computed(() =>
+      p.value >= 90
+        ? "var(--bad)"
+        : p.value >= 70
+          ? "var(--warn)"
+          : "var(--accent)",
+    );
+    return { p, color, when };
   },
-  template:`<div class="uvrow"><span class="uvlab">{{label}}</span>
+  template: `<div class="uvrow"><span class="uvlab">{{label}}</span>
     <span v-if="used==null" class="muted">모름</span>
     <template v-else><div class="uvbar"><i :style="{width:Math.min(100,p)+'%',background:color}"></i></div>
       <span class="uvval"><b>{{p}}%</b> 사용 · 남음 {{Math.max(0,100-p)}}%</span><span class="muted">{{resets?when(resets)+" 초기화":""}}{{note?" · "+note:""}}</span></template>
@@ -23,18 +59,39 @@ const UsageBar={
 };
 
 export default {
-  components:{UsageBar},
-  setup(){
-    const d=ref(null),busy=reactive({});
-    const load=async()=>{d.value=await api("/api/usage/all");};
-    let stop;onMounted(()=>{stop=every(30000,load);});onUnmounted(()=>stop());
-    async function check(tool){busy[tool]=true;try{await api("/api/usage/all/check","POST",{tool});}catch(e){alert(e.message);}busy[tool]=false;await load();}
-    const cw=computed(()=>(d.value&&d.value.claude.windows)||{});
-    const cx=computed(()=>(d.value&&d.value.codex.limits)||{});
-    const card=t=>({claude:d.value.claude.t,codex:d.value.codex.t,agy:(d.value.agy||{}).t})[t];
-    return {d,busy,check,cw,cx,card,ago,span,tok};
+  components: { UsageBar },
+  setup() {
+    const d = ref(null),
+      busy = reactive({});
+    const load = async () => {
+      d.value = await api("/api/usage/all");
+    };
+    let stop;
+    onMounted(() => {
+      stop = every(30000, load);
+    });
+    onUnmounted(() => stop());
+    async function check(tool) {
+      busy[tool] = true;
+      try {
+        await api("/api/usage/all/check", "POST", { tool });
+      } catch (e) {
+        alert(e.message);
+      }
+      busy[tool] = false;
+      await load();
+    }
+    const cw = computed(() => (d.value && d.value.claude.windows) || {});
+    const cx = computed(() => (d.value && d.value.codex.limits) || {});
+    const card = (t) =>
+      ({
+        claude: d.value.claude.t,
+        codex: d.value.codex.t,
+        agy: (d.value.agy || {}).t,
+      })[t];
+    return { d, busy, check, cw, cx, card, ago, span, tok };
   },
-  template:`<section class="usagev">
+  template: `<section class="usagev">
     <div v-if="!d" class="card muted">불러오는 중…</div>
     <template v-else>
       <div v-for="t in ['claude','codex','agy']" :key="t" class="card" style="margin-bottom:12px">

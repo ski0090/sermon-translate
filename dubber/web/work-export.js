@@ -1,26 +1,62 @@
 // 내보내기 단계: 만들 파일과 원음 처리를 고르고 내보낸 뒤, 만든 파일을 내려받는다. 다 만들면 구글 드라이브의 결과 폴더에 올라간다
-import {computed,inject,reactive,ref} from "./vendor/vue.esm-browser.prod.js";
-import {api,fmt} from "./lib.js";
+import {
+  computed,
+  inject,
+  reactive,
+  ref,
+} from "./vendor/vue.esm-browser.prod.js";
+import { api, fmt } from "./lib.js";
 
 export default {
-  setup(){
-    const W=inject("W"),d=computed(()=>W.d);
-    const want=reactive({video:true,audio:true,srt:true,txt:true});
-    const oa=ref(W.d.settings.orig_audio==="duck"?"duck":"remove");
-    const running=computed(()=>!!(d.value.job&&d.value.job.running));
-    const files=computed(()=>W.exportFiles||d.value.last_export||[]);
-    const total=computed(()=>d.value.info.duration-d.value.cuts.reduce((a,c)=>a+(c.end-c.start),0));
-    const noTts=computed(()=>d.value.sentences.filter(s=>!s.tts).length);
+  setup() {
+    const W = inject("W"),
+      d = computed(() => W.d);
+    const want = reactive({ video: true, audio: true, srt: true, txt: true });
+    const oa = ref(W.d.settings.orig_audio === "duck" ? "duck" : "remove");
+    const running = computed(() => !!(d.value.job && d.value.job.running));
+    const files = computed(() => W.exportFiles || d.value.last_export || []);
+    const total = computed(
+      () =>
+        d.value.info.duration -
+        d.value.cuts.reduce((a, c) => a + (c.end - c.start), 0),
+    );
+    const noTts = computed(
+      () => d.value.sentences.filter((s) => !s.tts).length,
+    );
     // 결과 폴더는 서버의 drive_folder와 같은 규칙(원본 영상 폴더 아래 "<이름> 한국어 더빙")
-    const folder=computed(()=>{const dr=d.value.drive;if(!dr)return null;const parts=dr.path.split("/");parts.pop();
-      return (dr.shared&&parts.length?"공유 문서함/":"내 드라이브/")+parts.concat([d.value.name+" 한국어 더빙"]).join("/");});
-    function run(){
-      api(W.P("/settings"),"POST",{orig_audio:oa.value}).catch(()=>{});
-      W.startJob("export",{want:Object.keys(want).filter(k=>want[k]),orig_audio:oa.value});
+    const folder = computed(() => {
+      const dr = d.value.drive;
+      if (!dr) return null;
+      const parts = dr.path.split("/");
+      parts.pop();
+      return (
+        (dr.shared && parts.length ? "공유 문서함/" : "내 드라이브/") +
+        parts.concat([d.value.name + " 한국어 더빙"]).join("/")
+      );
+    });
+    function run() {
+      api(W.P("/settings"), "POST", { orig_audio: oa.value }).catch(() => {});
+      W.startJob("export", {
+        want: Object.keys(want).filter((k) => want[k]),
+        orig_audio: oa.value,
+      });
     }
-    return {W,d,want,oa,running,files,total,noTts,folder,run,fmt,base:f=>f.split(/[\\/]/).pop()};
+    return {
+      W,
+      d,
+      want,
+      oa,
+      running,
+      files,
+      total,
+      noTts,
+      folder,
+      run,
+      fmt,
+      base: (f) => f.split(/[\\/]/).pop(),
+    };
   },
-  template:`<div>
+  template: `<div>
     <h2>내보내기</h2>
     <div class="card">
       <div class="row"><label><input type="checkbox" v-model="want.video"> 한국어 음성이 입혀진 영상</label><label><input type="checkbox" v-model="want.audio"> 한국어 음성만 담은 오디오 파일</label></div>

@@ -1,26 +1,67 @@
 // 음성 단계: 목소리와 기본 속도, 음성 만들기, 영상과 함께 미리 듣기, 문장별로 들어 보고 속도·앞 쉼 바꾸기와 다시 만들기
-import {computed,inject,ref} from "./vendor/vue.esm-browser.prod.js";
-import {api} from "./lib.js";
-import {SentenceList,Edit} from "./work-review.js";
+import { computed, inject, ref } from "./vendor/vue.esm-browser.prod.js";
+import { api } from "./lib.js";
+import { SentenceList, Edit } from "./work-review.js";
 
-const VOICES=["F1","F2","F3","F4","F5","M1","M2","M3","M4","M5"];
+const VOICES = ["F1", "F2", "F3", "F4", "F5", "M1", "M2", "M3", "M4", "M5"];
 
 export default {
-  components:{SentenceList,Edit},
-  setup(){
-    const W=inject("W"),d=computed(()=>W.d),sel=ref(null),sample=ref(false);
-    const done=computed(()=>d.value.sentences.filter(s=>s.tts).length),total=computed(()=>d.value.sentences.length);
-    const over=computed(()=>W.plan.filter(p=>p.overflow||p.fixed_overflow).length);
-    const running=computed(()=>!!(d.value.job&&d.value.job.running));
-    async function setting(body){try{await api(W.P("/settings"),"POST",body);}catch(e){alert(e.message);}await W.reload();}
-    function voice(e){
-      if(done.value&&!confirm("목소리를 바꾸면 모든 문장의 음성을 다시 만듭니다. 계속할까요?")){e.target.value=d.value.settings.voice;return;}
-      setting({voice:e.target.value});
+  components: { SentenceList, Edit },
+  setup() {
+    const W = inject("W"),
+      d = computed(() => W.d),
+      sel = ref(null),
+      sample = ref(false);
+    const done = computed(() => d.value.sentences.filter((s) => s.tts).length),
+      total = computed(() => d.value.sentences.length);
+    const over = computed(
+      () => W.plan.filter((p) => p.overflow || p.fixed_overflow).length,
+    );
+    const running = computed(() => !!(d.value.job && d.value.job.running));
+    async function setting(body) {
+      try {
+        await api(W.P("/settings"), "POST", body);
+      } catch (e) {
+        alert(e.message);
+      }
+      await W.reload();
     }
-    function listen(){sample.value=true;const a=W.play("/api/voice-sample/"+sel.value.value);a.oncanplay=a.onerror=()=>{sample.value=false;};}
-    return {W,d,sel,sample,done,total,over,running,VOICES,setting,voice,listen,make:()=>W.startJob("tts",{force:done.value>=total.value})};
+    function voice(e) {
+      if (
+        done.value &&
+        !confirm(
+          "목소리를 바꾸면 모든 문장의 음성을 다시 만듭니다. 계속할까요?",
+        )
+      ) {
+        e.target.value = d.value.settings.voice;
+        return;
+      }
+      setting({ voice: e.target.value });
+    }
+    function listen() {
+      sample.value = true;
+      const a = W.play("/api/voice-sample/" + sel.value.value);
+      a.oncanplay = a.onerror = () => {
+        sample.value = false;
+      };
+    }
+    return {
+      W,
+      d,
+      sel,
+      sample,
+      done,
+      total,
+      over,
+      running,
+      VOICES,
+      setting,
+      voice,
+      listen,
+      make: () => W.startJob("tts", { force: done.value >= total.value }),
+    };
   },
-  template:`<div>
+  template: `<div>
     <h2>음성</h2>
     <div class="card">
       <div class="row"><label>목소리 <select ref="sel" :value="d.settings.voice" @change="voice"><option v-for="v in VOICES" :key="v">{{v}}</option></select></label>
