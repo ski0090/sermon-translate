@@ -21,6 +21,7 @@
 
 화면은 `web/`의 Vue 3입니다. 빌드 없이 `web/vendor/vue.esm-browser.prod.js`(3.5.13) 파일 하나를 쓰므로 Node나 빌드 단계가 필요 없습니다.
 서버(`server.py`)가 `/api`가 아닌 주소는 `web/`의 파일로 내주고, 화면은 `/api`의 JSON만 씁니다. 주소의 `#` 뒤가 화면입니다(`#/projects/<단계>`, `#/p/<프로젝트>`, `#/shorts/<상태>/<프로젝트>`, `#/sleep/<상태>`, `#/usage`, `#/schedule`, `#/tools`).
+코드 모양은 Prettier로 맞춥니다. 개발할 때만 Node가 필요하며, 저장소 루트에서 `npm install` 한 번 뒤 `npm run format`(고치기) 또는 `npm run format:check`(검사만)를 실행합니다.
 
 ## 소요 시간 (GPU 없는 노트북 기준)
 

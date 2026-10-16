@@ -1,0 +1,12 @@
+{
+  "name": "sermon-translate",
+  "private": true,
+  "description": "개발용 도구(Prettier)만 담는다. 프로그램을 쓰는 데는 Node가 필요 없다.",
+  "scripts": {
+    "format": "prettier --write README.md dubber",
+    "format:check": "prettier --check README.md dubber"
+  },
+  "devDependencies": {
+    "prettier": "3.9.10"
+  }
+}

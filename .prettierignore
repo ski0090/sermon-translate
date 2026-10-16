@@ -1,0 +1,5 @@
+# 받아 온 라이브러리와 작업 데이터는 고치지 않는다
+dubber/web/vendor/
+dubber/projects/
+.venv/
+package-lock.json
