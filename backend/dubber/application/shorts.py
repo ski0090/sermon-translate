@@ -381,7 +381,8 @@ class ShortsService:
         return out
 
     def summary(self):
-        """쇼츠를 만들 수 있는 프로젝트(문장 목록이 있는 것)와 쇼츠가 있는 프로젝트."""
+        """쇼츠를 만들 수 있는 프로젝트(문장 목록이 있는 것)와 쇼츠가 있는 프로젝트. done은 지금 설정대로 만든
+        쇼츠 수, stale은 영상은 있지만 고친 내용이 반영되지 않아 다시 만들어야 하는 수."""
         with self._lock:
             busy = {x["pid"] for x in self._q}
         out = []
@@ -393,11 +394,19 @@ class ShortsService:
                 continue
             st = self.load(pid)
             items, sug = st["items"], st["suggest"]
+            made = [x for x in items if x.get("file")]
+            done = self._current_count(pid, made) if made else 0
             out.append({"dir": pid, "name": it["name"], "voice_done": voice_done, "count": len(items),
-                        "done": sum(1 for x in items if x.get("file")),
+                        "done": done, "stale": len(made) - done,
                         "uploaded": sum(1 for x in items if (self.youtube.items.get(short_key(pid, x["id"])) or {})
                                         .get("status") == "done"),
                         "busy": pid in busy, "suggest": sug.get("status"),
                         "error": sug.get("error") if sug.get("status") == "error" else None})
         out.sort(key=lambda x: library.natural(x["name"]))
         return {"items": out, "auto": self._sh["auto"]}
+
+    def _current_count(self, pid, made):
+        """만든 쇼츠 중 고친 내용(화면 모양이 바뀐 것 포함)이 모두 반영된 것의 수. 나머지는 다시 만들어야 한다."""
+        p, _ = self.projects.get(pid)
+        tl = rules.timeline(p)
+        return sum(1 for x in made if rules.signature(p, x, tl) == x.get("rendered_sig"))
