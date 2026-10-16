@@ -59,19 +59,20 @@ Ubuntu 26.04(Python 3.14)에서 확인했습니다. 저장소 폴더에서 실�
 
 ## 실행
 
-저장소 폴더에서 실행하면 브라우저가 자동으로 열립니다.
+저장소 폴더에서 실행하면 API 서버와 화면 서버가 함께 뜨고 브라우저가 자동으로 열립니다.
 
 ```bash
-python server.py             # Windows
-.venv/bin/python server.py   # Ubuntu
+python run.py             # Windows
+.venv/bin/python run.py   # Ubuntu
 ```
 
 - 주소: http://127.0.0.1:8765
-- 끝내기: 실행한 터미널에서 `Ctrl+C`
+- 끝내기: 실행한 터미널에서 `Ctrl+C`(두 서버가 함께 꺼집니다)
 - 브라우저를 자동으로 열지 않으려면 뒤에 `--no-browser`를 붙입니다.
-- 한 프로젝트 폴더에는 서버를 하나만 띄울 수 있습니다. 이미 실행 중이면 새로 띄운 서버는 안내를 내고 끝납니다. 시험용으로 다른 폴더를 쓰려면 환경 변수 `DUBBER_PROJECTS`에 폴더를 넣습니다.
+- 서버는 둘로 나뉩니다. API 서버(`backend/`)는 작업과 데이터를 맡아 JSON과 파일만 내주고 이 PC(127.0.0.1:8766)의 요청만 받습니다. 화면 서버(`frontend/serve.py`)는 화면 파일을 내주고 `/api`로 시작하는 요청을 API 서버로 넘겨줍니다. 따로 띄우려면 `python backend/main.py`와 `python frontend/serve.py`를 각각 실행합니다. 포트는 환경 변수 `DUBBER_PORT`(화면, 기본 8765)와 `DUBBER_API_PORT`(API, 기본 8766)로 바꿉니다.
+- 한 프로젝트 폴더에는 API 서버를 하나만 띄울 수 있습니다. 이미 실행 중이면 새로 띄운 서버는 안내를 내고 끝납니다. 시험용으로 다른 폴더를 쓰려면 환경 변수 `DUBBER_PROJECTS`에 폴더를 넣습니다.
 - Claude 플랜의 사용량(5시간 한도와 주간 한도)은 왼쪽 메뉴의 "사용량"에서 봅니다. AI를 부를 때마다 갱신되고, "확인"을 누르면 짧은 호출로 바로 알아봅니다(토큰이 조금 듭니다). 남은 토큰 개수는 Claude가 알려 주지 않아 비율로만 보여 줍니다.
-- 같은 네트워크의 다른 PC에서 접속하려면 뒤에 `--lan`을 붙입니다. 터미널에 `다른 PC에서 접속: http://<이 PC의 IP>:8765/`가 나옵니다. 비밀번호가 없으므로 같은 네트워크의 누구나 접속할 수 있다는 점에 주의합니다. Ubuntu에서 방화벽(ufw)을 켜 두었다면 `sudo ufw allow 8765/tcp`로 포트를 엽니다.
+- 같은 네트워크의 다른 PC에서 접속하려면 뒤에 `--lan`을 붙입니다. 화면 서버만 네트워크에 열리고(API 서버는 그대로 이 PC에서만 받습니다), 터미널에 `다른 PC에서 접속: http://<이 PC의 IP>:8765/`가 나옵니다. 비밀번호가 없으므로 같은 네트워크의 누구나 접속할 수 있다는 점에 주의합니다. Ubuntu에서 방화벽(ufw)을 켜 두었다면 `sudo ufw allow 8765/tcp`로 포트를 엽니다.
 
 ## 구글 드라이브 연결
 
@@ -192,17 +193,23 @@ rclone의 공용 client_id는 2026년 중 사용이 중단되므로 본인 clien
 - **자막 영역에 성경 구절 상자가 들어옵니다.** 자막 읽기 화면에서 y 값을 키워 상자 아래로 내립니다.
 - **목록에 "이전 작업 있음"이 나옵니다.** 다른 PC에서 작업한 기록(`<영상 이름>/project.json`)이 드라이브에 있지만 결과 영상은 없는 경우입니다. 누르면 처음부터 새로 작업합니다.
 - **"구글 드라이브에 올리지 못했습니다"가 나옵니다.** 인터넷 연결과 `rclone lsd gdrive:`를 확인한 뒤 "내보내기"를 다시 누릅니다.
-- **Ubuntu에서 `ModuleNotFoundError: No module named 'numpy'`가 납니다.** 시스템 Python(`python3`)으로 실행한 경우입니다. `.venv/bin/python server.py`로 실행합니다.
+- **Ubuntu에서 `ModuleNotFoundError: No module named 'numpy'`가 납니다.** 시스템 Python(`python3`)으로 실행한 경우입니다. `.venv/bin/python run.py`로 실행합니다.
 - **"구글 드라이브에서 선택" 버튼이 눌리지 않습니다.** `rclone listremotes`에 `gdrive:`가 있는지 확인합니다. 이름이 다르면 `DUBBER_GDRIVE`를 정합니다.
 
 ## 명령줄로 단계 실행
 
-화면 없이 단계별로 돌릴 수도 있습니다. Ubuntu에서는 `python` 대신 `.venv/bin/python`을 씁니다.
+화면 없이 단계별로 돌릴 수도 있습니다. Ubuntu에서는 `python` 대신 `.venv/bin/python`을 씁니다. `<프로젝트>`는 프로젝트 폴더 경로나 이름입니다. API 서버가 켜져 있어도 되며, 서버는 바뀐 프로젝트를 다시 읽습니다.
 
 ```bash
-python project.py new "<영상 경로>"
-python project.py scan "<프로젝트 폴더>"
-python project.py read "<프로젝트 폴더>"
-python project.py sentences "<프로젝트 폴더>"
-python project.py tidy "<프로젝트 폴더>"
+python backend/cli.py new "<영상 경로>"
+python backend/cli.py scan "<프로젝트>"
+python backend/cli.py read "<프로젝트>"
+python backend/cli.py sentences "<프로젝트>"
+python backend/cli.py tidy "<프로젝트>"
+```
+
+AI·영상·드라이브 없이 도는 규칙 시험은 다음으로 돌립니다.
+
+```bash
+python -m unittest discover -s backend/tests -t backend
 ```
