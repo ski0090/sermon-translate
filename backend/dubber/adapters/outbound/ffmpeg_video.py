@@ -1,10 +1,13 @@
-"""자막 읽기 1단계: 자막 영역의 그림이 바뀌는 순간을 찾아 자막 한 장마다 그림과 시간을 기록한다.
+"""영상 분석(ports.VideoAnalyzer): 영상 정보, 자막 영역 찾기, 자막이 바뀌는 순간 찾기, 장면 그림.
 외부로 아무것도 보내지 않는다. ffmpeg로 자막 영역만 디코딩하고 numpy로 글자 마스크를 비교한다."""
 import json
 import os
 import subprocess
+
 import numpy as np
 from PIL import Image
+
+from ...domain.captions import even_roi
 
 FPS = 4                 # 초당 비교 횟수
 BRIGHT, DARK = 175, 70  # 밝은 글자(R,G 모두) / 검은 테두리 밝기 기준
@@ -156,15 +159,6 @@ def detect_band(video, info):
     return even_roi({"x": 0, "y": y0 + top, "w": W, "h": bot - top}, W, H)
 
 
-def even_roi(roi, W, H):
-    """좌표와 크기를 짝수로 맞추고 화면 안에 들어가게 한다."""
-    x = max(0, min(int(roi["x"]) // 2 * 2, W - 2))
-    y = max(0, min(int(roi["y"]) // 2 * 2, H - 2))
-    w = max(2, min(int(roi["w"]) // 2 * 2, W - x))
-    h = max(2, min(int(roi["h"]) // 2 * 2, H - y))
-    return {"x": x, "y": y, "w": w, "h": h}
-
-
 def scan(video, roi, out_dir, start=0.0, dur=None, progress=None, cancel=None):
     """자막 구간 목록을 돌려준다. 각 항목: start, end, crop(파일 이름), yellow."""
     os.makedirs(out_dir, exist_ok=True)
@@ -228,58 +222,25 @@ def scan(video, roi, out_dir, start=0.0, dur=None, progress=None, cancel=None):
     return segs
 
 
-def gaps(segs, duration, min_gap, start=0.0):
-    """자막이 min_gap초 이상 없는 구간."""
-    out = []
-    prev = start
-    for s in segs:
-        if s["start"] - prev >= min_gap:
-            out.append({"start": round(prev, 3), "end": round(s["start"], 3)})
-        prev = s["end"]
-    if duration - prev >= min_gap:
-        out.append({"start": round(prev, 3), "end": round(duration, 3)})
-    return out
+def frame(video, t, roi=None):
+    """t초 장면(JPEG, 폭 720). roi를 주면 빨간 상자로 표시한다."""
+    vf = "scale=720:-2"
+    if roi:
+        vf = (f"drawbox=x={roi['x']}:y={roi['y']}:w={roi['w']}:h={roi['h']}:color=red@0.9:t=2," + vf)
+    r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-ss", f"{t:.3f}", "-i", video, "-frames:v", "1",
+                        "-vf", vf, "-f", "image2", "-c:v", "mjpeg", "-q:v", "4", "pipe:1"], capture_output=True)
+    return r.stdout
 
 
-def lyric_ranges(segs, min_yellow=0.3, min_count=3):
-    """노란 가사 자막이 연속되는 구간(찬양 후보)."""
-    out = []
-    run = []
-    for s in segs + [None]:
-        if s is not None and s["yellow"] >= min_yellow:
-            run.append(s)
-            continue
-        if len(run) >= min_count:
-            out.append({"start": run[0]["start"], "end": run[-1]["end"]})
-        run = []
-    return out
+class FfmpegVideoAnalyzer:
+    def probe(self, video):
+        return probe(video)
 
+    def detect_band(self, video, info):
+        return detect_band(video, info)
 
-if __name__ == "__main__":
-    import random
-    import sys
-    import time
-    video = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else "crops_test"
-    t_start = float(sys.argv[3]) if len(sys.argv) > 3 else 300
-    t_dur = float(sys.argv[4]) if len(sys.argv) > 4 else 600
-    info = probe(video)
-    t0 = time.time()
-    roi = detect_band(video, info)
-    print("band", roi, "sec", round(time.time() - t0, 1))
-    t0 = time.time()
-    segs = scan(video, roi, out, start=t_start, dur=t_dur, progress=lambda t: print("..", int(t), flush=True))
-    print(len(segs), "segments in", round(time.time() - t0, 1), "sec")
-    for s in segs[:8]:
-        print(s)
-    print("gaps", gaps(segs, t_start + t_dur, 20, start=t_start))
-    print("lyric", lyric_ranges(segs))
-    sample = sorted(random.sample(segs, min(30, len(segs))), key=lambda s: s["start"])
-    ims = [Image.open(os.path.join(out, s["crop"])) for s in sample]
-    sheet = Image.new("RGB", (ims[0].width, sum(i.height + 2 for i in ims)), "red")
-    y = 0
-    for im in ims:
-        sheet.paste(im, (0, y))
-        y += im.height + 2
-    sheet.save(os.path.join(out, "sheet.jpg"), quality=85)
-    print("sheet saved")
+    def scan(self, video, roi, out_dir, progress=None, cancel=None):
+        return scan(video, roi, out_dir, progress=progress, cancel=cancel)
+
+    def frame(self, video, t, roi=None):
+        return frame(video, t, roi)

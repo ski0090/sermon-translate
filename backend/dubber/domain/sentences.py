@@ -120,29 +120,3 @@ def reading(text, dictionary=None):
     t = re.sub(r"""["'“”‘’『』「」]""", "", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
-
-
-if __name__ == "__main__":
-    caps = [
-        {"id": 0, "start": 0, "end": 2, "text": "제가 기도하고 있을 때"},
-        {"id": 1, "start": 2, "end": 4, "text": "하나님은"},
-        {"id": 2, "start": 4, "end": 6, "text": "\"목사님 그게 큰 문제인가요?\""},
-        {"id": 3, "start": 6, "end": 8, "text": "생각해 보세요 고린도후서 3장을 봅시다"},
-        {"id": 4, "start": 8, "end": 10, "text": "'나라들은 네 빛으로 나아오리라' (박수)"},
-        {"id": 5, "start": 10, "end": 12, "text": "요 3:16과 사 60:1-3을 보면"},
-        {"id": 6, "start": 12, "end": 14, "text": "이사야 60:5 말씀입니다"},
-    ]
-    s = merge(caps)
-    assert [x["caps"] for x in s] == [[0, 1, 2], [3], [4], [5, 6]], [x["caps"] for x in s]
-    assert s[0]["start"] == 0 and s[0]["end"] == 6
-    assert reading(caps[5]["text"]) == "요한복음 3장 16절과 이사야 60장 1절에서 3절을 보면", reading(caps[5]["text"])
-    assert reading(caps[6]["text"]) == "이사야 60장 5절 말씀입니다"
-    assert reading(caps[4]["text"]) == "나라들은 네 빛으로 나아오리라"
-    dup = merge([{"id": 0, "start": 0, "end": 1, "text": "율법을 알아야"}, {"id": 1, "start": 1, "end": 2, "text": "율법을 알아야"},
-                 {"id": 2, "start": 2, "end": 3, "text": ""}, {"id": 3, "start": 3, "end": 4, "text": "거룩함을 압니다"}])
-    assert dup == [{"caps": [0, 1, 3], "raw": "율법을 알아야 거룩함을 압니다", "start": 0, "end": 4}], dup
-    assert reading("할렐루야", {"할렐루야": "할렐루우야"}) == "할렐루우야"
-    assert reading("[즉 남편을 주목하고, 높이 평가하라]'") == "즉 남편을 주목하고, 높이 평가하라"  # 긴 인용은 읽는다
-    assert reading("아멘 [웃음] 그렇죠 (청중 박수)") == "아멘 그렇죠"
-    assert is_end("복종했다고 합니다") and is_end("어렵죠") and not is_end("특히 배우자에게는")
-    print("ok")

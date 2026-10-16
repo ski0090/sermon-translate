@@ -1,161 +1,112 @@
-"""프로젝트(영상 한 편) 저장소와 단계별 처리. 서버와 명령줄 둘 다 이 모듈을 쓴다."""
-import json
-import os
+"""프로젝트(영상 한 편): 자막, 문장, 잘라내기 구간과 그 편집 규칙.
+파일을 읽고 쓰는 일은 저장소(ports.ProjectRepository)가 하고, 여기서는 project.json에 담길 내용만 다룬다."""
 import re
-import tempfile
 import time
 
-import ai
-import captions
-import sentences
+from . import captions as caprules
+from . import sentences
 
-ROOT = os.environ.get("DUBBER_PROJECTS") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "projects")
 STEPS = ["load", "scan", "review", "tts", "export"]
 DEFAULT_SETTINGS = {"voice": "F1", "speed": 1.05, "min_gap": 20, "tool": "claude", "orig_audio": "remove",
                     "per_strip": 25, "workers": 4, "dictionary": {}, "ai_tidy": True, "tts_steps": 8}
+VOICE_KEYS = ("voice", "speed", "tts_steps")  # 바꾸면 모든 문장의 음성을 다시 만든다
 
 
-def _slug(name):
+def folder_name(name):
+    """영상 이름으로 만든 프로젝트 폴더 이름(파일 이름에 못 쓰는 글자는 _로)."""
     s = re.sub(r"[\\/:*?\"<>|]+", "_", name).strip()
     return s[:60] or "project"
 
 
-_summary_cache = {}  # project.json 경로 -> (수정 시각, 크기, 요약). 바뀐 파일만 다시 읽는다
+def new_data(name, video, info, extra=None):
+    """새 프로젝트의 project.json 내용."""
+    return {"name": name, "video": video, "info": info, "roi": None, "step": "load", "captions": [],
+            "sentences": [], "cuts": [], "ranges": {"gaps": [], "lyrics": []}, "settings": dict(DEFAULT_SETTINGS),
+            "next_id": 1, "created": time.time(), **(extra or {})}
 
 
-def _summary(d, p):
-    st = os.stat(p)
-    hit = _summary_cache.get(p)
-    if hit and hit[0] == st.st_mtime and hit[1] == st.st_size:
-        return hit[2]
-    with open(p, encoding="utf-8") as f:
-        j = json.load(f)
-    caps = j.get("captions", [])
-    sents = j.get("sentences", [])
-    out = {"dir": d, "name": j.get("name", d), "video": j.get("video"), "step": j.get("step"),
-           "updated": st.st_mtime, "duration": j.get("info", {}).get("duration"),
-           "captions": len(caps), "read": sum(1 for c in caps if c.get("text")),
-           "sentences": len(sents), "tts": sum(1 for s in sents if s.get("tts")),
-           "cuts": len(j.get("cuts", [])), "exported": bool(j.get("last_export")),
-           "drive": (j.get("drive") or {}).get("path")}
-    _summary_cache[p] = (st.st_mtime, st.st_size, out)
-    return out
-
-
-def list_projects():
-    out = []
-    if not os.path.isdir(ROOT):
-        return out
-    for d in os.listdir(ROOT):
-        p = os.path.join(ROOT, d, "project.json")
-        if os.path.exists(p):
-            try:
-                out.append(dict(_summary(d, p)))
-            except Exception:
-                pass
-    out.sort(key=lambda x: -x["updated"])
-    return out
+def summary(pid, data, updated):
+    """프로젝트 목록 한 줄(진행 숫자)."""
+    caps = data.get("captions", [])
+    sents = data.get("sentences", [])
+    return {"dir": pid, "name": data.get("name", pid), "video": data.get("video"), "step": data.get("step"),
+            "updated": updated, "duration": data.get("info", {}).get("duration"),
+            "captions": len(caps), "read": sum(1 for c in caps if c.get("text")),
+            "sentences": len(sents), "tts": sum(1 for s in sents if s.get("tts")),
+            "cuts": len(data.get("cuts", [])), "exported": bool(data.get("last_export")),
+            "drive": (data.get("drive") or {}).get("path")}
 
 
 class Project:
-    def __init__(self, dir_):
-        self.dir = dir_
-        self.path = os.path.join(dir_, "project.json")
-        with open(self.path, encoding="utf-8") as f:
-            self.data = json.load(f)
-        self.mtime = os.path.getmtime(self.path)
+    def __init__(self, pid, data, stamp=None):
+        self.id = pid
+        self.data = data
+        self.stamp = stamp  # 저장소가 다른 프로세스의 변경을 알아보려고 쓰는 값(파일 수정 시각)
         self.data.setdefault("settings", {})
         for k, v in DEFAULT_SETTINGS.items():
             self.data["settings"].setdefault(k, v)
 
-    @staticmethod
-    def create(video, extra=None):
-        name = os.path.splitext(os.path.basename(video))[0]
-        d = os.path.join(ROOT, _slug(name))
-        n = 2
-        while os.path.exists(d):
-            d = os.path.join(ROOT, f"{_slug(name)}_{n}")
-            n += 1
-        info = captions.probe(video)  # 영상이 아니면 여기서 실패하므로 빈 폴더를 남기지 않도록 먼저 읽는다
-        os.makedirs(d)
-        data = {"name": name, "video": video, "info": info, "roi": None, "step": "load", "captions": [],
-                "sentences": [], "cuts": [], "ranges": {"gaps": [], "lyrics": []}, "settings": dict(DEFAULT_SETTINGS),
-                "next_id": 1, "created": time.time(), **(extra or {})}
-        with open(os.path.join(d, "project.json"), "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=1)
-        return Project(d)
+    @property
+    def name(self):
+        return self.data["name"]
 
-    def sub(self, *parts):
-        p = os.path.join(self.dir, *parts)
-        os.makedirs(p, exist_ok=True)
-        return p
-
-    def save(self):
-        fd, tmp = tempfile.mkstemp(dir=self.dir, suffix=".json")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(self.data, f, ensure_ascii=False, indent=1)
-        os.replace(tmp, self.path)
-        self.mtime = os.path.getmtime(self.path)
+    @property
+    def settings(self):
+        return self.data["settings"]
 
     def set_step(self, step):
         if STEPS.index(step) > STEPS.index(self.data.get("step", "load")):
             self.data["step"] = step
 
-    # ---------- 자막 읽기 ----------
-    def detect_roi(self):
-        self.data["roi"] = captions.detect_band(self.data["video"], self.data["info"])
-        self.save()
-        return self.data["roi"]
+    def view(self):
+        """화면에 보낼 내용: 문장마다 지금 읽을 글(reading_auto)을 붙인다."""
+        d = dict(self.data)
+        d["sentences"] = [dict(s, reading_auto=self.reading_of(s)) for s in self.data["sentences"]]
+        d["id"] = self.id
+        return d
 
-    def scan(self, progress=None, cancel=None):
-        """자막이 바뀌는 순간을 찾아 그림과 시간을 기록한다(외부 전송 없음)."""
-        if not self.data.get("roi"):
-            self.detect_roi()
-        crops = self.sub("crops")
-        for f in os.listdir(crops):
-            os.remove(os.path.join(crops, f))
-        dur = self.data["info"]["duration"]
-        segs = captions.scan(self.data["video"], self.data["roi"], crops,
-                             progress=lambda t: progress and progress(t / dur), cancel=cancel)
+    # ---------- 진행 중인 단계 표시(서버가 꺼졌다 켜지면 이 표시로 이어 한다) ----------
+    def mark_running(self, kind, params, restarts=0):
+        self.data["running_step"] = {"kind": kind, "params": params, "restarts": restarts}
+
+    def clear_running(self):
+        self.data.pop("running_step", None)
+
+    # ---------- 자막 읽기 ----------
+    def set_roi(self, roi):
+        self.data["roi"] = roi
+
+    def set_captions(self, segs):
+        """자막 바뀜 찾기 결과로 자막 목록을 새로 만든다(문장 목록은 지운다)."""
         self.data["captions"] = [dict(id=i, text="", check=False, **s) for i, s in enumerate(segs)]
         self.update_ranges()
         self.data["sentences"] = []
         self.set_step("scan")
-        self.save()
         return len(segs)
 
     def update_ranges(self):
         d = self.data
-        d["ranges"] = {"gaps": captions.gaps(d["captions"], d["info"]["duration"], d["settings"]["min_gap"]),
-                       "lyrics": captions.lyric_ranges(d["captions"])}
+        d["ranges"] = {"gaps": caprules.gaps(d["captions"], d["info"]["duration"], d["settings"]["min_gap"]),
+                       "lyrics": caprules.lyric_ranges(d["captions"])}
 
-    def read(self, progress=None, cancel=None):
-        """자막 그림을 AI에 읽힌다. 결과는 캐시되어 중단 후 이어서 할 수 있다."""
-        caps = self.data["captions"]
-        paths = [os.path.join(self.dir, "crops", c["crop"]) for c in caps]
-        s = self.data["settings"]
-        texts = ai.read_all(paths, self.sub("strips"), tool=s["tool"], workers=s["workers"],
-                            per_strip=s["per_strip"], progress=progress, cancel=cancel)
-        for c, t in zip(caps, texts):
+    def set_caption_texts(self, texts):
+        """AI가 읽은 글을 자막에 넣는다. 못 읽은 자막은 확인 필요로 둔다."""
+        for c, t in zip(self.data["captions"], texts):
             c["text"] = t
             c["check"] = (t == "")
-        self.save()
+
+    def unread_ratio(self):
+        caps = self.data["captions"]
+        return sum(1 for c in caps if not (c.get("text") or "").strip()) / max(len(caps), 1)
 
     # ---------- 문장 정리 ----------
     def uncut_captions(self):
         return [c for c in self.data["captions"] if not c.get("deleted") and not self._in_cut(c["start"], c["end"])]
 
-    def tidy(self, progress=None, cancel=None):
-        """AI가 자막을 문장으로 묶고 글자를 고치고 읽는 글과 확인 필요를 붙인 결과. 저장은 build_sentences가 한다."""
-        s = self.data["settings"]
-        return ai.tidy_all(self.uncut_captions(), tool=s["tool"], workers=s["workers"], keep=list(s["dictionary"]),
-                           progress=progress, cancel=cancel)
-
     def build_sentences(self, merged=None):
-        """문장 목록을 새로 만든다. merged(tidy 결과)가 없으면 규칙으로 합친다."""
+        """문장 목록을 새로 만든다. merged(AI 정리 결과)가 없으면 규칙으로 합친다."""
         self.data["sentences"] = [self._new(m) for m in (merged or sentences.merge(self.uncut_captions()))]
         self.set_step("review")
-        self.save()
         return len(self.data["sentences"])
 
     def _new(self, m):
@@ -205,7 +156,6 @@ class Project:
                     if k == "text":
                         s["reading_ai"] = None
                 s[k] = v
-        self.save()
         return s
 
     def split_sentence(self, sid, at_cap):
@@ -220,7 +170,6 @@ class Project:
         self._recalc(s)
         new = self._new({"caps": caps_b, "raw": self._text_of(caps_b)})
         self.data["sentences"].insert(i + 1, new)
-        self.save()
         return new
 
     def merge_next(self, sid):
@@ -235,7 +184,6 @@ class Project:
         s["check"] = s["check"] or n["check"]
         s["note"] = s.get("note") or n.get("note")
         self._recalc(s)
-        self.save()
         return s
 
     def delete_sentence(self, sid):
@@ -243,7 +191,6 @@ class Project:
         for c in s["caps"]:
             self.cap(c)["deleted"] = True
         self.data["sentences"].pop(i)
-        self.save()
 
     # ---------- 잘라내기 구간 ----------
     def set_cuts(self, cuts):
@@ -262,7 +209,6 @@ class Project:
         orphans = [c for c in self.uncut_captions() if c["id"] not in kept]
         self.data["sentences"] += [self._new(m) for m in sentences.merge(orphans)]
         self.data["sentences"].sort(key=lambda s: s["start"])
-        self.save()
         return self.data["cuts"]
 
     def out_time(self, t):
@@ -275,23 +221,15 @@ class Project:
                 removed += t - c["start"]
         return t - removed
 
-
-if __name__ == "__main__":
-    import sys
-    cmd, arg = sys.argv[1], sys.argv[2]
-    if cmd == "new":
-        p = Project.create(arg)
-        print(p.dir)
-    else:
-        p = Project(arg)
-        if cmd == "scan":
-            n = p.scan(progress=lambda r: print(f"scan {r*100:.0f}%", flush=True))
-            print("captions", n, "roi", p.data["roi"], "lyrics", p.data["ranges"]["lyrics"], "gaps", p.data["ranges"]["gaps"])
-        elif cmd == "read":
-            p.read(progress=lambda d, n: print(f"read {d}/{n}", flush=True))
-            print("empty", sum(1 for c in p.data["captions"] if not c["text"]))
-        elif cmd == "sentences":
-            print("sentences", p.build_sentences())
-        elif cmd == "tidy":
-            print("sentences", p.build_sentences(p.tidy(progress=lambda d, n: print(f"tidy {d}/{n}", flush=True))))
-            print("check", sum(1 for s in p.data["sentences"] if s["check"]))
+    # ---------- 설정 ----------
+    def apply_settings(self, body):
+        """프로젝트 설정을 바꾼다. 목소리·속도·품질이 바뀌면 모든 문장의 음성을 다시 만들도록 지운다."""
+        for k, v in body.items():
+            if k in DEFAULT_SETTINGS:
+                self.data["settings"][k] = v
+        if "min_gap" in body:
+            self.update_ranges()
+        if any(k in body for k in VOICE_KEYS):
+            for s in self.data["sentences"]:
+                s["tts"], s["tts_dur"] = None, None
+        return self.data["settings"]
