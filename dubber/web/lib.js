@@ -54,9 +54,9 @@ export function libState(it){
 export const shStage=x=>x.busy||x.done<x.count?"making":x.count?"done":"todo";
 
 // 화면 사이에 함께 쓰는 상태. route는 주소의 # 뒤(app.js), 목록은 몇 초마다 서버에서 새로 받는다
-export const store=reactive({route:{view:"projects",filter:"all"},lib:null,shorts:null,yt:null});
+export const store=reactive({route:{view:"projects",filter:"all"},shPid:null,lib:null,shorts:null,yt:null});
 
-// 새 화면에 아직 없는 화면(프로젝트 작업, 쇼츠)은 지금 화면에서 연다. 뒤로 가기로 돌아온다
+// 새 화면에 아직 없는 프로젝트 작업 화면은 지금 화면에서 연다. 뒤로 가기로 돌아온다
 export const openOld=q=>{location.href="/old"+q;};
 export const openProject=dir=>openOld("?p="+encodeURIComponent(dir));
 

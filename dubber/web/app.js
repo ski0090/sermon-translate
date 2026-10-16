@@ -1,16 +1,20 @@
-// 새 화면(Vue): 왼쪽 메뉴, 사용량, 화면 바꾸기. 주소의 # 뒤가 화면이다(#/projects/<단계>, #/schedule)
+// 새 화면(Vue): 왼쪽 메뉴, 사용량, 화면 바꾸기. 주소의 # 뒤가 화면이다(#/projects/<단계>, #/shorts/<상태>/<프로젝트>, #/schedule)
 import {createApp,computed,onMounted,onUnmounted,ref,watch} from "./vendor/vue.esm-browser.prod.js";
-import {api,store,every,when,ago,STAGES,SH_STAGES,libState,projStage,shStage,openOld} from "./lib.js";
+import {api,store,every,when,ago,STAGES,SH_STAGES,libState,projStage,shStage} from "./lib.js";
 import ProjectsView from "./projects.js";
+import ShortsView from "./shorts.js";
 import ScheduleView from "./schedule.js";
 
+const known=(list,f)=>list.some(x=>x[0]===f)?f:"all";
 function parseRoute(){
-  const [,view,filter]=location.hash.split("/");
-  if(view==="schedule")return {view:"schedule",filter:"all"};
-  return {view:"projects",filter:STAGES.some(x=>x[0]===filter)?filter:"all"};
+  const [view,filter,pid]=location.hash.replace(/^#\/?/,"").split("/");
+  if(view==="schedule")return {view,filter:"all"};
+  if(view==="shorts")return {view,filter:known(SH_STAGES,filter),pid:pid?decodeURIComponent(pid):null};
+  return {view:"projects",filter:known(STAGES,filter)};
 }
-store.route=parseRoute();
-addEventListener("hashchange",()=>{store.route=parseRoute();});
+// 쇼츠에서 고른 영상은 다른 화면에 다녀와도 기억한다
+const route=()=>{store.route=parseRoute();if(store.route.pid)store.shPid=store.route.pid;};
+route();addEventListener("hashchange",route);
 
 const tally=ks=>ks.reduce((c,k)=>(c[k]=(c[k]||0)+1,c),{all:ks.length});
 
@@ -44,9 +48,8 @@ const NavMenu={
     const pc=computed(()=>store.lib?tally(store.lib.items.map(it=>libState(it).stage).concat(store.lib.others.map(projStage))):{});
     const sc=computed(()=>store.shorts?tally(store.shorts.map(shStage)):{});
     const on=(view,f)=>store.route.view===view&&store.route.filter===f;
-    // 쇼츠는 지금 화면에서 연다. 같은 주소(8766)라 지금 화면이 기억하는 거르기를 여기서 정해 둔다
-    function shorts(f){try{const v=JSON.parse(localStorage.getItem("dubber.nav"))||{};localStorage.setItem("dubber.nav",JSON.stringify({...v,shorts:f}));}catch(e){}openOld("#shorts");}
-    return {STAGES,SH_STAGES,pc,sc,on,shorts,store};
+    const shHref=f=>"#/shorts/"+f+(store.shPid?"/"+encodeURIComponent(store.shPid):"");
+    return {STAGES,SH_STAGES,pc,sc,on,shHref,store};
   },
   template:`<nav id="menu">
     <div class="brand">설교 영상 한국어 더빙</div>
@@ -56,8 +59,8 @@ const NavMenu={
         <a v-for="[k,n] in STAGES" :key="k" class="nitem" :class="{on:on('projects',k)}" :href="'#/projects/'+k">{{n}}<span class="ncount">{{pc[k]}}</span></a>
       </div>
       <div class="ngroup">
-        <a class="nhead" href="/old#shorts" @click.prevent="shorts('all')" title="지금 화면에서 엽니다"><span>쇼츠 <small class="ext">↗</small></span><span class="ncount">{{sc.all}}</span></a>
-        <a v-for="[k,n] in SH_STAGES" :key="k" class="nitem" href="/old#shorts" @click.prevent="shorts(k)" title="지금 화면에서 엽니다">{{n}}<span class="ncount">{{sc[k]}}</span></a>
+        <a class="nhead" :class="{on:on('shorts','all')}" :href="shHref('all')">쇼츠<span class="ncount">{{sc.all}}</span></a>
+        <a v-for="[k,n] in SH_STAGES" :key="k" class="nitem" :class="{on:on('shorts',k)}" :href="shHref(k)">{{n}}<span class="ncount">{{sc[k]}}</span></a>
       </div>
       <div class="ngroup">
         <a class="nhead" href="#/schedule">설정</a>
@@ -69,16 +72,16 @@ const NavMenu={
 };
 
 const App={
-  components:{NavMenu,ProjectsView,ScheduleView},
+  components:{NavMenu,ProjectsView,ShortsView,ScheduleView},
   setup(){
     const navOpen=ref(false);
     watch(()=>store.route,()=>{navOpen.value=false;});
-    // 메뉴의 숫자: 쇼츠는 늘, 프로젝트는 그 화면이 아닐 때만 여기서 센다(프로젝트 목록 화면은 2초마다 스스로 받는다)
+    // 메뉴의 숫자: 그 화면이 아닐 때만 여기서 센다(프로젝트 목록과 쇼츠 화면은 몇 초마다 스스로 받는다)
     let stops=[];
-    onMounted(()=>{stops=[every(30000,async()=>{store.shorts=(await api("/api/shorts")).items;}),
+    onMounted(()=>{stops=[every(30000,async()=>{if(store.route.view!=="shorts")store.shorts=(await api("/api/shorts")).items;}),
       every(30000,async()=>{if(store.route.view!=="projects")store.lib=await api("/api/library");})];});
     onUnmounted(()=>stops.forEach(f=>f()));
-    const title=computed(()=>store.route.view==="schedule"?"스케줄":"프로젝트 목록");
+    const title=computed(()=>({schedule:"스케줄",shorts:"쇼츠"})[store.route.view]||"프로젝트 목록");
     return {store,navOpen,title};
   },
   template:`<div :class="{navopen:navOpen}">
@@ -90,6 +93,7 @@ const App={
         <span class="pilot">새 화면(Vue) 시험판 · <a href="/old">지금 화면으로</a></span>
       </header>
       <ScheduleView v-if="store.route.view==='schedule'"/>
+      <ShortsView v-else-if="store.route.view==='shorts'"/>
       <ProjectsView v-else/>
     </div>
   </div>`,
