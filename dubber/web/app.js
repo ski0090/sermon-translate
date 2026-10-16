@@ -1,4 +1,4 @@
-// 새 화면(Vue): 왼쪽 메뉴, 사용량, 화면 바꾸기. 주소의 # 뒤가 화면이다(#/projects/<단계>, #/shorts/<상태>/<프로젝트>, #/sleep/<상태>, #/usage, #/schedule, #/p/<프로젝트>)
+// 새 화면(Vue): 왼쪽 메뉴, 사용량, 화면 바꾸기. 주소의 # 뒤가 화면이다(#/projects/<단계>, #/shorts/<상태>/<프로젝트>, #/sleep/<상태>, #/usage, #/schedule, #/tools, #/p/<프로젝트>)
 import {createApp,computed,onMounted,onUnmounted,ref,watch} from "./vendor/vue.esm-browser.prod.js";
 import {api,store,every,when,ago,STAGES,SH_STAGES,SV_STAGES,libState,projStage,shStage,svStage} from "./lib.js";
 import ProjectsView from "./projects.js";
@@ -6,13 +6,14 @@ import ShortsView from "./shorts.js";
 import SleepView from "./sleep.js";
 import WorkView from "./work.js";
 import UsageView from "./usage.js";
+import ToolsView from "./tools.js";
 import ScheduleView from "./schedule.js";
 
 const known=(list,f)=>list.some(x=>x[0]===f)?f:"all";
 function parseRoute(){
   const [view,filter,pid]=location.hash.replace(/^#\/?/,"").split("/");
   if(view==="p")return {view:"work",filter:"all",pid:decodeURIComponent(filter||"")};
-  if(view==="schedule"||view==="usage")return {view,filter:"all"};
+  if(["schedule","usage","tools"].includes(view))return {view,filter:"all"};
   if(view==="shorts")return {view,filter:known(SH_STAGES,filter),pid:pid?decodeURIComponent(pid):null};
   if(view==="sleep")return {view,filter:known(SV_STAGES,filter)};
   return {view:"projects",filter:known(STAGES,filter)};
@@ -79,6 +80,7 @@ const NavMenu={
       <div class="ngroup">
         <a class="nhead" href="#/schedule">설정</a>
         <a class="nitem" :class="{on:store.route.view==='schedule'}" href="#/schedule">스케줄</a>
+        <a class="nitem" :class="{on:store.route.view==='tools'}" href="#/tools">AI 도구</a>
       </div>
     </div>
     <UsagePanel/>
@@ -86,7 +88,7 @@ const NavMenu={
 };
 
 const App={
-  components:{NavMenu,ProjectsView,ShortsView,SleepView,ScheduleView,WorkView,UsageView},
+  components:{NavMenu,ProjectsView,ShortsView,SleepView,ScheduleView,WorkView,UsageView,ToolsView},
   setup(){
     const navOpen=ref(false);
     watch(()=>store.route,()=>{navOpen.value=false;});
@@ -96,7 +98,7 @@ const App={
       every(30000,async()=>{if(store.route.view!=="sleep")store.sleep=await api("/api/sleep");}),
       every(30000,async()=>{if(store.route.view!=="projects")store.lib=await api("/api/library");})];});
     onUnmounted(()=>stops.forEach(f=>f()));
-    const title=computed(()=>store.route.view==="work"?store.workName||"프로젝트":({schedule:"스케줄",shorts:"쇼츠",sleep:"음성 영상",usage:"사용량"})[store.route.view]||"프로젝트 목록");
+    const title=computed(()=>store.route.view==="work"?store.workName||"프로젝트":({schedule:"스케줄",shorts:"쇼츠",sleep:"음성 영상",usage:"사용량",tools:"AI 도구"})[store.route.view]||"프로젝트 목록");
     return {store,navOpen,title};
   },
   template:`<div :class="{navopen:navOpen}">
@@ -112,6 +114,7 @@ const App={
       <ShortsView v-else-if="store.route.view==='shorts'"/>
       <SleepView v-else-if="store.route.view==='sleep'"/>
       <UsageView v-else-if="store.route.view==='usage'"/>
+      <ToolsView v-else-if="store.route.view==='tools'"/>
       <WorkView v-else-if="store.route.view==='work'" :key="store.route.pid" :pid="store.route.pid"/>
       <ProjectsView v-else/>
     </div>
