@@ -2,3 +2,4 @@
 export { STAGES, stageName } from "./config/stages.js";
 export { projStage, progressText } from "./lib/stage.js";
 export { jobName, jobMsg } from "./lib/job.js";
+export { default as JobBar } from "./ui/JobBar.js";
