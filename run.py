@@ -3,6 +3,7 @@
 - 화면 주소의 포트는 DUBBER_PORT(기본 8765), API 포트는 DUBBER_API_PORT(기본 8766)
 - --lan이면 같은 네트워크의 다른 PC에서도 화면에 접속할 수 있다(API는 이 PC에서만 받고 화면 서버가 넘겨준다)"""
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -12,20 +13,28 @@ import webbrowser
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+def _stop(signum, frame):
+    raise KeyboardInterrupt
+
+
 def main():
     web_port = int(os.environ.get("DUBBER_PORT", "8765"))
     api_port = int(os.environ.get("DUBBER_API_PORT", "8766"))
     api = [sys.executable, "-u", os.path.join(HERE, "backend", "main.py"), "--port", str(api_port)]
     web = [sys.executable, "-u", os.path.join(HERE, "frontend", "serve.py"), "--port", str(web_port),
            "--api", f"http://127.0.0.1:{api_port}"] + (["--lan"] if "--lan" in sys.argv else [])
+    # Ctrl+C와 kill(서비스 끄기) 모두 두 서버를 끄고 끝낸다
+    signal.signal(signal.SIGINT, _stop)
+    signal.signal(signal.SIGTERM, _stop)
     procs = [subprocess.Popen(api), subprocess.Popen(web)]
     if "--no-browser" not in sys.argv:
         threading.Timer(1.5, lambda: webbrowser.open(f"http://127.0.0.1:{web_port}/")).start()
+    stopped = False
     try:
         while all(p.poll() is None for p in procs):
             time.sleep(0.5)
     except KeyboardInterrupt:
-        pass
+        stopped = True
     finally:
         for p in procs:
             if p.poll() is None:
@@ -35,7 +44,8 @@ def main():
                 p.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 p.kill()
-    sys.exit(max((p.returncode or 0) for p in procs))
+    # 직접 껐으면 0, 한 서버가 먼저 끝났으면(포트를 쓰고 있음 등) 그 종료 코드
+    sys.exit(0 if stopped else max((abs(p.returncode or 0) for p in procs), default=0))
 
 
 if __name__ == "__main__":
