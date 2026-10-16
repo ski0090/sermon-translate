@@ -60,8 +60,6 @@ export const svStage=x=>x.status==="queued"||x.status==="rendering"?"making":x.h
 // listFilter는 마지막으로 본 프로젝트 목록의 거르기(프로젝트를 열어도 메뉴에 표시), workName은 연 프로젝트 이름
 export const store=reactive({route:{view:"projects",filter:"all"},listFilter:"all",shPid:null,workName:null,lib:null,shorts:null,sleep:null,yt:null});
 
-// 새 화면에 아직 없는 단계는 지금 화면에서 연다. 뒤로 가기로 돌아온다
-export const openOld=q=>{location.href="/old"+q;};
 export const openProject=dir=>{location.hash="#/p/"+encodeURIComponent(dir);};
 
 // fn을 ms마다 부른다. 앞 호출이 안 끝났으면 건너뛰고 탭이 숨어 있으면 쉰다. 멈추는 함수를 돌려준다

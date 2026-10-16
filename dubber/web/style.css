@@ -134,6 +134,7 @@ kbd{font-size:11px;background:#eef0f3;border-radius:4px;padding:0 5px}
 .diff mark{background:#ffe08a;padding:0 1px}
 .reading{font-size:12px;color:var(--muted);margin-top:4px}
 .reading input{width:100%;font-size:12px}
+.files li{margin:4px 0}
 
 /* 스케줄 */
 .sched{max-width:980px;margin:24px auto;padding:0 16px}

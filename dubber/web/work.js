@@ -1,19 +1,14 @@
 // 프로젝트 작업 화면: 왼쪽 영상, 오른쪽 단계 패널(자막 읽기 · 정리와 검수 · 음성 · 내보내기), 아래 타임라인(잘라내기 구간).
 // 단계 패널은 work-*.js에 있고, 화면 전체가 함께 쓰는 상태와 동작(W)을 provide로 넘긴다. 위쪽 줄의 단계 버튼은 header로 옮겨 그린다
 import {computed,inject,nextTick,onMounted,onUnmounted,provide,reactive,ref,watch} from "./vendor/vue.esm-browser.prod.js";
-import {api,store,fmt,jobMsg,openOld} from "./lib.js";
+import {api,store,fmt,jobMsg} from "./lib.js";
 import ScanPanel from "./work-scan.js";
 import ReviewPanel from "./work-review.js";
 import TtsPanel from "./work-tts.js";
+import ExportPanel from "./work-export.js";
 
 const STEPS=[["scan","자막 읽기"],["review","정리와 검수"],["tts","음성"],["export","내보내기"]];
 const ORDER=["load","scan","review","tts","export"];
-
-// 아직 새 화면에 옮기지 않은 단계
-const OldPanel={
-  setup(){return {W:inject("W")};},
-  template:`<div class="card">이 단계는 아직 새 화면에 없습니다. <button class="small" @click="W.openOld()">지금 화면에서 열기</button></div>`,
-};
 
 const SettingsModal={
   emits:["close"],
@@ -49,7 +44,7 @@ const SettingsModal={
 
 export default {
   props:["pid"],
-  components:{ScanPanel,ReviewPanel,TtsPanel,OldPanel,SettingsModal},
+  components:{ScanPanel,ReviewPanel,TtsPanel,ExportPanel,SettingsModal},
   setup(props){
     const video=ref(null),audio=ref(null),canvas=ref(null);
     const W=reactive({pid:props.pid,d:null,plan:[],step:"scan",filter:"all",preview:false,cur:0,cursent:null,sel:null,err:null,exportFiles:null,settings:false,
@@ -86,7 +81,6 @@ export default {
       seek(t){const v=video.value;v.currentTime=t;v.play().catch(()=>{});},
       videoTime:()=>video.value?video.value.currentTime:0,
       play(src){const a=audio.value;a.src=src;a.play().catch(()=>{});return a;},
-      openOld:()=>openOld("?p="+encodeURIComponent(props.pid)),
       go(step){W.step=step;W.preview=false;if(video.value)video.value.muted=false;if(step==="tts"&&W.filter==="ai")W.filter="all";},
       setPreview(on){W.preview=on;video.value.muted=on;if(!on)audio.value.pause();},
     });
@@ -97,7 +91,7 @@ export default {
     const steps=computed(()=>{const d=W.d;if(!d)return [];const furthest=ORDER.indexOf(d.step);
       return STEPS.map(([k,n],i)=>{const idx=i+1;
         return {k,n,idx,done:idx<=furthest,avail:idx<=Math.max(furthest,1)||(k==="review"&&d.sentences.length)||(k==="tts"&&d.sentences.length)||(k==="export"&&d.sentences.some(s=>s.tts))};});});
-    const panel=computed(()=>({scan:"ScanPanel",review:"ReviewPanel",tts:"TtsPanel"})[W.step]||"OldPanel");
+    const panel=computed(()=>({scan:"ScanPanel",review:"ReviewPanel",tts:"TtsPanel",export:"ExportPanel"})[W.step]);
 
     /* ----- 영상 ----- */
     function onMeta(){if(video.value.currentTime<0.1)video.value.currentTime=first;}
