@@ -1,5 +1,3 @@
-# 받아 온 라이브러리와 작업 데이터는 고치지 않는다
-dubber/web/vendor/
-dubber/projects/
-.venv/
+# 받아 온 라이브러리는 고치지 않는다(작업 데이터와 .venv는 .gitignore에 있어 저절로 빠진다)
+vendor/
 package-lock.json
