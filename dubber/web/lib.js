@@ -12,9 +12,10 @@ export const when=t=>new Date(t*1000).toLocaleString("ko-KR",{month:"numeric",da
 export const ago=t=>{const m=Math.round((Date.now()/1000-t)/60);return m<1?"방금":m<60?m+"분 전":Math.round(m/60)+"시간 전";};
 export const fsize=b=>b<0?"":b>=2**30?(b/2**30).toFixed(1)+"GB":Math.max(1,Math.round(b/2**20))+"MB";
 
-// 프로젝트 목록을 거르는 단계, 쇼츠 목록을 거르는 상태
+// 프로젝트 목록을 거르는 단계, 쇼츠·음성 영상 목록을 거르는 상태
 export const STAGES=[["todo","진행 전"],["review","정리와 검수"],["scan","자막 읽기"],["tts","음성"],["export","내보내기"]];
 export const SH_STAGES=[["todo","진행 전"],["making","만드는 중"],["done","완성"]];
+export const SV_STAGES=[["todo","아직 없음"],["making","만드는 중"],["done","완성"]];
 export const stageName=k=>(STAGES.find(x=>x[0]===k)||[])[1];
 
 // 지금 돌고 있는 작업 이름(프로젝트 단계가 아니라)
@@ -52,9 +53,11 @@ export function libState(it){
 }
 // 영상의 쇼츠 상태: 진행 전(아직 없음) · 만드는 중(고르거나 만드는 중, 아직 안 만든 쇼츠가 있음) · 완성
 export const shStage=x=>x.busy||x.done<x.count?"making":x.count?"done":"todo";
+// 영상의 음성 영상 상태: 아직 없음 · 만드는 중(대기 포함) · 완성
+export const svStage=x=>x.status==="queued"||x.status==="rendering"?"making":x.has_file?"done":"todo";
 
 // 화면 사이에 함께 쓰는 상태. route는 주소의 # 뒤(app.js), 목록은 몇 초마다 서버에서 새로 받는다
-export const store=reactive({route:{view:"projects",filter:"all"},shPid:null,lib:null,shorts:null,yt:null});
+export const store=reactive({route:{view:"projects",filter:"all"},shPid:null,lib:null,shorts:null,sleep:null,yt:null});
 
 // 새 화면에 아직 없는 프로젝트 작업 화면은 지금 화면에서 연다. 뒤로 가기로 돌아온다
 export const openOld=q=>{location.href="/old"+q;};
