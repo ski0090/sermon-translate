@@ -4,8 +4,9 @@
 const SC={d:null,y:null,m:null,sel:new Set(),last:null,poll:null};
 const scPad=n=>String(n).padStart(2,"0");
 const scKey=(y,m,d)=>`${y}-${scPad(m+1)}-${scPad(d)}`;
-const scTool=t=>t==="codex"?"Codex":"Claude";
-const scToolSel=(id,v)=>`<select id="${id}"><option value="claude" ${v!=="codex"?"selected":""}>Claude</option><option value="codex" ${v==="codex"?"selected":""}>Codex</option></select>`;
+const SC_TOOLS={claude:"Claude",codex:"Codex",agy:"Antigravity"};
+const scTool=t=>SC_TOOLS[t]||"없음(모든 도구가 꺼짐)";
+const scToolSel=(id,v)=>`<select id="${id}">${Object.entries(SC_TOOLS).map(([k,n])=>`<option value="${k}" ${(v||"claude")===k?"selected":""}>${n}</option>`).join("")}</select>`;
 const scLabel=k=>{const [y,m,d]=k.split("-").map(Number);const w="일월화수목금토"[new Date(y,m-1,d).getDay()];return `${m}/${d}(${w})`;};
 
 async function showSchedule(){
@@ -33,7 +34,7 @@ function scTopRender(){
     <div class="muted">Fable은 5시간·주간 사용량을 기본 모델과 함께 쓰고, 그것을 다 쓴 뒤에 쓸 수 있는 별도 주간 몫이 있습니다. 한도가 100%인 날의 자동 작업은 기본 사용량을 다 쓰면 Fable로 이어 가고, 화면에서 직접 누른 작업은 날과 상관없이 한도에 걸리면 Fable로 이어 갑니다.</div>`;
   const st=d.pause?`<span class="badge warn">자동 작업 쉬는 중</span> <span class="muted">${esc(d.pause.reason)} ${when(d.pause.until)}까지</span>`
     :`<span class="badge ok">자동 작업 가능</span>`;
-  const html=`<div class="row" style="justify-content:space-between;margin:0"><strong>오늘 ${scLabel(d.today)}: ${scTool(d.today_tool)}${d.today_tool==="codex"?"로 자동 작업 (Claude 한도는 보지 않음)":` · 한도 5시간 ${L.five_hour}% · 주간 ${L.seven_day}%`}</strong>
+  const html=`<div class="row" style="justify-content:space-between;margin:0"><strong>오늘 ${scLabel(d.today)}: ${scTool(d.today_tool)}${d.today_tool&&d.today_tool!=="claude"?"로 자동 작업 (Claude 한도는 보지 않음)":` · 한도 5시간 ${L.five_hour}% · 주간 ${L.seven_day}%`}</strong>
       <span class="muted">지금 사용량: 5시간 ${pct(u.five_hour.utilization)} · 주간 ${pct(u.seven_day.utilization)}${age!=null?` (${age<1?"방금":age<60?age+"분 전":Math.round(age/60)+"시간 전"} 기준)`:""}</span></div>
     <div class="row">${st}</div>
     <div class="muted">자동 진행(자막 읽기·문장 정리)과 쇼츠 자동 후보 고르기는 그날의 Claude 사용량이 한도에 닿으면 쉬고, 사용량이 초기화되거나 한도가 더 높은 날이 되면 이어 갑니다. 0%로 정한 날은 자동 작업을 하지 않습니다. 화면에서 직접 누른 작업은 한도와 상관없이 프로젝트 설정의 AI 도구로 합니다. Codex로 정한 날은 자동 작업을 Codex로 하고 Claude 한도(5시간·주간 %)는 보지 않습니다(0%면 쉼). 사용량은 마지막 Claude 호출 때의 값입니다(위의 "확인"으로 새로 읽습니다).</div>
@@ -60,7 +61,7 @@ function scCalRender(){
     const k=scKey(y,m,day),v=d.days[k],lim=v||d.default,wd=(first+day-1)%7;
     const cls=["cd",wd===0?"sun":wd===6?"sat":"",k<d.today?"past":"",k===d.today?"today":"",v?"set":"",SC.sel.has(k)?"sel":""].join(" ");
     cells+=`<div class="${cls}" data-day="${k}"><div class="cdn">${day}${k===d.today?' <span class="badge ok">오늘</span>':""}</div>
-      <div class="cdv">${(v&&v.tool||d.tool)==="codex"?'<b style="color:#047857">Codex</b>':"Claude"}<br>5시간 ${lim.five_hour}%<br>주간 ${lim.seven_day}%</div>${resets[k]?`<div class="cdr" title="Claude 주간 사용량이 초기화되는 시각">↻ 주간 초기화 ${resets[k]}</div>`:""}</div>`;
+      <div class="cdv">${(t=>t==="claude"?"Claude":`<b style="color:#047857">${SC_TOOLS[t]}</b>`)((v&&v.tool)||d.tool||"claude")}<br>5시간 ${lim.five_hour}%<br>주간 ${lim.seven_day}%</div>${resets[k]?`<div class="cdr" title="Claude 주간 사용량이 초기화되는 시각">↻ 주간 초기화 ${resets[k]}</div>`:""}</div>`;
   }
   $("#scCal").innerHTML=`<div class="row" style="justify-content:space-between;margin:0">
       <span class="row" style="margin:0"><button class="small" id="scPrev">◀</button><strong style="min-width:7em;text-align:center">${y}년 ${m+1}월</strong><button class="small" id="scNext">▶</button><button class="small" id="scToday">이번 달</button></span>

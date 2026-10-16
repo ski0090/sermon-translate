@@ -21,6 +21,7 @@ import gdrive
 import project as prj
 import shorts
 import sleepvid
+import tools
 import tts
 import youtube
 
@@ -1025,7 +1026,7 @@ USAGE_NAMES = {"five_hour": "5시간", "seven_day": "주간"}
 _sched = {"default": dict(SCHEDULE_DEFAULT), "days": {},  # days: {"2026-10-10": {"five_hour": 90, "seven_day": 90}}
           "fable": {"on": True, "limit": 100},
           "tool": "claude"}  # 날을 따로 정하지 않았을 때 자동 작업이 쓰는 AI 도구(날마다 days[...]["tool"])
-TOOLS = ("claude", "codex")  # 기본 사용량을 다 쓰면 Fable의 별도 몫을 limit%까지 쓴다
+TOOLS = ("claude", "codex", "agy")  # 기본 사용량을 다 쓰면 Fable의 별도 몫을 limit%까지 쓴다
 # 음성 줄을 몇 개 동시에 돌릴지(tts.THREADS와 곱해 코어 수쯤)
 VOICE_WORKERS = int(os.environ.get("DUBBER_VOICE_WORKERS", "4"))
 BATCH_MAX_FAILS = 3
@@ -1280,8 +1281,14 @@ def usage_limits(day=None):
 
 
 def day_tool(day=None):
-    """그날 자동 작업이 쓰는 AI 도구(claude 또는 codex)."""
-    return (_sched["days"].get(day or _day()) or {}).get("tool") or _sched.get("tool") or "claude"
+    """그날 자동 작업이 쓰는 AI 도구(claude, codex, agy). 그 도구를 꺼 두었으면 켜진 도구로 대신하고, 켜진 도구가
+    없으면 None."""
+    want = (_sched["days"].get(day or _day()) or {}).get("tool") or _sched.get("tool") or "claude"
+    on = tools.enabled_tools()
+    for t in [want, _sched.get("tool") or "claude"] + list(TOOLS):
+        if t in on:
+            return t
+    return None
 
 
 def schedule_load():
@@ -1317,7 +1324,7 @@ def schedule_set(body):
                 _sched["days"].pop(day, None)
             else:
                 _sched["days"][day] = {k: pct(v.get(k, usage_limits(day)[k])) for k in SCHEDULE_DEFAULT}
-                tool = v.get("tool") if v.get("tool") in TOOLS else day_tool(day)
+                tool = v.get("tool") if v.get("tool") in TOOLS else (day_tool(day) or "claude")
                 if tool != (_sched.get("tool") or "claude"):
                     _sched["days"][day]["tool"] = tool
         old = _day(time.time() - 90 * 86400)  # 석 달 지난 날은 지운다
@@ -1351,8 +1358,10 @@ def _usage_pause():
                 break
             m = _next_midnight(m + 1)
         return m + 5, "스케줄에서 오늘은 자동 작업을 쉬도록 정해"
+    if day_tool() is None:
+        return now + 600, "켜진 AI 도구가 없어(설정 > AI 도구)"
     if day_tool() != "claude":
-        return None  # Codex로 하는 날은 Claude 사용량을 보지 않는다(Codex 한도에 걸리면 그때 기다린다)
+        return None  # Codex·Antigravity로 하는 날은 Claude 사용량을 보지 않는다(그 도구 한도에 걸리면 그때 기다린다)
     info = ai.load_usage().get("info") or {}
     wins = info.get("unifiedWindows") or {}
     fw = wins.get(ai.FALLBACK_WINDOW) or {}
@@ -1897,6 +1906,28 @@ class Handler(BaseHTTPRequestHandler):
                 elif body.get("action") == "stop":
                     batch_stop()
             return self._json(batch_status())
+        if path == "/api/tools":
+            if method == "POST":
+                body = self._body()
+                try:
+                    tools.set_config(body.get("tool"), body.get("enabled"), body.get("model"))
+                except ValueError as e:
+                    return self._json({"error": str(e)}, 400)
+            return self._json({"tools": tools.status(fresh=bool(q.get("fresh"))), "today": day_tool()})
+        tm = re.match(r"^/api/tools/(claude|codex|agy)/(login|logout|test|cancel)$", path)
+        if tm and method == "POST":
+            try:
+                res = getattr(tools, tm.group(2))(tm.group(1))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 409)
+            return self._json({"result": res, "tools": tools.status()})
+        if path == "/api/usage/all":
+            return self._json(dict(tools.usage(), today=day_tool()))
+        if path == "/api/usage/all/check" and method == "POST":
+            try:
+                return self._json(dict(tools.check(self._body().get("tool")), today=day_tool()))
+            except (ValueError, RuntimeError) as e:
+                return self._json({"error": str(e)}, 409)
         if path == "/api/usage":
             return self._json(ai.load_usage())
         if path == "/api/usage/check" and method == "POST":
@@ -2199,6 +2230,7 @@ def main():
     os.makedirs(prj.ROOT, exist_ok=True)
     _root_lock = lock_root()  # noqa
     kill_orphans()
+    tools.load()
     schedule_load()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     voice = resume_all()

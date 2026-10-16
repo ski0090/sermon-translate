@@ -52,12 +52,14 @@ GPU 없는 개인 PC에서 사용료 없이 한국어 음성을 쉽게 만들 �
 | `gdrive.py` | 구글 드라이브(rclone) 폴더 보기, 영상 내려받기, 결과 올리기 |
 | `youtube.py` | 유튜브 로그인(OAuth), 영상 이어 올리기, 재생목록, 자막 |
 | `sleepvid.py` | 자면서 듣는 설교 영상: 어두운 배경 + 제목 + 이퀄라이저 막대(직접 그림), 소리는 싱크 없이 이은 음성 |
+| `tools.py` | AI 도구(Claude, Codex, Antigravity) 사용 여부·모델, 설치·로그인·플랜 상태, 로그인·로그아웃·연결 시험, 사용량 모으기 (`projects/_tools.json`) |
 | `shorts.py` | 쇼츠: Claude로 구간·제목·강조 고르기, 세로 영상 만들기(흐린 배경 + 자막 띠 위 영상 + ASS 자막), 미리 보기 그림 (`<프로젝트>/shorts.json`) |
 | `server.py`의 자동 진행 | 영상 대기열을 자막 읽기 줄과 음성 줄로 나눠 한 편씩 끝까지 진행(`projects/_batch.json`) |
 | `project.py` | 프로젝트 저장소와 문장 편집, 잘라내기 구간 |
 | `server.py` | 로컬 웹 서버와 API (표준 라이브러리) |
 | `static/index.html` | 화면(왼쪽 메뉴와 단계별 거르기, 프로젝트 목록, 프로젝트 작업) |
 | `static/shorts.js` | 쇼츠 화면 |
+| `static/tools.js`, `static/usage.js` | AI 도구 설정 화면, 사용량 화면 |
 | `static/sleep.js` | 음성 영상(자면서 듣는 설교) 화면 |
 | `static/schedule.js` | 스케줄 화면(날마다 자동 작업이 쓸 Claude 사용량, `projects/_schedule.json`) |
 | `webdev.py` | 새 화면(Vue) 시험판을 8766 포트에서 띄우는 개발용 서버. `web/`은 직접 내주고 나머지는 지금 서버로 넘김 |

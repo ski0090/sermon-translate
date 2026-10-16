@@ -9,6 +9,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image, ImageDraw, ImageFont
@@ -28,8 +29,13 @@ FALLBACK_MODEL = None
 FALLBACK_WINDOW = "seven_day_overage_included"
 _main_out = {"until": 0.0}  # 기본 모델이 한도에 걸려 풀리는 시각. 그때까지는 바로 FALLBACK_MODEL로 부른다
 # claude 호출마다 받은 플랜 사용량(5시간·주간 한도의 사용률과 초기화 시각)을 남겨 화면에 보여 준다
-USAGE = os.path.join(os.environ.get("DUBBER_PROJECTS") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "projects"),
-                     "_usage.json")
+_PROJECTS = os.environ.get("DUBBER_PROJECTS") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "projects")
+USAGE = os.path.join(_PROJECTS, "_usage.json")
+AI_LOG = os.path.join(_PROJECTS, "_ai_log.json")  # 날짜별·도구별 호출 수와 토큰, 도구가 마지막으로 쓴 모델
+TOOL_NAMES = {"claude": "Claude", "codex": "Codex", "agy": "Antigravity"}
+# 도구마다 사용 여부와 모델(빈칸이면 도구의 기본 모델). 서버가 설정 화면(AI 도구) 값으로 정한다
+CONFIG = {t: {"enabled": True, "model": ""} for t in TOOL_NAMES}
+_log_lock = threading.Lock()
 
 READ_PROMPT = (
     "{path} 파일을 Read 도구로 열어 보세요. 한국어 자막 {n}장을 세로로 이어 붙인 그림이고, "
@@ -137,12 +143,15 @@ def _bin(name):
     return found
 
 
-_LIMIT_TEXT = re.compile(r"usage limit|limit reached|rate limit|hit your limit", re.I)
+_LIMIT_TEXT = re.compile(r"usage limit|limit reached|rate limit|hit your limit|quota|RESOURCE_EXHAUSTED", re.I)
+_AUTH_TEXT = re.compile(r"authentication required|not logged in|log ?in required|unauthenticated|please (log|sign) ?in", re.I)
 
 
-def _claude_result(raw):
-    """stream-json 출력에서 답 글을 꺼내고, 사용량 정보가 있으면 저장한다. 한도에 걸렸으면 UsageLimit."""
+def _claude_result(raw, meta=None):
+    """stream-json 출력에서 답 글을 꺼내고, 사용량 정보가 있으면 저장한다. 한도에 걸렸으면 UsageLimit.
+    meta에는 쓴 모델과 토큰 수를 남긴다."""
     text, info, is_error = "", None, False
+    meta = {} if meta is None else meta
     for line in raw.splitlines():
         try:
             j = json.loads(line)
@@ -150,8 +159,14 @@ def _claude_result(raw):
             continue
         if j.get("type") == "rate_limit_event":
             info = j.get("rate_limit_info")
+        elif j.get("type") == "system" and j.get("subtype") == "init":
+            meta["model"] = j.get("model")
         elif j.get("type") == "result":
             text, is_error = j.get("result") or "", bool(j.get("is_error"))
+            u = j.get("usage") or {}
+            meta["in"] = sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_read_input_tokens",
+                                                          "cache_creation_input_tokens"))
+            meta["out"] = int(u.get("output_tokens") or 0)
     if info:
         save_usage(info)
     # 상태가 rejected여도 답이 왔으면 쓴다(추가 몫으로 처리된 호출)
@@ -187,45 +202,177 @@ def check_usage():
 
 
 def run_tool(prompt, tool="claude", image=None, cwd=None, timeout=TIMEOUT):
-    """AI 도구를 한 번 호출해 출력 문자열을 돌려준다. 프롬프트는 stdin으로 넘긴다(명령줄 길이 제한 회피)."""
+    """AI 도구를 한 번 호출해 출력 문자열을 돌려준다. 꺼 둔 도구는 ToolError. 호출마다 사용 기록을 남긴다."""
+    if tool not in TOOL_NAMES:
+        raise ToolError(f"모르는 AI 도구입니다: {tool}")
+    if not CONFIG[tool].get("enabled", True):
+        raise ToolError(f"{TOOL_NAMES[tool]} 사용이 꺼져 있습니다(설정 > AI 도구에서 켜세요)")
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDECODE")}
-    if tool == "codex":
-        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
-            last = f.name
-        cmd = [_bin("codex"), "exec", "--skip-git-repo-check", "-o", last]
-        if image:
-            cmd += ["-i", image]
-        cmd += ["-"]
-        code, raw, err = _run(cmd, prompt, cwd, env, timeout)
-        with open(last, encoding="utf-8", errors="replace") as f:
-            out = f.read()
-        os.unlink(last)
-        if code != 0 and not out.strip():
-            if _LIMIT_TEXT.search(raw + err):
-                raise UsageLimit()  # 풀리는 시각을 모르면 자동 진행이 30분 뒤에 다시 해 본다
-            raise ToolError(f"codex 실패: {(err or raw).strip()[-300:]}")
-        return out
-    fb = FALLBACK_MODEL
-    model = fb if fb and time.time() < _main_out["until"] else None
+    meta = {}
     try:
-        return _claude(prompt, image, cwd, env, timeout, model)
+        out = {"claude": _run_claude, "codex": _run_codex, "agy": _run_agy}[tool](prompt, image, cwd, env, timeout, meta)
+    except Exception:
+        record(tool, meta, ok=False)
+        raise
+    record(tool, meta)
+    return out
+
+
+def record(tool, meta, ok=True):
+    """날짜별·도구별 호출 수(실패 수)와 토큰, 도구가 마지막으로 쓴 모델을 남긴다."""
+    with _log_lock:
+        d = load_log()
+        day = time.strftime("%Y-%m-%d")
+        x = d.setdefault("days", {}).setdefault(day, {}).setdefault(tool, {"calls": 0, "fails": 0, "in": 0, "out": 0})
+        x["calls"] += 1
+        x["fails"] += 0 if ok else 1
+        x["in"] += int(meta.get("in") or 0)
+        x["out"] += int(meta.get("out") or 0)
+        if meta.get("model"):
+            d.setdefault("models", {})[tool] = {"model": meta["model"], "t": time.time()}
+        old = time.strftime("%Y-%m-%d", time.localtime(time.time() - 60 * 86400))
+        d["days"] = {k: v for k, v in d["days"].items() if k >= old}
+        try:
+            os.makedirs(os.path.dirname(AI_LOG), exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(AI_LOG), suffix=".tmp")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False)
+            os.replace(tmp, AI_LOG)
+        except OSError:
+            pass
+
+
+def load_log():
+    try:
+        with open(AI_LOG, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _run_claude(prompt, image, cwd, env, timeout, meta):
+    base = CONFIG["claude"].get("model") or None
+    fb = FALLBACK_MODEL
+    model = fb if fb and time.time() < _main_out["until"] else base
+    try:
+        return _claude(prompt, image, cwd, env, timeout, model, meta)
     except UsageLimit as e:
-        if model or not fb:
+        if not fb or model == fb:
             raise
         # 기본 사용량을 다 썼다: 풀릴 때까지 Fable로 부른다
         _main_out["until"] = max(e.resets_at or 0, time.time() + 1800)
-        return _claude(prompt, image, cwd, env, timeout, fb)
+        return _claude(prompt, image, cwd, env, timeout, fb, meta)
 
 
-def _claude(prompt, image, cwd, env, timeout, model=None):
+def _claude(prompt, image, cwd, env, timeout, model=None, meta=None):
     cmd = [_bin("claude"), "-p", "--output-format", "stream-json", "--verbose", "--max-turns", "4",
            "--allowedTools", "Read" if image else ""]
     if model:
         cmd += ["--model", model]
     code, raw, err = _run(cmd, prompt, cwd, env, timeout)
-    out = _claude_result(raw)
+    out = _claude_result(raw, meta)
     if code != 0 and not out.strip():
         raise ToolError(f"claude 실패: {err.strip()[:300]}")
+    return out
+
+
+def _run_codex(prompt, image, cwd, env, timeout, meta):
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+        last = f.name
+    cmd = [_bin("codex"), "exec", "--skip-git-repo-check", "--json", "-o", last]
+    if CONFIG["codex"].get("model"):
+        cmd += ["-m", CONFIG["codex"]["model"]]
+    if image:
+        cmd += ["-i", image]
+    cmd += ["-"]
+    code, raw, err = _run(cmd, prompt, cwd, env, timeout)
+    with open(last, encoding="utf-8", errors="replace") as f:
+        out = f.read()
+    os.unlink(last)
+    for line in raw.splitlines():
+        try:
+            j = json.loads(line)
+        except ValueError:
+            continue
+        if j.get("type") == "turn.completed":
+            u = j.get("usage") or {}
+            meta["in"], meta["out"] = int(u.get("input_tokens") or 0), int(u.get("output_tokens") or 0)
+    meta["model"] = CONFIG["codex"].get("model") or codex_info().get("model")
+    if code != 0 and not out.strip():
+        if _LIMIT_TEXT.search(raw + err):
+            raise UsageLimit()  # 풀리는 시각을 모르면 자동 진행이 30분 뒤에 다시 해 본다
+        raise ToolError(f"codex 실패: {(err or raw).strip()[-300:]}")
+    return out
+
+
+AGY_ARG_MAX = 100_000  # 명령줄 인자 하나의 한도(128KB)보다 작게. 넘으면 프롬프트를 파일로 넘긴다
+
+
+def _run_agy(prompt, image, cwd, env, timeout, meta):
+    """Antigravity CLI(agy) 헤드리스 호출. 그림은 프롬프트에 적힌 경로를 agy가 직접 읽는다."""
+    cmd = [_bin("agy"), "--output-format", "json"]
+    if CONFIG["agy"].get("model"):
+        cmd += ["--model", CONFIG["agy"]["model"]]
+    tmp = None
+    if len(prompt.encode("utf-8")) > AGY_ARG_MAX:
+        fd, tmp = tempfile.mkstemp(dir=cwd or None, prefix="agy_prompt_", suffix=".txt")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(prompt)
+        prompt = f"{os.path.abspath(tmp)} 파일을 읽고, 그 안의 지시를 그대로 따라 답만 출력하세요."
+    try:
+        code, raw, err = _run(cmd + ["-p", prompt], "", cwd, env, timeout)
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
+    j = {}
+    for line in reversed(raw.strip().splitlines()):
+        try:
+            j = json.loads(line)
+            break
+        except ValueError:
+            continue
+    if not j:
+        try:
+            j = json.loads(raw)
+        except ValueError:
+            j = {}
+    u = j.get("usage") or {}
+    meta["in"] = int(u.get("input_tokens") or u.get("inputTokens") or u.get("prompt_tokens") or 0)
+    meta["out"] = int(u.get("output_tokens") or u.get("outputTokens") or u.get("completion_tokens") or 0)
+    meta["model"] = j.get("model") or CONFIG["agy"].get("model") or None
+    text = j.get("response") or (raw if not j else "")
+    if code != 0 or (j and j.get("status") not in (None, "SUCCESS")) or not str(text).strip():
+        why = (err + " " + str(j.get("error") or "")).strip() or raw.strip()
+        if _AUTH_TEXT.search(why):
+            raise ToolError("Antigravity 로그인이 필요합니다(서버 PC 터미널에서 agy를 한 번 실행해 로그인)")
+        if _LIMIT_TEXT.search(why):
+            raise UsageLimit()
+        raise ToolError(f"agy 실패: {why[-300:]}")
+    return str(text)
+
+
+def codex_info():
+    """Codex 실행 기록(~/.codex/sessions)에서 마지막으로 쓴 모델과 사용량 한도. 없으면 빈 dict."""
+    import glob
+    files = sorted(glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")), key=os.path.getmtime)[-20:]
+    out = {}
+    for path in reversed(files):
+        try:
+            lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+        except OSError:
+            continue
+        for line in reversed(lines):
+            try:
+                j = json.loads(line)
+            except ValueError:
+                continue
+            p = j.get("payload") or {}
+            if "model" not in out and j.get("type") == "turn_context" and p.get("model"):
+                out["model"] = p["model"]
+            if "limits" not in out and isinstance(p, dict) and p.get("type") == "token_count" and p.get("rate_limits"):
+                out["limits"], out["limits_t"] = p["rate_limits"], os.path.getmtime(path)
+        if "model" in out and "limits" in out:
+            break
     return out
 
 

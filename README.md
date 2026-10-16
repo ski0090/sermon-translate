@@ -108,6 +108,19 @@ rclone의 공용 client_id는 2026년 중 사용이 중단되므로 본인 clien
 - **도구**: 날마다(또는 기본값으로) 자동 작업의 AI 도구를 Claude나 Codex로 고릅니다. Codex인 날은 자동 진행과 쇼츠 자동 후보를 `codex exec`로 하고 Claude 한도(%)는 보지 않습니다(0%면 쉼). Codex가 사용량 한도에 걸리면 30분쯤 기다렸다가 이어 갑니다. 화면에서 직접 누른 작업은 프로젝트 설정의 AI 도구를 씁니다. Codex CLI는 `~/.local/bin/codex`에 설치하고 `codex login`으로 ChatGPT 계정에 로그인해 둡니다.
 - 값은 `dubber/projects/_schedule.json`에 저장되고, 바꾸면 1분 안에 반영됩니다.
 
+## AI 도구와 사용량
+
+왼쪽 메뉴의 **설정 > AI 도구**에서 Claude, Codex, Antigravity를 관리합니다.
+
+- 도구마다 설치·버전, 로그인 상태, 인식된 플랜(Claude는 `claude auth status`, Codex는 로그인 정보의 ChatGPT 플랜), 지금 쓰는 모델(정해 둔 모델, 없으면 마지막 호출에서 본 모델)을 보여 줍니다.
+- **사용** 체크를 끄면 그 도구는 쓰지 않습니다. 스케줄에서 끈 도구로 정한 날은 켜진 도구로 대신하고, 모두 끄면 자동 작업이 쉽니다.
+- **모델**: Claude는 기본/Opus/Sonnet/Haiku/Fable, Codex는 `codex debug models`의 목록, Antigravity는 `agy models`의 목록에서 고르거나 이름을 적습니다. 비워 두면 도구의 기본 모델입니다.
+- **로그인·로그아웃(설정 해제)**: Codex는 화면의 "로그인"이 보여 주는 주소와 코드로 아무 기기에서 로그인합니다. `codex login`은 시작할 때 지금 로그인을 지우므로, 화면은 먼저 백업해 두고 새 로그인을 끝내지 않으면(취소, 15분 지남) 되살립니다. Codex와 Antigravity는 화면에서 로그아웃할 수 있습니다. Claude 로그아웃은 이 PC의 Claude Code도 같이 로그아웃되어 화면에서는 하지 않습니다(사용만 끔).
+- **연결 시험**: 아주 짧게 한 번 불러 봅니다(토큰이 조금 듭니다).
+- **Antigravity**: 서버 PC 터미널에서 `curl -fsSL https://antigravity.google/cli/install.sh | bash`로 설치하고 `agy`를 한 번 실행해 Google OAuth로 로그인합니다. 헤드리스로 `agy -p ... --output-format json`을 부릅니다.
+
+왼쪽 메뉴의 **사용량**에서 Claude(5시간·주간·Fable 추가 몫), Codex(한도와 초기화 시각, `~/.codex/sessions` 기록에서 읽음), Antigravity(`agy -p /usage`)의 사용량과 최근 14일의 날짜별 호출 수·토큰(이 앱이 부른 것만, `projects/_ai_log.json`)을 봅니다. "확인"은 아주 짧게 한 번 불러 새로 읽습니다.
+
 ## 음성 대기열
 
 영상 화면의 "음성 만들기"는 바로 시작하지 않고 음성 대기열에 들어갑니다(화면에 "음성 대기 중 (앞에 n편)"). 음성 줄 4개가 대기열 앞에서부터 하나씩 맡아 음성 → 내보내기 → 드라이브 올리기를 하고, "중단"을 누르면 대기열에서 빠집니다. 서버가 꺼졌다 켜지면 하던 음성은 대기열에 다시 들어가 이어 만듭니다(이미 만든 문장은 그대로 씁니다).
