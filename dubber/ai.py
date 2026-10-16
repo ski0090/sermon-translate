@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -124,6 +125,18 @@ class UsageLimit(RuntimeError):
         super().__init__(self.PREFIX + when)
 
 
+class ToolError(RuntimeError):
+    """AI 도구가 아예 실행되지 않았다(도구를 못 찾음, 로그인 안 됨 등). 빈칸으로 저장하지 않고 멈춰야 고친 뒤 다시 읽는다."""
+
+
+def _bin(name):
+    """도구 실행 파일. 서비스로 띄운 서버는 PATH에 ~/.local/bin이 없을 수 있어서 거기도 찾는다."""
+    found = shutil.which(name) or shutil.which(name, path=os.path.expanduser("~/.local/bin"))
+    if not found:
+        raise ToolError(f"{name} 명령을 찾지 못했습니다(설치와 PATH를 확인하세요)")
+    return found
+
+
 _LIMIT_TEXT = re.compile(r"usage limit|limit reached|rate limit|hit your limit", re.I)
 
 
@@ -179,7 +192,7 @@ def run_tool(prompt, tool="claude", image=None, cwd=None, timeout=TIMEOUT):
     if tool == "codex":
         with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
             last = f.name
-        cmd = ["codex", "exec", "--skip-git-repo-check", "-o", last]
+        cmd = [_bin("codex"), "exec", "--skip-git-repo-check", "-o", last]
         if image:
             cmd += ["-i", image]
         cmd += ["-"]
@@ -190,7 +203,7 @@ def run_tool(prompt, tool="claude", image=None, cwd=None, timeout=TIMEOUT):
         if code != 0 and not out.strip():
             if _LIMIT_TEXT.search(raw + err):
                 raise UsageLimit()  # 풀리는 시각을 모르면 자동 진행이 30분 뒤에 다시 해 본다
-            raise RuntimeError(f"codex 실패: {(err or raw).strip()[-300:]}")
+            raise ToolError(f"codex 실패: {(err or raw).strip()[-300:]}")
         return out
     fb = FALLBACK_MODEL
     model = fb if fb and time.time() < _main_out["until"] else None
@@ -205,14 +218,14 @@ def run_tool(prompt, tool="claude", image=None, cwd=None, timeout=TIMEOUT):
 
 
 def _claude(prompt, image, cwd, env, timeout, model=None):
-    cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose", "--max-turns", "4",
+    cmd = [_bin("claude"), "-p", "--output-format", "stream-json", "--verbose", "--max-turns", "4",
            "--allowedTools", "Read" if image else ""]
     if model:
         cmd += ["--model", model]
     code, raw, err = _run(cmd, prompt, cwd, env, timeout)
     out = _claude_result(raw)
     if code != 0 and not out.strip():
-        raise RuntimeError(f"claude 실패: {err.strip()[:300]}")
+        raise ToolError(f"claude 실패: {err.strip()[:300]}")
     return out
 
 
@@ -234,7 +247,7 @@ def read_strip(crop_paths, strips_dir, tool="claude"):
             if len(arr) == n:
                 texts = [str(a.get("text", "")).strip() for a in sorted(arr, key=lambda a: int(a.get("n", 0)))]
                 break
-        except UsageLimit:
+        except (UsageLimit, ToolError):
             raise  # 빈칸으로 캐시하지 않는다
         except Exception:
             if attempt == 1 and n <= 3:
@@ -266,10 +279,10 @@ def read_all(crop_paths, strips_dir, tool="claude", workers=4, per_strip=PER_STR
             g = futs[fut]
             try:
                 res = fut.result()
-            except UsageLimit:
+            except (UsageLimit, ToolError):
                 for f in futs:
                     f.cancel()
-                raise  # 읽은 묶음은 캐시에 남아 있으니 한도가 풀린 뒤 이어서 읽는다
+                raise  # 읽은 묶음은 캐시에 남아 있으니 한도가 풀리거나 도구를 고친 뒤 이어서 읽는다
             except Exception:
                 res = [""] * len(g)
             for i, t in zip(g, res):
@@ -307,7 +320,7 @@ def _tidy_chunk(runs, tool, keep):
         try:
             arr = _parse_json_array(run_tool(prompt, tool, timeout=TIDY_TIMEOUT))
             groups = [[int(c) for c in a["c"]] for a in arr]
-        except UsageLimit:
+        except (UsageLimit, ToolError):
             raise  # 규칙으로 합치지 않고 멈춘다
         except Exception:
             continue
